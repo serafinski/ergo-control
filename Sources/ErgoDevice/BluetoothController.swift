@@ -30,16 +30,17 @@ enum BluetoothFailure: LocalizedError {
     }
 }
 
-final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    @Published var status = "Ready to read PT Ergo's current mode"
-    @Published var modeText = "Not read yet"
-    @Published var ready = false
-    @Published var busy = false
-    @Published var restoreOwed = false
-    @Published var secondsRemaining = 0
-    @Published var rows: [String] = []
-    @Published var logURL: URL?
-    @Published var batteryText = "Battery status has not been read"
+public final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    @Published public var status = "Ready to read PT Ergo's current mode"
+    @Published public var modeText = "Not read yet"
+    @Published public var ready = false
+    @Published public var busy = false
+    @Published public var restoreOwed = false
+    @Published public var secondsRemaining = 0
+    @Published public var rows: [String] = []
+    @Published public var logURL: URL?
+    @Published public var driverModeVerified = false
+    @Published public var batteryText = "Battery status has not been read"
 
     private var central: CBCentralManager?
     private var target: CBPeripheral?
@@ -50,6 +51,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
     private var commandTimeout: Timer?
     private var connectionTimeout: Timer?
     private var restoreTimer: Timer?
+    private var leaseDeadline: TimeInterval?
     private var retryTimer: Timer?
     private var original: SavedMode?
     private var currentMode: (UInt8, UInt8)?
@@ -65,7 +67,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
     }
     private var recoveryURL: URL { Self.folder.appendingPathComponent("pending-restoration.json") }
 
-    override init() {
+    public override init() {
         super.init()
         do {
             try FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true,
@@ -114,7 +116,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         return ids.first
     }
 
-    func connect() {
+    public func connect() {
         guard !busy else { return }
         guard let id = exactTargetID() else { status = "Wake PT Ergo and try again; its paired Bluetooth endpoint was not found."; return }
         if let original, original.peripheral != id {
@@ -150,7 +152,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         }
     }
 
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         log("bluetooth_state", ["state": central.state.rawValue])
         if central.state == .poweredOn { connectKnownTarget() }
         else {
@@ -159,13 +161,13 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         }
     }
 
-    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         guard peripheral == target else { return }
         log("connected")
         peripheral.discoverServices([serviceUUID])
     }
 
-    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         connectionTimeout?.invalidate()
         ready = false
         status = error?.localizedDescription ?? "Could not connect to the keyboard configuration service"
@@ -173,9 +175,10 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         scheduleRestoreRetry()
     }
 
-    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         guard peripheral == target else { return }
         ready = false
+        driverModeVerified = false
         writeCharacteristic = nil
         log("disconnected", ["error": error?.localizedDescription ?? "none"])
         if pending != nil { complete(.failure(BluetoothFailure.message("Keyboard configuration connection ended"))) }
@@ -183,7 +186,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         scheduleRestoreRetry()
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard peripheral == target else { return }
         if let error { connectionFailed(error.localizedDescription); return }
         guard let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) else {
@@ -193,7 +196,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         peripheral.discoverCharacteristics([writeUUID, notifyUUID], for: service)
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard peripheral == target else { return }
         if let error { connectionFailed(error.localizedDescription); return }
         let characteristics = service.characteristics ?? []
@@ -206,7 +209,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         peripheral.setNotifyValue(true, for: notify)
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         guard peripheral == target, characteristic.uuid == notifyUUID else { return }
         if let error { connectionFailed(error.localizedDescription); return }
         guard characteristic.isNotifying else { connectionFailed("Response notifications are not enabled"); return }
@@ -248,7 +251,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         target.writeValue(chunk, for: writeCharacteristic, type: .withResponse)
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard peripheral == target, characteristic.uuid == writeUUID, let pending else { return }
         if let error { complete(.failure(error)); return }
         do { try pending.exchange.acknowledgeWrite() }
@@ -257,7 +260,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         finishIfReady()
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+    public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard peripheral == target, characteristic.uuid == notifyUUID else { return }
         if let error { if pending != nil { complete(.failure(error)) }; return }
         guard let data = characteristic.value else { return }
@@ -291,7 +294,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         if restoreRequested, pending == nil { restoreRequested = false; restore() }
     }
 
-    func readMode() {
+    public func readMode() {
         guard !restoreOwed else { restore(); return }
         guard ready, !busy else { return }
         status = "Reading current keyboard mode…"
@@ -315,10 +318,10 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         }
     }
 
-    var canTryDriverMode: Bool { ready && !busy && !restoreOwed && currentMode?.0 == 0 }
+    public var canTryDriverMode: Bool { ready && !busy && !restoreOwed && currentMode?.0 == 0 }
 
-    func readBattery() {
-        guard ready, !busy, !restoreOwed else { return }
+    public func readBattery() {
+        guard ready, !busy, !restoreOwed || driverModeVerified else { return }
         batteryText = "Reading battery status…"
         guard let request = try? Protocol30Request.readBatteryList(transaction: transactions.next()) else { return }
         send(request) { [weak self] result in
@@ -342,7 +345,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
             batteryText = readings.joined(separator: " · ")
             return
         }
-        guard ready, !restoreOwed,
+        guard ready, !restoreOwed || driverModeVerified,
               let request = try? Protocol30Request.readBatteryLevel(transaction: transactions.next(), batteryID: id) else {
             batteryText = "Battery read interrupted; try again"
             return
@@ -364,7 +367,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         }
     }
 
-    func tryDriverMode() {
+    public func tryDriverMode() {
         guard canTryDriverMode, let targetID, exactTargetID() == targetID, let currentMode else { return }
         guard logfile != nil else { status = "A diagnostic log is required before changing the mode"; return }
         let saved = SavedMode(peripheral: targetID, mode: currentMode.0, parameter: currentMode.1)
@@ -379,15 +382,17 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         original = saved
         restoreOwed = true
         secondsRemaining = 60
+        leaseDeadline = ProcessInfo.processInfo.systemUptime + 60
         restoreTimer?.invalidate()
-        restoreTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        restoreTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.secondsRemaining = max(0, self.secondsRemaining - 1)
+            self.secondsRemaining = max(0, Int(ceil((self.leaseDeadline ?? 0) - ProcessInfo.processInfo.systemUptime)))
             if self.secondsRemaining == 0 { self.restoreTimer?.invalidate(); self.restore() }
             else if self.secondsRemaining % 10 == 0 && self.ready && !self.busy {
                 self.verifyDriverMode()
             }
         }
+        if let restoreTimer { RunLoop.main.add(restoreTimer, forMode: .common) }
         guard let request = try? Protocol30Request.deviceMode(transaction: transactions.next(), mode: 3, parameter: 0) else { restore(); return }
         status = "Enabling temporary driver mode…"
         send(request) { [weak self] result in
@@ -407,6 +412,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         send(request) { [weak self] result in
             guard let self else { return }
             if case .success(let response) = result, response.payload == Data([3, 0]) {
+                self.driverModeVerified = true
                 self.currentMode = (3, 0)
                 self.modeText = "Temporary driver mode (3)"
                 self.status = "Test M1 and AI in Ergo Probe now. Original mode will be restored automatically."
@@ -418,10 +424,19 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         }
     }
 
-    func restore() {
+    // The mapping app renews this short lease only while its input relay is alive.
+    public func renewMappingLease() {
+        guard restoreOwed, driverModeVerified, ready, !closing else { return }
+        secondsRemaining = 60
+        leaseDeadline = ProcessInfo.processInfo.systemUptime + 60
+    }
+
+    public func restore() {
+        driverModeVerified = false
         guard restoreOwed, let original else { return }
         restoreTimer?.invalidate(); restoreTimer = nil
         secondsRemaining = 0
+        leaseDeadline = nil
         if pending != nil { restoreRequested = true; return }
         guard ready, target?.identifier == original.peripheral else { connect(); scheduleRestoreRetry(); return }
         status = "Restoring the original keyboard mode…"
@@ -443,6 +458,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
             guard let self else { return }
             if case .success(let response) = result, response.payload == Data([saved.mode, saved.parameter]) {
                 self.log("original_mode_restored", ["mode": saved.mode, "parameter": saved.parameter])
+                self.driverModeVerified = false
                 self.restoreOwed = false
                 self.original = nil
                 self.currentMode = (saved.mode, saved.parameter)
@@ -467,7 +483,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         }
     }
 
-    func requestTermination() -> NSApplication.TerminateReply {
+    public func requestTermination() -> NSApplication.TerminateReply {
         guard restoreOwed else { return .terminateNow }
         closing = true
         restore()

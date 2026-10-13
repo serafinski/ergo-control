@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ErgoDevice
 
 final class BluetoothAppDelegate: NSObject, NSApplicationDelegate {
     var controller: BluetoothController?

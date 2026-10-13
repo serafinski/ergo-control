@@ -2,7 +2,9 @@
 
 Bluetooth-first investigation and standalone macOS replacement for Synapse on the Razer Pro Type Ergo (RZ03-0544).
 
-The current deliverables are **Ergo Probe**, a native diagnostic application, and **Ergo Bluetooth**, a scoped configuration-mode and battery helper. It identifies only the Bluetooth keyboard with vendor/product `068e:02c3`, records raw HID reports and decoded HID values, and can separately observe its Razer Bluetooth configuration characteristic. The complete mapping application is not implemented yet; missing controls must first be verified on this keyboard.
+The first **Ergo Control** mapping app is now implemented and builds as a native SwiftUI menu-bar application. It uses only macOS frameworks and has no third-party runtime packages. The input protocol is hardware-verified; the new exclusive input relay and action output still need their first live validation. It is a development build, not a finished daily-use release.
+
+Build with `zsh tools/build_app.sh`, then open `build/Ergo Control.app`. See [app setup and validation](docs/APP.md). The diagnostic apps below remain available separately.
 
 Build with `zsh tools/build_probe.sh`. Open `build/Ergo Probe.app`.
 
