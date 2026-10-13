@@ -2,7 +2,7 @@
 
 Bluetooth-first investigation and standalone macOS replacement for Synapse on the Razer Pro Type Ergo (RZ03-0544).
 
-The first **Ergo Control** mapping app is now implemented and builds as a native SwiftUI menu-bar application. It uses only macOS frameworks and has no third-party runtime packages. The input protocol is hardware-verified. macOS denied exclusive keyboard access with a privilege error; build 0.1.1 falls back to extra-button observation. M1–M5, AI, left click, and battery assignments can use that path; full dial/ordinary-key replacement remains blocked. Physical M1 text output and automatic test expiry with verified normal-mode restoration now work on real hardware. Other action types still need live validation. It is a development build, not a finished daily-use release.
+The first **Ergo Control** mapping app is now implemented and builds as a native SwiftUI menu-bar application. It uses only macOS frameworks and has no third-party runtime packages. The input protocol is hardware-verified. macOS denied exclusive keyboard access with a privilege error; build 0.1.1 falls back to extra-button observation. M1–M5, AI, left click, and battery assignments can use that path; full dial/ordinary-key replacement remains blocked. Physical M1 text output, an M2 macro combining text, pauses and Command+A, and automatic test expiry with verified normal-mode restoration now work on real hardware. Other action types still need live validation. It is a development build, not a finished daily-use release.
 
 Build with `zsh tools/build_app.sh`, then open `build/Ergo Control.app`. See [app setup and validation](docs/APP.md). The diagnostic apps below remain available separately.
 
