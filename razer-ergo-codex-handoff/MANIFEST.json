@@ -1,0 +1,422 @@
+{
+  "evidence/payload/Razer/RazerAppEngine/Razer.app/Contents/Resources/app.asar": {
+    "size_bytes": 40264996,
+    "sha256": "9b07b3318a5756a6ebf45dcab0c419b2c2bab312f17a953801e2dcbbaf7a9751"
+  },
+  "evidence/payload/Razer/RazerAppEngine/Razer.app/Contents/CommonDylib/libmapping_engine.dylib": {
+    "size_bytes": 12086592,
+    "sha256": "abb7ee136e060a412b580bb5da56eb2bc1e6de4486dacbdb7b8c3204abd1b40d"
+  },
+  "evidence/payload/Razer/RazerAppEngine/Razer.app/Contents/CommonDylib/libSysUtilsNative.dylib": {
+    "size_bytes": 1363152,
+    "sha256": "655810a7b2517641710fc87c8b366892940500cfce3f51c1884ee53fd6035847"
+  },
+  "evidence/payload/Razer/RazerAppEngine/Razer.app/Contents/CommonDylib/libsimple_service.dylib": {
+    "size_bytes": 2672912,
+    "sha256": "178b95c9b20b5f913aff9adcc46c814e9b51d22a392dfaabf8bfc718f64be907"
+  },
+  "evidence/payload/Razer/RazerAppEngine/Razer.app/Contents/Info.plist": {
+    "size_bytes": 3005,
+    "sha256": "64b55bb3991909168a4276fc2920b28560c6bfac0251539ea9d0b19af3abe578"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Info.plist": {
+    "size_bytes": 1611,
+    "sha256": "ee59a43ffca6169ec30918cbeacc324e36b6c144d57b8327b58670c85298ace5"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.driver.dext/com.razer.appengine.driver": {
+    "size_bytes": 194304,
+    "sha256": "274bbcfc0f7f0e4ccd828b48a571f6b0c4e3ab80ea70e232ddca206bdbdc488c"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.driver.dext/Info.plist": {
+    "size_bytes": 1293,
+    "sha256": "efac1d63de57601177dec5d9959cbfa97bd333991a824b74d2d6f6f501631de0"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.driver.dext/embedded.provisionprofile": {
+    "size_bytes": 13284,
+    "sha256": "a4140a9b41af3dc7246276bb2d077ab5defcf200f90bf2f8b3a9156df3db128d"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.virtual.driver.dext/com.razer.appengine.virtual.driver": {
+    "size_bytes": 193552,
+    "sha256": "4643c4bced0ca251882de2da42d263d8bb1f043f5af832dbefd3857995985153"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.virtual.driver.dext/Info.plist": {
+    "size_bytes": 1407,
+    "sha256": "e3b203be66512e4416ca83415f329a4378b76e0e52021a5933c0fe7a027eb6fc"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.virtual.driver.dext/embedded.provisionprofile": {
+    "size_bytes": 13736,
+    "sha256": "1cd377f274653a1b24dbd40a04d20de9b13d4e646f2244a125a2342b0c01b816"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.driver.dext/_CodeSignature/CodeResources": {
+    "size_bytes": 2042,
+    "sha256": "4db153fb69611d80a9b64995322b8d4b27fe59422ee336268c480e49fec1eb3c"
+  },
+  "evidence/payload/Applications/Razer Synapse.app/Contents/Library/SystemExtensions/com.razer.appengine.virtual.driver.dext/_CodeSignature/CodeResources": {
+    "size_bytes": 2042,
+    "sha256": "e6b1eed7a940fd1a57b1a41665cc947353c58c14b0ee9736fdc85ca3d07e3d6a"
+  },
+  "evidence/electron/mainSubFunction.js": {
+    "size_bytes": 13375,
+    "sha256": "9ec3789c973f8e75a1a2d6f8d371eaad62115959db701b955a9663b5b8ab7ec4"
+  },
+  "evidence/electron/dirHelper.js": {
+    "size_bytes": 211,
+    "sha256": "f0f60162e6fc3d5aa9f6ffa78f82a587a7828ca00e95a7238abd086ea9fde417"
+  },
+  "evidence/electron/buildConstants-pre-prod.js": {
+    "size_bytes": 428,
+    "sha256": "0eb98e19a08f1d4da940531318fb2a03319ac969adc2feb0da4802b4bb6a5adf"
+  },
+  "evidence/electron/common.js": {
+    "size_bytes": 22581,
+    "sha256": "3239fc0af1199b1160163aa28014fa2b0939518a4f8f12273c6cf95970769f1d"
+  },
+  "evidence/electron/serviceFunction.js": {
+    "size_bytes": 1563,
+    "sha256": "18097c4a8da4d2fd3cbd47206155d899ea90d285260fff140555d42634050cee"
+  },
+  "evidence/electron/mainSubFunctionForMac.js": {
+    "size_bytes": 3133,
+    "sha256": "25a551521010b827cc923f023c1a13e23fb84e2cfec546a938839b177d819ab0"
+  },
+  "evidence/electron/engineVersion.js": {
+    "size_bytes": 81,
+    "sha256": "3f1935e41a66d32e8b27b3281da63a9a0a2c9ea1543b9c8b6a9be05174a5dd49"
+  },
+  "evidence/electron/errorMsgConst.js": {
+    "size_bytes": 184,
+    "sha256": "a78caf9499390a1d8721200c5781c626c7948d1ee7c4acb03a1209f01262f9cc"
+  },
+  "evidence/electron/WssAction.js": {
+    "size_bytes": 3948,
+    "sha256": "4648dad4ad20f096b725df454fbcca455845b7150891302f679abdfdd59e6ce0"
+  },
+  "evidence/electron/arrayHelper.js": {
+    "size_bytes": 125,
+    "sha256": "cbacc3959ece2da6291f09f3712cf509af4f11cf4dc05962466241687caf25fc"
+  },
+  "evidence/electron/nativeNotificationHandler.js": {
+    "size_bytes": 5128,
+    "sha256": "f1638e18cc2f87a1842b37f86cf51d0dfbf41b86be01bf79e71ddb181c25561b"
+  },
+  "evidence/electron/RzWindowVersion.js": {
+    "size_bytes": 499,
+    "sha256": "5042db9b4e727b7b33055e5e5fa3a9c3ab5e0a4e7398827cdbd1154e1fda353b"
+  },
+  "evidence/electron/UsbRzDeviceAction.js": {
+    "size_bytes": 27999,
+    "sha256": "9e6468306c1e93b93a02fa380b42da81f3d1e2b9ee29cdd10a2ceeab6e569f2c"
+  },
+  "evidence/electron/main.js": {
+    "size_bytes": 59609,
+    "sha256": "cddb4f0977d2b50c93a26a25877aba7730c722782af49f110907aed169e47785"
+  },
+  "evidence/electron/buildConstants-production.js": {
+    "size_bytes": 431,
+    "sha256": "b5236d6bab22d3ec3e43b78239bc1f0577d170cec76d489ba1e60e533f58c9f1"
+  },
+  "evidence/electron/devtools.js": {
+    "size_bytes": 508,
+    "sha256": "851c295df7894f3f455a430306db14993129b715edc934623a5a40d57a4ae01a"
+  },
+  "evidence/electron/buildConstants.js": {
+    "size_bytes": 420,
+    "sha256": "5728d5ff887be6876d18af9cf259936c74dbd00365da0a47fa14ec05ba958f20"
+  },
+  "evidence/electron/constants.js": {
+    "size_bytes": 28740,
+    "sha256": "cfa220952593a39e7e8703670e23c4f74b764b669b1ea72bfbb76d299b6b8853"
+  },
+  "evidence/electron/keyStorage.js": {
+    "size_bytes": 3946,
+    "sha256": "e025c8191f6f5fda5f833ed20d20c3617e8ae8794a550bb14c3edee5da8550f7"
+  },
+  "evidence/electron/preload.js": {
+    "size_bytes": 26872,
+    "sha256": "1a17c6e3f4ad3a6545e819e642c0e4c02ecc82a0bd0a35fd58e045969ec820df"
+  },
+  "evidence/electron/lib/withExtension.js": {
+    "size_bytes": 592,
+    "sha256": "c8464806ccd2b8c0bb284520fb845a45abc3cb4af1a875b433b500d72921e22b"
+  },
+  "evidence/electron/lib/appSetting.js": {
+    "size_bytes": 1133,
+    "sha256": "1f3fede27ae93a8c43b92aa722fb34bf82ceb4bf5b7aa2b47462c7f122038c54"
+  },
+  "evidence/electron/lib/common.js": {
+    "size_bytes": 15218,
+    "sha256": "1d66e70d41a2312fbd37b02303674c5c4eafaa59d6ea6915368f251b6d8bb32c"
+  },
+  "evidence/electron/lib/useProxy.js": {
+    "size_bytes": 277,
+    "sha256": "f282c5edb1c7ba0d1592c0f029a242a4aa80cc4a1aecc0e144a21603bb3ba028"
+  },
+  "evidence/electron/lib/openDevTool.js": {
+    "size_bytes": 411,
+    "sha256": "856607bd6223be208e5624b2658fdf5e710ad7cc46bd38f43a494852809d2174"
+  },
+  "evidence/electron/lib/useLogger.js": {
+    "size_bytes": 12951,
+    "sha256": "349eedb9c33dc0d6ac5e47a3da5824adcff610cecd339edd8780ff656cf1b461"
+  },
+  "evidence/electron/lib/parseCmdParams.js": {
+    "size_bytes": 551,
+    "sha256": "a88b6bf022c1c03d6286b50c1f006e783594418885cbcf8032da5bb94a240255"
+  },
+  "evidence/electron/lib/globalNodeVar.js": {
+    "size_bytes": 592,
+    "sha256": "7e0dfa55eb4815d9c4dd48f929ab2219f05261343ebc33fd0621212a85ac38ea"
+  },
+  "evidence/electron/lib/useLoggerInjector.js": {
+    "size_bytes": 1645,
+    "sha256": "2a0c1a17e5fb82ec088cdcc71ecfab230e9ff05d589feb4d0de54ec9cadcf248"
+  },
+  "evidence/electron/MacMenu/BaseMenu.js": {
+    "size_bytes": 2391,
+    "sha256": "d52ee0353c03060cc14fbe835343323fff89d4bbfbc5a4157958ba692884a6ee"
+  },
+  "evidence/electron/MacMenu/index.js": {
+    "size_bytes": 7912,
+    "sha256": "5ebc73ab22970fc0b5cd5a59a3b6da3d4ef9dc82f2243d5d35e8d6d5baf31d54"
+  },
+  "evidence/electron/Protocol/protocol25.js": {
+    "size_bytes": 1317,
+    "sha256": "9d6d8211b936720e832fd42949091786f05cdc56754321714160e56868bc30de"
+  },
+  "evidence/electron/Protocol/protocolLogger.js": {
+    "size_bytes": 775,
+    "sha256": "fa1fd79f7b2e135aae16c2659ac6a301fab173aaad735702a50636b6a79e9867"
+  },
+  "evidence/electron/Protocol/protocol25Const.js": {
+    "size_bytes": 340,
+    "sha256": "34e84c5d519c127d6f5d723870c8176da23ba426274d854fcffe73ce13bbebc4"
+  },
+  "evidence/electron/resources/images/titlebar-imgs.js": {
+    "size_bytes": 10676,
+    "sha256": "f71d133aff113a81e1544513e42cea63a8feae22688c044b6301fe7a5bb6ff89"
+  },
+  "evidence/electron/assets/js/vue.esm-browser.js": {
+    "size_bytes": 167921,
+    "sha256": "323739324ce49e3dbd3b9a29f21d4bbceaf099c0c92e9776d078ad7a43396d94"
+  },
+  "evidence/electron/assets/js/react-redux/8.0.5/react-redux.min.js": {
+    "size_bytes": 15141,
+    "sha256": "484b6e2c640f58a86c0de946378c8cb2eabb470210df02f3d36ed21f1ca7340e"
+  },
+  "evidence/electron/assets/js/react/18.2.0/umd/react.production.min.js": {
+    "size_bytes": 10591,
+    "sha256": "efa28c8c724db3a99fd01921bea1badd45a25c5463a32039f733c4d9e026e81e"
+  },
+  "evidence/electron/assets/js/jszip/3.10.1/jszip.min.js": {
+    "size_bytes": 97250,
+    "sha256": "782dd0899ed747bf41774a43cc509ba89fb7ef60ef86bee9373a5d92382d6a41"
+  },
+  "evidence/electron/assets/js/react-dom/18.2.0/umd/react-dom.production.min.js": {
+    "size_bytes": 128967,
+    "sha256": "61de6fd556cade38efeec58c0587853d3d7c689ee1bb84fab3a254b409954501"
+  },
+  "evidence/electron/modules/wifi/index.js": {
+    "size_bytes": 1531,
+    "sha256": "8b570b2cefe9ec0213de6761979eed320d195d272707704e005b5382d31f7075"
+  },
+  "evidence/electron/modules/util/index.js": {
+    "size_bytes": 92,
+    "sha256": "a342490685af92485cd6043d7f6d83059f2c4c5c51d20d848de990da10006217"
+  },
+  "evidence/electron/modules/IoT/IoTNativeAction.js": {
+    "size_bytes": 1943,
+    "sha256": "cd3a2763a8fe874396703a409b4660f8bd2d871391100f7016e079b41ecc9a85"
+  },
+  "evidence/electron/modules/sysutil/index.js": {
+    "size_bytes": 125,
+    "sha256": "a4a4cfa9fa210dd681db25a374be47b5961d71fc81966c943db45e8b26f6280f"
+  },
+  "evidence/electron/modules/window_storage/index.js": {
+    "size_bytes": 2985,
+    "sha256": "6a10c8daeaa5a5bfe87f136d666e37c5915a6d62b10bf2e07d6e7f1a86a1f4a7"
+  },
+  "evidence/electron/modules/memory_storage/index.js": {
+    "size_bytes": 3637,
+    "sha256": "03cb4199b067beeb023b8730dbb32011bfa83ac46b1c35d2004f99f10bd1bf8c"
+  },
+  "evidence/electron/modules/noble/util.js": {
+    "size_bytes": 5274,
+    "sha256": "9281e6b94223fe86c984fcda05524467c4671b6dd93e467ea03f0f41c49aaa9a"
+  },
+  "evidence/electron/modules/noble/index.js": {
+    "size_bytes": 18077,
+    "sha256": "fa3bb71640fb8c713ede4e8d4e2d1e44c4011623ce5ff219b99822582457105c"
+  },
+  "evidence/electron/modules/noble/constants.js": {
+    "size_bytes": 909,
+    "sha256": "ac4d1ef42a98bfa691c10dfd9f79b786d6fb3e840cc01030adf5d9aff5c208bb"
+  },
+  "evidence/electron/modules/lighting/ffiLightingDriver.js": {
+    "size_bytes": 3488,
+    "sha256": "8ffc71bab2ec0b80c3891b65ab323d8f66d70d2e9f108838c4230ba8cca24309"
+  },
+  "evidence/electron/modules/serial/index.js": {
+    "size_bytes": 3319,
+    "sha256": "03e65262d6347f948ada9f6f9e8a1beca58cea956c2416e1f9f3d5026157232a"
+  },
+  "evidence/electron/modules/logger/index.js": {
+    "size_bytes": 771,
+    "sha256": "7f663cb25ea3ac1fe923142979e5ae46954751448e30d28b13b830caebff6514"
+  },
+  "evidence/electron/modules/simple_service/index.js": {
+    "size_bytes": 125,
+    "sha256": "a4a4cfa9fa210dd681db25a374be47b5961d71fc81966c943db45e8b26f6280f"
+  },
+  "evidence/electron/modules/mapping_engine/index.js": {
+    "size_bytes": 125,
+    "sha256": "a4a4cfa9fa210dd681db25a374be47b5961d71fc81966c943db45e8b26f6280f"
+  },
+  "evidence/electron/modules/ffi/ffiMain.js": {
+    "size_bytes": 6086,
+    "sha256": "ab2c3d75896476fa3d4ae175e97fb6e424e100b61e8698637729ecc81dfc27a9"
+  },
+  "evidence/electron/modules/ffi/FFIPreloadMain.js": {
+    "size_bytes": 14275,
+    "sha256": "bd9aaae87e6b734674b7b90e584833f2721f615808c5509570e50d582361e202"
+  },
+  "evidence/electron/modules/LampArray/LampArrayAction.js": {
+    "size_bytes": 1552,
+    "sha256": "fd2008ce9191f3844d34056deb01f87435ddeec664411e7972028d4655981af7"
+  },
+  "evidence/electron/modules/sentry/index.js": {
+    "size_bytes": 364,
+    "sha256": "039e57475fa16e2ffb916471bd98bccea81d10d3c36b9e72f7931e63c2e6c24f"
+  },
+  "evidence/electron/modules/sysutil/mac/index.js": {
+    "size_bytes": 7191,
+    "sha256": "60878c13f831fb8d15868fda1038d89a28adfd6f3460692f619ace6553206349"
+  },
+  "evidence/electron/modules/sysutil/win/index.js": {
+    "size_bytes": 7246,
+    "sha256": "d691ecc2c947e7abebcfe5aac75521f2d3509338aa5a79853ded45e4df9e6507"
+  },
+  "evidence/electron/modules/noble/strategy/protocolAudiowise.js": {
+    "size_bytes": 4224,
+    "sha256": "24560d834be10fbbdcf1b92a827ca74c14c99714501710f10fd474b2328ca504"
+  },
+  "evidence/electron/modules/noble/strategy/protocol40.js": {
+    "size_bytes": 3895,
+    "sha256": "bd24fe3e3c7aa28979524ab8c8aa573e9612f67f72da1e32684b7d4d1e01a266"
+  },
+  "evidence/electron/modules/noble/strategy/protocol30.js": {
+    "size_bytes": 4107,
+    "sha256": "fe72a520cb789faa7c00e65848610c8e153941d537e44f0b561ca058edab3aff"
+  },
+  "evidence/electron/modules/noble/strategy/standard.js": {
+    "size_bytes": 3389,
+    "sha256": "3090d3101b67bc9e4cab5da298bdb6523e7211aae50ba7b7409988d7f6fa9418"
+  },
+  "evidence/electron/modules/noble/strategy/protocol30Layla.js": {
+    "size_bytes": 3902,
+    "sha256": "e9d22a4b1855d931ba829db2c4ac74704c2f178355f518e1fa7a1a68b39dc85c"
+  },
+  "evidence/electron/modules/noble/endpoint-detect/index.js": {
+    "size_bytes": 2105,
+    "sha256": "70b772f99459d675f00459ffdda3465866fbcf7bb4ef9c91de01f5dc8803a34c"
+  },
+  "evidence/electron/modules/noble/endpoint-detect/constants.js": {
+    "size_bytes": 363,
+    "sha256": "63a0b54308f52ed3e9bad32595a34b9cad4a488c2256ae52f358ce11444326ce"
+  },
+  "evidence/electron/modules/noble/cross-platform/mac/common.js": {
+    "size_bytes": 1113,
+    "sha256": "975b8ab3ee02e469bf6e7c031835af4eb43ef2d767bd30a65b1acfe5e4801f6b"
+  },
+  "evidence/electron/modules/noble/cross-platform/win/common.js": {
+    "size_bytes": 1505,
+    "sha256": "44dfa8a060354260d09c543461e02715c325a880b7c29171c281f517b512295f"
+  },
+  "evidence/electron/modules/simple_service/mac/index.js": {
+    "size_bytes": 43842,
+    "sha256": "75920ed723856c78c5da0d965be59ba64857105c5ba9c3830b2adb5df2b0fb13"
+  },
+  "evidence/electron/modules/simple_service/win/index.js": {
+    "size_bytes": 45122,
+    "sha256": "84fd708516db76f7489ff144baa7c226b00f0b3b8884144adb30d0c8535ecd02"
+  },
+  "evidence/electron/modules/mapping_engine/mac/index.js": {
+    "size_bytes": 172387,
+    "sha256": "ffcd5dde1a160aa8e61d2da75c305ffa3378cc319da28ff7ea536215ad1f699d"
+  },
+  "evidence/electron/modules/mapping_engine/win/index.js": {
+    "size_bytes": 162334,
+    "sha256": "50b314bc09232b104e7e98e00253b6d33b52e1c6213426b6f123ccaa44f247a3"
+  },
+  "evidence/electron/components/Titlebar/titlebar.js": {
+    "size_bytes": 13880,
+    "sha256": "5eb1369a4cabad3e9f98b41e9bfd90915a1ff6e700e9e838d281bc790800f717"
+  },
+  "evidence/electron/components/Tab/TabStore.js": {
+    "size_bytes": 4911,
+    "sha256": "699d970ae17b211750b8a069ec2d7e1d2e26faa1fce43be899f1955fae0a5181"
+  },
+  "evidence/electron/components/Tab/TabManager.js": {
+    "size_bytes": 8742,
+    "sha256": "e95782e43c330448efbbcace37b6d7dbaa5804984dd0c344573762c5f74cf2fa"
+  },
+  "evidence/electron/components/Tab/LeftSystray.js": {
+    "size_bytes": 3941,
+    "sha256": "bce4843b8a094b7d37ed8e93e8a359983d5044174dc5538be5e092d287278d28"
+  },
+  "evidence/electron/components/Tab/common.js": {
+    "size_bytes": 26695,
+    "sha256": "18a87f71f3eae04f91ff65a0d759ff79eb040d6197a9deda9d433a0a07a70cf4"
+  },
+  "evidence/electron/components/Tab/Tab.js": {
+    "size_bytes": 14675,
+    "sha256": "f3d897fcd645d00dd1bde642a3f4329ab4b5f7d3c45ca1d2ba735c23bd9eb5c7"
+  },
+  "evidence/electron/components/Tab/TabUI.js": {
+    "size_bytes": 25573,
+    "sha256": "5985e2738f6a740804faeffe4a2816422c84b68804d993c9a825e54f63a50b40"
+  },
+  "evidence/electron/components/DebugWindow/components/WindowService.js": {
+    "size_bytes": 14523,
+    "sha256": "a6b626810db347f1696039c38431352840e05f20d1aff7a4fe1a699438d91bd5"
+  },
+  "evidence/electron/components/DebugWindow/components/MemoryStorage.js": {
+    "size_bytes": 3227,
+    "sha256": "5334d269998ac72184f74a347559010087e8fdd3fe6419eced7011a1fd0696b9"
+  },
+  "evidence/electron/components/DebugWindow/components/App.js": {
+    "size_bytes": 547,
+    "sha256": "150518cab8322cf0f778850fe41667cebad919f1526ec51f6943a1f60771ade7"
+  },
+  "evidence/electron/components/DebugWindow/components/WindowStorage.js": {
+    "size_bytes": 3503,
+    "sha256": "776ad089b6d3bd2405edb5f5fb8e98de1ecf4257281e2beba6e45b7403b8e8af"
+  },
+  "evidence/electron/components/DebugWindow/utils/html.js": {
+    "size_bytes": 2015,
+    "sha256": "337e8cd2b447dbc0a766b83b856786d91c24db32d7d4b6fb6485050ff1813400"
+  },
+  "evidence/electron/components/DebugWindow/utils/jsonEditor/standalone.min.js": {
+    "size_bytes": 1337796,
+    "sha256": "3876a7b2030e6f34539699fc013303fe6ce8842b3712174fc7b2e6267b31bd93"
+  },
+  "evidence/electron/components/Tab/preload/tooltip.js": {
+    "size_bytes": 36,
+    "sha256": "2bbf4189982c86e6e98b3831f66de49337c37eb102ebe26371dbeae1e1fc14af"
+  },
+  "evidence/package-metadata/ChromaInstall.pkg/PackageInfo": {
+    "size_bytes": 1818,
+    "sha256": "517b509e954066bc388a37bb89b7e8954a5c1b9243705bacbf5b561cc735d157"
+  },
+  "evidence/package-metadata/SynapseInstall.pkg/PackageInfo": {
+    "size_bytes": 1624,
+    "sha256": "d76689c35b8bbb009f39c264b89fc86d53e2b5abaea2e85c2f64fd86aa291346"
+  },
+  "evidence/package-metadata/EngineInstall.pkg/PackageInfo": {
+    "size_bytes": 7250,
+    "sha256": "aaba9d8ee330ff77002e2073848aeaf7bcbf4deb4434a7ae1b9ae5fd2044429e"
+  },
+  "evidence/package-metadata/Distribution": {
+    "size_bytes": 9663,
+    "sha256": "8e9ef2eee727199039bad24a21a219191354beffcfddcf28d788e35ea142553b"
+  }
+}
