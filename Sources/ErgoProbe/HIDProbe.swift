@@ -46,10 +46,17 @@ final class HIDEndpoint {
             guard let context, result == kIOReturnSuccess else { return }
             let endpoint = Unmanaged<HIDEndpoint>.fromOpaque(context).takeUnretainedValue()
             let element = IOHIDValueGetElement(value)
-            endpoint.log.record("hid_value", ["endpoint": endpoint.endpointID,
+            var fields: [String: Any] = ["endpoint": endpoint.endpointID,
                 "reportID": IOHIDElementGetReportID(element), "page": IOHIDElementGetUsagePage(element),
-                "usage": IOHIDElementGetUsage(element), "value": IOHIDValueGetIntegerValue(value),
-                "timestamp": IOHIDValueGetTimeStamp(value)])
+                "usage": IOHIDElementGetUsage(element), "timestamp": IOHIDValueGetTimeStamp(value)]
+            let length = IOHIDValueGetLength(value)
+            if length <= MemoryLayout<CFIndex>.size {
+                fields["value"] = IOHIDValueGetIntegerValue(value)
+            } else {
+                let bytes = IOHIDValueGetBytePtr(value)
+                fields["hex"] = Data(bytes: bytes, count: length).map { String(format: "%02x", $0) }.joined()
+            }
+            endpoint.log.record("hid_value", fields)
         }, context)
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
     }
@@ -69,18 +76,20 @@ final class HIDEndpoint {
 final class HIDProbe: ObservableObject {
     @Published var status = "Ready — capture is stopped"
     @Published var running = false
-    private let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
     private var endpoints: [HIDEndpoint] = []
     private let log: CaptureLog
 
     init(log: CaptureLog) {
         self.log = log
-        IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: ErgoTarget.vendorID,
-            kIOHIDProductIDKey: ErgoTarget.productID, kIOHIDTransportKey: ErgoTarget.transport] as CFDictionary)
     }
 
     func devices() -> [IOHIDDevice] {
-        (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> ?? []).filter {
+        // Enumerate a fresh device set so a sleep/reconnect before Start cannot leave
+        // the probe using a stale manager cache. No manager or unrelated device is opened.
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: ErgoTarget.vendorID,
+            kIOHIDProductIDKey: ErgoTarget.productID, kIOHIDTransportKey: ErgoTarget.transport] as CFDictionary)
+        return (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> ?? []).filter {
             ErgoTarget.matches(vendor: number($0, kIOHIDVendorIDKey), product: number($0, kIOHIDProductIDKey),
                                transport: string($0, kIOHIDTransportKey))
         }
@@ -109,13 +118,13 @@ final class HIDProbe: ObservableObject {
         do { try log.begin() } catch { status = error.localizedDescription; return }
         log.record("input_access", ["status": IOHIDCheckAccess(kIOHIDRequestTypeListenEvent).rawValue])
         let matched = devices()
-        guard !matched.isEmpty else { status = "PT Ergo is not connected over Bluetooth"; log.end(); return }
+        guard !matched.isEmpty else { status = "PT Ergo was not found. Wake the keyboard and try Start Test again."; return }
         inventory().forEach { log.record("hid_inventory", $0) }
         endpoints = matched.map { HIDEndpoint(device: $0, log: log) }
         endpoints.forEach { $0.start() }
         running = endpoints.contains { $0.opened }
         status = running ? "Listening to PT Ergo only" : "Input access unavailable — check Input Monitoring in System Settings"
-        if !running { endpoints.removeAll(); log.end() }
+        if !running { endpoints.removeAll() }
     }
 
     func stop() {

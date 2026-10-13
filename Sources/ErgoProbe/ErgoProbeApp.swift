@@ -2,71 +2,221 @@ import SwiftUI
 import AppKit
 import ErgoCore
 
+struct TestResult: Codable {
+    let control: CaptureStep
+    let fileURL: URL
+    let savedAt: Date
+    let rows: [String]
+    let events: [String]
+    let reports: Int
+    let notifications: Int
+}
+
 final class Session: ObservableObject {
     let log = CaptureLog()
     let hid: HIDProbe
     let bluetooth: BluetoothProbe
+    @Published var selection: CaptureStep = .ordinary
+    @Published private(set) var activeStep: CaptureStep?
+    @Published private(set) var results: [CaptureStep: TestResult] = [:]
+    @Published var message: String?
+    @Published var observeBluetooth = false
+
+    private var indexURL: URL { CaptureLog.captureDirectory.appendingPathComponent("tests-index.json") }
 
     init() {
         hid = HIDProbe(log: log)
         bluetooth = BluetoothProbe(log: log)
+        if let data = try? Data(contentsOf: indexURL),
+           let saved = try? JSONDecoder().decode([TestResult].self, from: data) {
+            for result in saved { results[result.control] = result }
+        }
     }
 
-    func stop() { hid.stop(); bluetooth.stop(); log.end() }
+    func startTest() {
+        guard activeStep == nil else { return }
+        message = nil
+        log.step = selection
+        do { try log.begin() } catch { message = error.localizedDescription; return }
+        log.record("test_start", ["control": selection.fileKey])
+        log.mark()
+        hid.start()
+        guard hid.running else {
+            log.record("test_failed", ["reason": hid.status])
+            log.end()
+            message = hid.status
+            return
+        }
+        activeStep = selection
+        if observeBluetooth { bluetooth.start(identifiers: hid.peripheralIDs()) }
+    }
+
+    func finishTest() {
+        guard let control = activeStep else { return }
+        hid.stop(); bluetooth.stop()
+        log.record("test_end", ["control": control.fileKey, "reports": log.reportCount,
+                                "notifications": log.notificationCount])
+        log.end()
+        if let fileURL = log.fileURL {
+            results[control] = TestResult(control: control, fileURL: fileURL, savedAt: Date(),
+                rows: log.rows, events: log.eventRows, reports: log.reportCount, notifications: log.notificationCount)
+            saveIndex()
+        }
+        activeStep = nil
+        message = "Saved \(control.rawValue). Select another control, or start again to retry."
+    }
+
+    func clearTest() {
+        if activeStep != nil {
+            hid.stop(); bluetooth.stop()
+            log.record("test_discarded", ["control": selection.fileKey])
+            log.end()
+            activeStep = nil
+        }
+        results.removeValue(forKey: selection)
+        saveIndex()
+        log.resetView()
+        message = "\(selection.rawValue) cleared. Start Test creates a fresh recording."
+    }
+
+    private func saveIndex() {
+        do {
+            try FileManager.default.createDirectory(at: CaptureLog.captureDirectory, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            let saved = CaptureStep.allCases.compactMap { results[$0] }
+            try JSONEncoder().encode(saved).write(to: indexURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)
+        } catch { message = "Test saved, but the test list could not be updated: \(error.localizedDescription)" }
+    }
+
+    func stop() {
+        if activeStep != nil { finishTest() }
+        else { hid.stop(); bluetooth.stop(); log.end() }
+    }
 }
 
 struct ProbeView: View {
+    @ObservedObject var session: Session
     @ObservedObject var log: CaptureLog
     @ObservedObject var hid: HIDProbe
     @ObservedObject var bluetooth: BluetoothProbe
-    let session: Session
+    @State private var showRaw = false
+    @State private var showConnection = false
+
+    private var live: Bool { session.activeStep == session.selection }
+    private var result: TestResult? { session.results[session.selection] }
+    private var rows: [String] { live ? log.rows : result?.rows ?? [] }
+    private var events: [String] { live ? log.eventRows : result?.events ?? [] }
+    private var count: Int { live ? log.reportCount : result?.reports ?? 0 }
+    private var fileURL: URL? { live ? log.fileURL : result?.fileURL }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("PT Ergo · Input Discovery").font(.largeTitle.bold())
-            Text("Capture the missing controls over Bluetooth before assigning actions.")
-                .foregroundStyle(.secondary)
-            GroupBox {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label(hid.status, systemImage: hid.running ? "keyboard.fill" : "keyboard")
-                    Label(bluetooth.status, systemImage: "antenna.radiowaves.left.and.right")
-                    HStack {
-                        Button("Start Keyboard Capture") { hid.start() }.disabled(hid.running)
-                        Button("Observe Bluetooth") { bluetooth.start(identifiers: hid.peripheralIDs()) }
-                            .disabled(bluetooth.running)
-                        Button("Stop & Save") { session.stop() }
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
-            }
-            Text("1. Start capture.  2. Choose a control.  3. Mark the test, then operate that control three times.")
-            HStack {
-                Picker("Control", selection: $log.step) {
-                    ForEach(CaptureStep.allCases) { step in Text(step.rawValue).tag(step) }
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("PT Ergo").font(.title2.bold()).padding(.horizontal, 16)
+                Text("CONTROL TESTS").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+                ScrollView {
+                    VStack(spacing: 3) {
+                        ForEach(CaptureStep.allCases) { control in
+                            Button {
+                                session.selection = control
+                                session.message = nil
+                            } label: {
+                                HStack {
+                                    Text(control.rawValue).multilineTextAlignment(.leading)
+                                    Spacer(minLength: 4)
+                                    if session.activeStep == control {
+                                        Image(systemName: "record.circle.fill").foregroundStyle(.red)
+                                    } else if let saved = session.results[control] {
+                                        Text("\(saved.reports)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                    }
+                                }.padding(.horizontal, 12).padding(.vertical, 9)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(session.selection == control ? Color.accentColor.opacity(0.15) : .clear,
+                                                in: RoundedRectangle(cornerRadius: 7))
+                            }.buttonStyle(.plain)
+                                .disabled(session.activeStep != nil && session.activeStep != control)
+                        }
+                    }.padding(.horizontal, 8)
                 }
-                Button("Mark Test") { log.mark() }.disabled(!hid.running && !bluetooth.running)
-            }
-            Text("Only PT Ergo (068e:02c3) is opened. Capture keeps normal input working and sends no keyboard configuration commands. Ordinary PT Ergo keys are recorded while capture is active.")
-                .font(.callout).foregroundStyle(.secondary)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 3) {
-                    ForEach(Array(log.rows.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(session.results.count) of \(CaptureStep.allCases.count) controls tested")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+            }.padding(.vertical, 20).frame(width: 280).background(.background.secondary)
+            Divider()
+            VStack(alignment: .leading, spacing: 18) {
+                Text(session.selection.rawValue).font(.largeTitle.bold())
+                Text(live ? "Test running. Operate only this control three times, then finish the test."
+                     : "Start the test, operate this control three times, then finish. Its log stays in this section.")
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    if live {
+                        Button("Finish Test") { session.finishTest() }.buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Start Test") { session.startTest() }.buttonStyle(.borderedProminent)
                     }
-                }.padding(8)
-            }.background(.background.secondary).clipShape(RoundedRectangle(cornerRadius: 8))
-            if let failure = log.failure { Text(failure).foregroundStyle(.red) }
-            HStack {
-                Text(log.fileURL?.lastPathComponent ?? "No capture file yet").font(.caption)
-                Spacer()
-                Button("Show Capture File") {
-                    if let url = log.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                }.disabled(log.fileURL == nil)
-                Button("Input Monitoring Settings") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+                    Button("Clear Test") { session.clearTest() }
+                        .disabled(!live && result == nil && !(log.step == session.selection && log.fileURL != nil))
+                    Spacer()
+                    if live { Label("Recording", systemImage: "record.circle.fill").foregroundStyle(.red) }
+                    else if result != nil { Label("Saved", systemImage: "checkmark.circle").foregroundStyle(.green) }
                 }
-            }
-        }.padding(24).frame(minWidth: 860, minHeight: 640)
+                HStack {
+                    Text("\(count) keyboard reports").font(.headline.monospacedDigit())
+                    Spacer()
+                    if let result, !live { Text(result.savedAt, style: .time).font(.caption).foregroundStyle(.secondary) }
+                }
+                ScrollView {
+                    if events.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: live ? "waveform" : "keyboard").font(.largeTitle).foregroundStyle(.secondary)
+                            Text(live ? "Waiting for input from this control…" : result == nil ? "No test recorded for this control" : "No input reports received in this test")
+                                .foregroundStyle(.secondary)
+                            if !live && result != nil {
+                                Text("An empty test does not prove this control is unsupported.").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.frame(maxWidth: .infinity).padding(.vertical, 60)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(events.enumerated()), id: \.offset) { _, event in
+                                Text(event).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }.padding(16)
+                    }
+                }.frame(minHeight: 160).background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+                DisclosureGroup("Raw report details", isExpanded: $showRaw) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(rows.enumerated()), id: \.offset) { _, line in
+                                Text(line).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }.frame(height: 150)
+                }
+                if let message = session.message { Text(message).font(.callout).foregroundStyle(.secondary) }
+                if let failure = log.failure { Text(failure).foregroundStyle(.red) }
+                DisclosureGroup("Connection options", isExpanded: $showConnection) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Also observe Bluetooth configuration notifications", isOn: $session.observeBluetooth)
+                            .disabled(live)
+                        Text(hid.status).font(.caption).foregroundStyle(.secondary)
+                        if session.observeBluetooth { Text(bluetooth.status).font(.caption).foregroundStyle(.secondary) }
+                        Button("Input Monitoring Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+                        }
+                    }.padding(.top, 8)
+                }
+                HStack {
+                    Button("Show This Test's File") {
+                        if let fileURL { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) }
+                    }.disabled(fileURL == nil)
+                    Spacer()
+                    Button("Show All Recordings") { NSWorkspace.shared.open(CaptureLog.captureDirectory) }
+                }
+                Text("Each control has its own recording. Clear resets this section; earlier files stay on your Mac. Only PT Ergo is captured while a test runs, including any ordinary keys you press.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(26).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }.frame(minWidth: 980, minHeight: 740)
     }
 }
 
@@ -95,7 +245,7 @@ struct ErgoProbeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ProbeView(log: session.log, hid: session.hid, bluetooth: session.bluetooth, session: session)
+            ProbeView(session: session, log: session.log, hid: session.hid, bluetooth: session.bluetooth)
                 .onAppear { delegate.session = session }
         }.windowResizability(.contentMinSize)
     }

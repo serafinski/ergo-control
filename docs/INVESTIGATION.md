@@ -2,7 +2,11 @@
 
 ## Status
 
-Ergo Probe builds and opens on this Mac. Its inventory detects exactly one matching Bluetooth HID device and obtains one paired CoreBluetooth identifier. The first live HID open returned `0xe00002e2` (`kIOReturnNotPermitted`); Input Monitoring access is required before capturing controls. **No successful raw-input capture or Bluetooth notification capture has happened yet.** No Razer commands have been sent by this project.
+Ergo Probe builds and opens on this Mac. Its inventory detects exactly one matching Bluetooth HID device and obtains one paired CoreBluetooth identifier. After the user enabled Input Monitoring, HID open succeeded. A labeled positive control recorded exactly three A presses (`01 00 04 00 00 00 00 00 00 00 00 00`) and three releases (`01 00 00 00 00 00 00 00 00 00 00 00`), physical report ID 1. **No labeled extra-control capture or successful Bluetooth notification capture has happened yet.** No Razer commands have been sent by this project.
+
+The keyboard briefly disappeared from the local device inventory, then returned with a new registry entry while the user was typing. The original unscheduled HID manager retained an empty device set; restarting the probe restored detection and the successful open. Device enumeration now creates a fresh strictly matched manager on each Start Test, avoiding that stale cache. Do not infer disconnection solely from the old probe's message.
+
+The user's initial attempt mixed controls without separate markers, so it cannot establish extra-control semantics. Version 0.2 separates each control into its own saved test, with Start/Finish/Clear, an automatically labeled file per attempt, and a persistent per-control result index. Cleared active attempts are marked `test_discarded`; old files remain local.
 
 The full standalone mapping app remains the goal. Input discovery comes first; shortcuts, macros, scripts, app launching, AI-button assignments, saved profiles, app-specific switching, and a background agent remain to implement after the input path is validated.
 
@@ -120,6 +124,8 @@ The vendor also returns to normal mode on window unload. Before a controlled ini
 
 ## Verification and next milestone
 
-Completed: release build, native app launch and visual inspection, one strict device-matching test (including exclusion of Logitech and USB identities), inventory on the real keyboard, and an attempted non-seizing HID open. Permission denial is explicitly logged rather than treated as an empty successful recording.
+Completed: release build, native app launch and visual inspection, strict device-matching tests (including exclusion of Logitech and USB identities), inventory on the real keyboard, successful non-seizing HID open after permission grant, and a three-press A positive control. Permission denial is explicitly logged rather than treated as an empty successful recording.
 
-Next: enable Input Monitoring, verify A produces positive-control reports, then collect labeled baseline controls with Synapse's app stopped. If extra controls are absent, implement and validate the recovered Protocol 30 query/reassembly path, followed by reversible device-mode initialization. Preserve the MX Master configuration and never install a generic all-device interception layer.
+The offline Protocol 30 codec now has nine tests covering the historical mode-request fixture, header/payload write boundaries, read-query fields, transaction rollover, unrelated responses, 8/20-byte headers, payload fragments, failure status, and malformed/oversized responses. It performs no I/O and is not connected to the runtime Bluetooth observer. No device-mode write has been enabled.
+
+Next: use the per-control test flow to collect labeled baseline controls with Synapse's app stopped. If extra controls are absent, connect the tested Protocol 30 query/reassembly codec to a single-command Bluetooth transport, followed by reversible device-mode initialization. Preserve the MX Master configuration and never install a generic all-device interception layer.

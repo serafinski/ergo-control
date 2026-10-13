@@ -11,6 +11,7 @@ def summarize(path):
     current = None
     errors = []
     events = Counter()
+    discarded = False
     for index, line in enumerate(path.read_text().splitlines(), 1):
         try:
             item = json.loads(line)
@@ -19,6 +20,8 @@ def summarize(path):
             continue
         kind = item.get("kind", "unknown")
         events[kind] += 1
+        if kind == "test_discarded":
+            discarded = True
         if kind == "marker":
             current = {"label": item["label"], "line": index, "reports": Counter(), "values": Counter(), "notifications": Counter()}
             windows.append(current)
@@ -26,10 +29,12 @@ def summarize(path):
             if kind == "hid_report":
                 current["reports"][(item["reportID"], item["hex"])] += 1
             elif kind == "hid_value":
-                current["values"][(item["reportID"], item["page"], item["usage"], item["value"])] += 1
+                current["values"][(item["reportID"], item["page"], item["usage"], item.get("value", item.get("hex")))] += 1
             elif kind == "ble_notification":
                 current["notifications"][(item["uuid"], item["hex"])] += 1
     print(f"Capture: {path}\nEvent counts: {dict(events)}")
+    if discarded:
+        print("This attempt was cleared by the user. Retained for reference; exclude it from control identification.")
     if not events["hid_report"] and not events["ble_notification"]:
         print("No raw inputs captured. Check permissions, open/subscribe results, and connection before drawing conclusions.")
     if not windows:

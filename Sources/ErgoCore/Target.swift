@@ -12,7 +12,7 @@ public enum ErgoTarget {
     }
 }
 
-public enum CaptureStep: String, CaseIterable, Identifiable {
+public enum CaptureStep: String, CaseIterable, Identifiable, Codable {
     case baseline = "Baseline — hands off keyboard"
     case ordinary = "Ordinary key — press A once"
     case leftClockwise = "Left dial — clockwise"
@@ -33,4 +33,27 @@ public enum CaptureStep: String, CaseIterable, Identifiable {
     case mediaTriple = "Media — triple press"
     case battery = "Battery button"
     public var id: String { rawValue }
+    public var fileKey: String {
+        switch self {
+        case .baseline: return "baseline"
+        case .ordinary: return "ordinary-key"
+        case .leftClockwise: return "left-dial-clockwise"
+        case .leftCounterclockwise: return "left-dial-counterclockwise"
+        case .leftClick: return "left-dial-click"
+        case .leftShiftClick: return "left-dial-shift-click"
+        case .rightClockwise: return "right-roller-clockwise"
+        case .rightCounterclockwise: return "right-roller-counterclockwise"
+        case .rightClick: return "right-roller-click"
+        case .m1: return "m1"
+        case .m2: return "m2"
+        case .m3: return "m3"
+        case .m4: return "m4"
+        case .m5: return "m5"
+        case .ai: return "ai-button"
+        case .media: return "media-single"
+        case .mediaDouble: return "media-double"
+        case .mediaTriple: return "media-triple"
+        case .battery: return "battery-button"
+        }
+    }
 }

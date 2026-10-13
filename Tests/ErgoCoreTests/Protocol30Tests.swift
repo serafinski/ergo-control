@@ -1,0 +1,87 @@
+import Foundation
+import XCTest
+@testable import ErgoCore
+
+final class Protocol30Tests: XCTestCase {
+    private func header(transaction: UInt8 = 4, length: Int = 0, status: UInt8 = 2, size: Int = 20) -> Data {
+        Data([transaction, UInt8(length & 255), UInt8((length >> 8) & 255), UInt8((length >> 16) & 255),
+              0, 0, 0, status] + Array(repeating: 0, count: size - 8))
+    }
+
+    func testModeRequestMatchesHistoricalSuccessfulCommand() throws {
+        let request = try Protocol30Request.deviceMode(transaction: 4, mode: 3, parameter: 0)
+        XCTAssertEqual(request.header + request.payload, Data([4, 2, 0, 0, 1, 2, 0, 0, 3, 0]))
+        XCTAssertEqual(request.writeChunks, [Data([4, 2, 0, 0, 1, 2, 0, 0]), Data([3, 0])])
+    }
+
+    func testReadQueriesUseRecoveredClassIDsAndBatteryArgument() throws {
+        XCTAssertEqual(try Protocol30Request.readDeviceMode(transaction: 1).writeChunks,
+                       [Data([1, 0, 0, 0, 1, 0x82, 0, 0])])
+        XCTAssertEqual(try Protocol30Request.readBatteryList(transaction: 2).header,
+                       Data([2, 0, 0, 0, 5, 0x80, 0, 1]))
+        XCTAssertEqual(try Protocol30Request.readBatteryLevel(transaction: 3, batteryID: 7).header,
+                       Data([3, 0, 0, 0, 5, 0x81, 0, 7]))
+    }
+
+    func testChunkBoundariesAndLengthEncoding() throws {
+        for count in [0, 1, 19, 20, 21, 40, 41, 256, 65536] {
+            let data = Data((0..<count).map { UInt8($0 & 255) })
+            let request = try Protocol30Request(transaction: 1, commandClass: 0, commandID: 0, payload: data)
+            XCTAssertEqual(request.writeChunks.first?.count, 8)
+            XCTAssertTrue(request.writeChunks.dropFirst().allSatisfy { $0.count <= 20 })
+            XCTAssertEqual(request.writeChunks.dropFirst().reduce(Data(), +), data)
+            XCTAssertEqual(Int(request.header[1]) | (Int(request.header[2]) << 8) | (Int(request.header[3]) << 16), count)
+        }
+    }
+
+    func testTransactionsWrapAndRejectReservedZero() throws {
+        var sequence = TransactionSequence()
+        XCTAssertEqual((0..<64).map { _ in sequence.next() },
+                       Array(1...31).map(UInt8.init) + Array(1...31).map(UInt8.init) + [1, 2])
+        for id: UInt8 in [0, 32, 255] {
+            XCTAssertThrowsError(try Protocol30Request.readDeviceMode(transaction: id))
+            XCTAssertThrowsError(try Protocol30ResponseAssembler(transaction: id))
+        }
+    }
+
+    func testUnrelatedResponseDoesNotConsumeOurTransaction() throws {
+        var assembler = try Protocol30ResponseAssembler(transaction: 4)
+        XCTAssertNil(try assembler.append(header(transaction: 3)))
+        XCTAssertTrue(try XCTUnwrap(assembler.append(header())).succeeded)
+    }
+
+    func testHistoricalZeroLengthModeAcknowledgement() throws {
+        var assembler = try Protocol30ResponseAssembler(transaction: 4)
+        let response = try XCTUnwrap(assembler.append(header()))
+        XCTAssertEqual(response.status, 2)
+        XCTAssertTrue(response.payload.isEmpty)
+        XCTAssertThrowsError(try assembler.append(header()))
+    }
+
+    func testPayloadFragmentsAreNotMistakenForHeaders() throws {
+        var assembler = try Protocol30ResponseAssembler(transaction: 4)
+        XCTAssertNil(try assembler.append(header(length: 45)))
+        let first = Data([4, 0, 0, 0, 0, 0, 0, 2] + Array(repeating: 9, count: 12))
+        XCTAssertNil(try assembler.append(first))
+        XCTAssertNil(try assembler.append(Data(repeating: 8, count: 20)))
+        let response = try XCTUnwrap(assembler.append(Data(repeating: 7, count: 20)))
+        XCTAssertEqual(response.payload, first + Data(repeating: 8, count: 20) + Data(repeating: 7, count: 5))
+    }
+
+    func testEightByteHeaderVariantAndFailureStatus() throws {
+        var assembler = try Protocol30ResponseAssembler(transaction: 4)
+        XCTAssertNil(try assembler.append(header(length: 2, size: 8)))
+        XCTAssertEqual(try assembler.append(Data([3, 0]))?.payload, Data([3, 0]))
+        var failed = try Protocol30ResponseAssembler(transaction: 4)
+        let response = try XCTUnwrap(failed.append(header(status: 7)))
+        XCTAssertFalse(response.succeeded)
+        XCTAssertEqual(response.status, 7)
+    }
+
+    func testMalformedAndUnboundedHeadersFail() throws {
+        var assembler = try Protocol30ResponseAssembler(transaction: 4)
+        XCTAssertThrowsError(try assembler.append(Data([4, 2])))
+        var bounded = try Protocol30ResponseAssembler(transaction: 4)
+        XCTAssertThrowsError(try bounded.append(header(length: 4097)))
+    }
+}
