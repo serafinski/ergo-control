@@ -8,6 +8,10 @@ The keyboard briefly disappeared from the local device inventory, then returned 
 
 The user's initial attempt mixed controls without separate markers, so it cannot establish extra-control semantics. Version 0.2 separates each control into its own saved test, with Start/Finish/Clear, an automatically labeled file per attempt, and a persistent per-control result index. Cleared active attempts are marked `test_discarded`; old files remain local.
 
+The 0.2 update changed the ad-hoc executable signature. macOS showed the old Input Monitoring entry as enabled, but the current process reported access state 1 and `IOHIDDeviceOpen` returned `kIOReturnNotPermitted`. Toggling the entry and relaunching did not restore it; re-adding the current app did. Subsequent HID opens returned 0. No driver or Logitech permission was changed.
+
+Live UI verification of the new flow completed: Start opened the actual PT Ergo and automatically labeled the baseline; Finish wrote a zero-input baseline result; selecting M1 showed its own empty section; starting and clearing an M1 attempt wrote `test_discarded`, reset M1, and preserved the baseline result. The saved baseline reappeared after quitting and reopening the app. The discarded M1 attempt is UI verification only, not a physical M1 key test.
+
 The full standalone mapping app remains the goal. Input discovery comes first; shortcuts, macros, scripts, app launching, AI-button assignments, saved profiles, app-specific switching, and a background agent remain to implement after the input path is validated.
 
 ## Verified local state

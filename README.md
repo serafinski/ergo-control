@@ -16,6 +16,8 @@ Build with `zsh tools/build_probe.sh`. Open `build/Ergo Probe.app`.
 
 Optional: expand **Connection options** and enable Bluetooth observation before starting a test. This connects only to the paired peripheral identifier obtained from the matched keyboard and subscribes to its known Protocol 30 characteristic. Subscription changes the connection's notification setting; it sends no Razer configuration commands.
 
+This development build uses an ad-hoc code signature. Rebuilding changes its signature, and macOS may keep an enabled Input Monitoring entry for the previous executable while denying the new one. If toggling the entry and relaunching does not restore access, remove only **Ergo Probe** from that list, then use **+** to add the current `build/Ergo Probe.app` and reopen it. Re-adding the current app restored access during local testing. Other input-tool permissions should remain unchanged.
+
 Capture includes ordinary keys from PT Ergo while active, so finish before entering private text. No other input device is opened, no input is seized or suppressed, and no driver, startup service, or mapping is installed. Start Test refreshes the matched device list after sleep or reconnection. If the keyboard disconnects during a recording, finish it, wake/reconnect the keyboard, then retry; automatic recovery during an active recording is not implemented yet.
 
 Useful commands:
