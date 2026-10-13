@@ -114,7 +114,7 @@ struct ControlSettingsView: View {
                     Label(model.running ? "Active" : "Off", systemImage: model.running ? "checkmark.circle.fill" : "pause.circle")
                         .foregroundStyle(model.running ? .green : .secondary)
                     Text(model.activeProfileName).font(.headline)
-                    Text("Dial: \(model.dialName)").font(.caption)
+                    Text(model.inputAccessMode == .macroButtons ? "Macro buttons only" : "Dial: \(model.dialName)").font(.caption)
                 }
                 Button(model.running || model.preparing ? "Stop mappings" : "Enable mappings") {
                     if model.running || model.preparing { model.stop() } else { model.start() }
@@ -137,6 +137,10 @@ struct ControlSettingsView: View {
                     GroupBox {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(model.status).font(.callout)
+                            if model.inputAccessMode == .macroButtons {
+                                Text("Custom dial modes, media-button replacement, ordinary-key remaps and gaming mode need full keyboard control. macOS denied that access. The left dial uses horizontal scrolling while driver mode is active.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
                             HStack {
                                 permission("Input Monitoring", granted: model.inputGranted, url: "Privacy_ListenEvent")
@@ -189,6 +193,7 @@ struct ControlSettingsView: View {
                                     .background(model.selectedControl == control.0 ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.07),
                                                 in: RoundedRectangle(cornerRadius: 10))
                             }.buttonStyle(.plain)
+                                .disabled(model.inputAccessMode == .macroButtons && !InputAccessMode.macroButtons.supports(control: control.0))
                         }
                     }
                     HStack {
@@ -231,14 +236,14 @@ struct ControlSettingsView: View {
                         }
                     }
                         }
-                    }
+                    }.disabled(model.inputAccessMode == .macroButtons)
                     DisclosureGroup("Gaming mode", isExpanded: $showGamingMode) {
                         VStack(alignment: .leading, spacing: 10) {
                             Toggle("Block selected shortcuts in this profile", isOn: profile.gamingMode)
                             HStack { Toggle("Command + Q", isOn: profile.blockQuit); Toggle("Command + Tab", isOn: profile.blockAppSwitch); Toggle("Command + Space", isOn: profile.blockSpotlight) }
                                 .disabled(!model.configuration.profiles[index].gamingMode)
                         }.padding(8)
-                    }
+                    }.disabled(model.inputAccessMode == .macroButtons)
                     Text("Only PT Ergo is handled while mappings are enabled. Profiles are stored on this Mac. No account or cloud service is required.")
                         .font(.caption).foregroundStyle(.secondary)
                 }.padding(28)
@@ -250,6 +255,7 @@ struct ControlSettingsView: View {
                 Text(model.alternateEditing ? "Alternate layer" : "Standard layer").foregroundStyle(.secondary)
                 Divider()
                 ActionEditor(action: mapping)
+                    .disabled(model.inputAccessMode == .macroButtons && !InputAccessMode.macroButtons.supports(control: model.selectedControl))
                 if model.alternateEditing {
                     Text("Assign Hold alternate layer to a button in the standard layer first.").font(.caption).foregroundStyle(.secondary)
                 }

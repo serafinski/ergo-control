@@ -18,6 +18,7 @@ final class ControlModel: ObservableObject {
     @Published var lastControl = "No control pressed yet"
     @Published var error: String?
     @Published var dirty = false
+    @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController()
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
@@ -83,7 +84,10 @@ final class ControlModel: ObservableObject {
         bluetooth.$driverModeVerified.removeDuplicates().sink { [weak self] verified in
             guard let self else { return }
             if verified && self.preparing && self.relayOpened {
-                self.running = true; self.preparing = false; self.status = "Mappings active · PT Ergo only"
+                self.running = true; self.preparing = false
+                self.status = self.inputAccessMode == .macroButtons
+                    ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
+                    : "Mappings active · PT Ergo only"
             } else if !verified && self.running { self.stop("Keyboard mode changed. Mappings stopped safely.") }
         }.store(in: &subscriptions)
         updateProfile()
@@ -152,6 +156,7 @@ final class ControlModel: ObservableObject {
         dialName = modes.isEmpty ? "No enabled dial modes" : modes[index % modes.count].name
     }
     private func cycleDial() {
+        guard inputAccessMode != .macroButtons else { status = "Custom dial modes need full keyboard control, which macOS denied."; return }
         let id = activeProfile.id
         let count = activeProfile.dialModes.filter(\.enabled).count
         guard count > 0 else { return }
@@ -193,7 +198,7 @@ final class ControlModel: ObservableObject {
         guard bluetooth.ready, !bluetooth.busy else { return }
         if bluetooth.canTryDriverMode, !activationStarted {
             if !batteryRequested { batteryRequested = true; bluetooth.readBattery(); return }
-            do { try relay.start(); relayOpened = true }
+            do { try relay.start(); relayOpened = true; inputAccessMode = relay.accessMode }
             catch { stop(error.localizedDescription); return }
             activationStarted = true; bluetooth.tryDriverMode()
         }
@@ -227,6 +232,7 @@ final class ControlModel: ObservableObject {
         } else if pressed { engine.perform(action) }
     }
     private func receive(_ id: UInt32, _ data: Data) {
+        guard relay.accessMode.accepts(reportID: id) else { return }
         let bytes = Array(data)
         guard id <= 255, bytes.first == UInt8(id) else { stop("Unexpected keyboard packet; normal input has been returned."); return }
         if id == 1 {

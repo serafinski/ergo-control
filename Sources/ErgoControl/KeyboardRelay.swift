@@ -8,6 +8,7 @@ final class KeyboardRelay {
     private var device: IOHIDDevice?
     private var buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
     private var opened = false
+    private(set) var accessMode = InputAccessMode.fullKeyboard
     init() { buffer.initialize(repeating: 0, count: 64) }
     func start() throws {
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
@@ -20,14 +21,28 @@ final class KeyboardRelay {
             return ErgoTarget.matches(vendor: vid, product: pid, transport: transport)
         }
         guard matched.count == 1, let device = matched.first else { throw MappingValidationError.message("Connect exactly one PT Ergo over Bluetooth") }
-        let result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
-        guard result == kIOReturnSuccess else { throw MappingValidationError.message("PT Ergo could not be opened exclusively (\(result)). Close the diagnostic apps and check Input Monitoring.") }
+        var result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
+        accessMode = .fullKeyboard
+        recordOpen(result, mode: .fullKeyboard)
+        if result == kIOReturnNotPrivileged {
+            // Extra keys need observation only. Do not relay native key/dial input.
+            result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
+            accessMode = .macroButtons
+            recordOpen(result, mode: .macroButtons)
+        }
+        guard result == kIOReturnSuccess else {
+            if result == kIOReturnNotPermitted {
+                throw MappingValidationError.message("Input access was denied. Refresh Ergo Control’s Input Monitoring entry for this build, then reopen it.")
+            }
+            throw MappingValidationError.message("PT Ergo could not be opened (\(result)). Close the diagnostic apps and retry.")
+        }
         self.device = device; opened = true
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceRegisterInputReportCallback(device, buffer, 64, { context, result, _, _, id, bytes, count in
             guard let context else { return }
             let relay = Unmanaged<KeyboardRelay>.fromOpaque(context).takeUnretainedValue()
             guard result == kIOReturnSuccess else { relay.onDisconnect?(); return }
+            guard relay.accessMode.accepts(reportID: id) else { return }
             relay.onReport?(id, Data(bytes: bytes, count: count))
         }, context)
         IOHIDDeviceRegisterRemovalCallback(device, { context, _, _ in
@@ -35,6 +50,17 @@ final class KeyboardRelay {
             Unmanaged<KeyboardRelay>.fromOpaque(context).takeUnretainedValue().onDisconnect?()
         }, context)
         IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+    }
+    private func recordOpen(_ result: IOReturn, mode: InputAccessMode) {
+        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ErgoControl/Settings")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let url = folder.appendingPathComponent("input-status.json")
+        let fields: [String: Any] = ["result": Int(result), "mode": mode.rawValue, "time": ISO8601DateFormatter().string(from: Date())]
+        if let data = try? JSONSerialization.data(withJSONObject: fields, options: .sortedKeys) {
+            try? data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
     }
     func stop() {
         guard opened, let device else { return }
