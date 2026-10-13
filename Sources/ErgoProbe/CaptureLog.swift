@@ -11,7 +11,7 @@ final class CaptureLog: ObservableObject {
     @Published var fileURL: URL?
     @Published var failure: String?
     private var file: FileHandle?
-    private var extraKeys = ExtraKeyDecoder()
+    private var decoder = InputReportDecoder()
     private let formatter = ISO8601DateFormatter()
 
     static var captureDirectory: URL {
@@ -26,7 +26,7 @@ final class CaptureLog: ObservableObject {
     func resetView() {
         guard file == nil else { return }
         rows = []; eventRows = []; reportCount = 0; notificationCount = 0
-        extraKeys = ExtraKeyDecoder()
+        decoder = InputReportDecoder()
         fileURL = nil; failure = nil
     }
 
@@ -64,14 +64,8 @@ final class CaptureLog: ObservableObject {
                 reportCount += 1
                 let id = (fields["reportID"] as? UInt32) ?? 0
                 let hex = fields["hex"] as? String ?? ""
-                let offsets = stride(from: 0, to: hex.count, by: 2)
-                let bytes = offsets.compactMap { offset -> UInt8? in
-                    let start = hex.index(hex.startIndex, offsetBy: offset)
-                    let end = hex.index(start, offsetBy: min(2, hex.count - offset))
-                    return UInt8(hex[start..<end], radix: 16)
-                }
-                if let events = extraKeys.decode(reportID: id, bytes: Data(bytes)) {
-                    eventRows.append(contentsOf: events.map { "\($0.name) · \($0.pressed ? "pressed" : "released")" })
+                if let events = decoder.describe(reportID: id, hexadecimal: hex) {
+                    eventRows.append(contentsOf: events)
                 } else {
                     let name: String
                     switch id {

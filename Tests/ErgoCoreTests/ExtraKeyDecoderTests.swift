@@ -7,7 +7,8 @@ final class ExtraKeyDecoderTests: XCTestCase {
     }
 
     func testCapturedMacroAndAIReports() {
-        for (key, name) in [(UInt8(32), "M1"), (33, "M2"), (34, "M3"), (35, "M4"), (36, "M5"), (247, "AI button")] {
+        for (key, name) in [(UInt8(32), "M1"), (33, "M2"), (34, "M3"), (35, "M4"), (36, "M5"),
+                            (247, "AI button"), (96, "Left dial click"), (65, "Battery button")] {
             var decoder = ExtraKeyDecoder()
             let press = decoder.decode(reportID: 5, bytes: report([key]))!
             XCTAssertEqual(press, [ExtraKeyEvent(key: key, pressed: true)])

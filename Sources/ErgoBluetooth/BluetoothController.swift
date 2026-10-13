@@ -39,6 +39,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
     @Published var secondsRemaining = 0
     @Published var rows: [String] = []
     @Published var logURL: URL?
+    @Published var batteryText = "Battery status has not been read"
 
     private var central: CBCentralManager?
     private var target: CBPeripheral?
@@ -315,6 +316,53 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
     }
 
     var canTryDriverMode: Bool { ready && !busy && !restoreOwed && currentMode?.0 == 0 }
+
+    func readBattery() {
+        guard ready, !busy, !restoreOwed else { return }
+        batteryText = "Reading battery status…"
+        guard let request = try? Protocol30Request.readBatteryList(transaction: transactions.next()) else { return }
+        send(request) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let response):
+                let ids = Array(response.payload)
+                guard !ids.isEmpty, ids.count <= 16, Set(ids).count == ids.count else {
+                    self.batteryText = "The keyboard returned an unexpected battery list"
+                    return
+                }
+                self.log("battery_list", ["ids": ids])
+                self.readBatteryLevels(ids, readings: [])
+            case .failure(let error): self.batteryText = "Battery read failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func readBatteryLevels(_ ids: [UInt8], readings: [String]) {
+        guard let id = ids.first else {
+            batteryText = readings.joined(separator: " · ")
+            return
+        }
+        guard ready, !restoreOwed,
+              let request = try? Protocol30Request.readBatteryLevel(transaction: transactions.next(), batteryID: id) else {
+            batteryText = "Battery read interrupted; try again"
+            return
+        }
+        send(request) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let response):
+                guard let raw = response.payload.first else {
+                    self.batteryText = "The keyboard returned an empty battery level"
+                    return
+                }
+                let percent = Int(raw) * 100 / 255
+                self.log("battery_level", ["batteryID": id, "raw": raw, "percent": percent])
+                let label = ids.count == 1 && readings.isEmpty ? "Battery" : "Battery \(id)"
+                self.readBatteryLevels(Array(ids.dropFirst()), readings: readings + ["\(label): \(percent)%"])
+            case .failure(let error): self.batteryText = "Battery read failed: \(error.localizedDescription)"
+            }
+        }
+    }
 
     func tryDriverMode() {
         guard canTryDriverMode, let targetID, exactTargetID() == targetID, let currentMode else { return }

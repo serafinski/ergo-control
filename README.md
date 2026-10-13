@@ -2,7 +2,7 @@
 
 Bluetooth-first investigation and standalone macOS replacement for Synapse on the Razer Pro Type Ergo (RZ03-0544).
 
-The current deliverable is **Ergo Probe**, a native diagnostic application. It identifies only the Bluetooth keyboard with vendor/product `068e:02c3`, records raw HID reports and decoded HID values, and can separately observe its Razer Bluetooth configuration characteristic. The complete mapping application is not implemented yet; missing controls must first be verified on this keyboard.
+The current deliverables are **Ergo Probe**, a native diagnostic application, and **Ergo Bluetooth**, a scoped configuration-mode and battery helper. It identifies only the Bluetooth keyboard with vendor/product `068e:02c3`, records raw HID reports and decoded HID values, and can separately observe its Razer Bluetooth configuration characteristic. The complete mapping application is not implemented yet; missing controls must first be verified on this keyboard.
 
 Build with `zsh tools/build_probe.sh`. Open `build/Ergo Probe.app`.
 
@@ -38,10 +38,14 @@ See [the investigation](docs/INVESTIGATION.md) for observed facts, source locati
 
 `zsh tools/build_bluetooth.sh` builds a separate `build/Ergo Bluetooth.app`. It leaves the working Ergo Probe app and its Input Monitoring signature unchanged. This helper needs macOS Bluetooth access, but never opens HID input devices.
 
-**Connect & Read Mode** identifies the paired peripheral from the exact PT Ergo HID identity, discovers the vendor service, enables response notifications, and issues the recovered Get Device Mode query. Requests use acknowledged writes, an eight-byte header, separate payload fragments, one active transaction, a bounded response assembler, and a five-second command timeout. Hardware testing successfully read normal mode (0/0), enabled driver mode (3/0), and exposed distinct M1–M5 and AI press/release inputs. They share physical report ID 5 but contain different key identifiers (32–36 and 247).
+**Connect & Read Mode** identifies the paired peripheral from the exact PT Ergo HID identity, discovers the vendor service, enables response notifications, and issues the recovered Get Device Mode query. Requests use acknowledged writes, an eight-byte header, separate payload fragments, one active transaction, a bounded response assembler, and a five-second command timeout. Hardware testing successfully read normal mode (0/0), enabled driver mode (3/0), and exposed distinct M1–M5, AI, left-dial-click, and battery-button press/release inputs. They share physical report ID 5 but contain different key identifiers (32–36, 247, 96, and 65).
 
 The temporary-mode button remains disabled until a successful two-byte response identifies normal mode. Its implementation saves the original mode locally before sending a change, verifies driver mode with a read query, restores after 60 seconds, and verifies restoration with another read query. A pending-restoration file survives process exit; the app defers normal termination while restoration is owed and retries after connection loss. Manual early restoration and its read-back verification succeeded after the live tests. Timer expiry and failure recovery are implemented but not yet hardware-validated. Do not treat a disconnected keyboard or an unacknowledged write as successful restoration.
 
 The helper logs command headers, payloads, responses, and restoration state locally under `~/Library/Application Support/ErgoControl/Bluetooth/`. No firmware or key-mapping writes are implemented.
 
-For self-directed driver-mode tests, start a 60-second window in Ergo Bluetooth, then use the existing per-control Start/Finish/Clear flow in Ergo Probe. Finish each recording before restoration; retry a cleared attempt if the countdown expires mid-test. The source now decodes macro/AI reports into named press/release events; the running probe remains on its previous build until hardware capture is finished.
+For self-directed driver-mode tests, start a 60-second window in Ergo Bluetooth, then use the existing per-control Start/Finish/Clear flow in Ergo Probe. Finish each recording before restoration; retry a cleared attempt if the countdown expires mid-test. Probe 0.3 decodes extra keys, media actions, left-dial turns, and brightness notifications into readable names and re-labels compatible saved recordings on launch.
+
+The Bluetooth helper also has **Read Battery**, which queries the keyboard without changing its mode. Hardware validation returned battery ID 1, raw level 168, displayed as 65%. This is independent of capturing the battery button. Optional Shift + left click is documented by Razer but remains untested.
+
+Verified driver-mode left-dial rotation produces independent horizontal-pan inputs (+1 clockwise, −1 counterclockwise), separate from its normal brightness behavior. Left dial click and battery button are also exposed in driver mode. Configurable actions and profiles are the next implementation stage; these probes do not yet remap controls.

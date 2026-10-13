@@ -8,13 +8,15 @@ public struct ExtraKeyEvent: Equatable {
         switch key {
         case 32...36: return "M\(key - 31)"
         case 247: return "AI button"
+        case 96: return "Left dial click"
+        case 65: return "Battery button"
         default: return "Extra key \(key)"
         }
     }
 }
 
 /// PT Ergo physical report 5 contains logical record 4, followed by a key set.
-/// Confirmed against separate Bluetooth driver-mode captures for M1–M5 and AI.
+/// Confirmed against separate driver-mode captures for M1–M5, AI, left click, and battery.
 /// A valid all-zero key set releases held keys; unrelated/malformed reports do not.
 public struct ExtraKeyDecoder {
     private var held: Set<UInt8> = []

@@ -10,6 +10,27 @@ struct TestResult: Codable {
     let events: [String]
     let reports: Int
     let notifications: Int
+
+    func refreshingDecodedEvents() -> TestResult {
+        // Re-label saved recordings after decoder updates without changing the raw evidence.
+        guard fileURL.deletingLastPathComponent().standardizedFileURL == CaptureLog.captureDirectory.standardizedFileURL,
+              let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, size < 2_000_000,
+              let text = try? String(contentsOf: fileURL, encoding: .utf8) else { return self }
+        var decoder = InputReportDecoder()
+        var decoded: [String] = []
+        var count = 0
+        for line in text.split(separator: "\n") {
+            guard let value = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return self }
+            guard value["kind"] as? String == "hid_report" else { continue }
+            count += 1
+            guard let id = value["reportID"] as? NSNumber, let hex = value["hex"] as? String,
+                  let events = decoder.describe(reportID: id.uint32Value, hexadecimal: hex) else { return self }
+            decoded.append(contentsOf: events)
+        }
+        guard count == reports, count > 0, notifications == 0 else { return self }
+        return TestResult(control: control, fileURL: fileURL, savedAt: savedAt, rows: rows,
+                          events: Array(decoded.suffix(250)), reports: reports, notifications: notifications)
+    }
 }
 
 final class Session: ObservableObject {
@@ -29,7 +50,7 @@ final class Session: ObservableObject {
         bluetooth = BluetoothProbe(log: log)
         if let data = try? Data(contentsOf: indexURL),
            let saved = try? JSONDecoder().decode([TestResult].self, from: data) {
-            for result in saved { results[result.control] = result }
+            for result in saved { results[result.control] = result.refreshingDecodedEvents() }
         }
     }
 
@@ -123,7 +144,8 @@ struct ProbeView: View {
                                 session.message = nil
                             } label: {
                                 HStack {
-                                    Text(control.rawValue).multilineTextAlignment(.leading)
+                                    Text(control.rawValue + (control == .leftShiftClick ? " (optional)" : ""))
+                                        .multilineTextAlignment(.leading)
                                     Spacer(minLength: 4)
                                     if session.activeStep == control {
                                         Image(systemName: "record.circle.fill").foregroundStyle(.red)

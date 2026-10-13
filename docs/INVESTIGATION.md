@@ -2,7 +2,7 @@
 
 ## Status
 
-Ergo Probe builds and opens on this Mac. Its inventory detects exactly one matching Bluetooth HID device and obtains one paired CoreBluetooth identifier. After the user enabled Input Monitoring, HID open succeeded. A labeled positive control recorded exactly three A presses (`01 00 04 00 00 00 00 00 00 00 00 00`) and three releases (`01 00 00 00 00 00 00 00 00 00 00 00`), physical report ID 1. Subsequent per-control tests recovered left-dial rotation but no reports for left click, M1, or AI in the current configuration. The separate Bluetooth helper subsequently read mode 0/parameter 0, temporarily set and verified mode 3/parameter 0, and exposed M1–M5 and AI as distinct physical report-5 inputs. Each completed test window was followed by a read-verified restoration to mode 0/parameter 0. See the driver-mode evidence below.
+Ergo Probe builds and opens on this Mac. Its inventory detects exactly one matching Bluetooth HID device and obtains one paired CoreBluetooth identifier. After the user enabled Input Monitoring, HID open succeeded. A labeled positive control recorded exactly three A presses (`01 00 04 00 00 00 00 00 00 00 00 00`) and three releases (`01 00 00 00 00 00 00 00 00 00 00 00`), physical report ID 1. Subsequent per-control tests recovered left-dial rotation but no reports for left click, M1, or AI in the current configuration. The separate Bluetooth helper subsequently read mode 0/parameter 0, temporarily set and verified mode 3/parameter 0, and exposed M1–M5, AI, left dial click, and the battery button as distinct physical report-5 inputs. Each completed test window was followed by a read-verified restoration to mode 0/parameter 0. See the driver-mode evidence below.
 
 The keyboard briefly disappeared from the local device inventory, then returned with a new registry entry while the user was typing. The original unscheduled HID manager retained an empty device set; restarting the probe restored detection and the successful open. Device enumeration now creates a fresh strictly matched manager on each Start Test, avoiding that stale cache. Do not infer disconnection solely from the old probe's message.
 
@@ -32,7 +32,7 @@ No report IDs 5 or 6 were observed in these initial tests. They preceded the fir
 
 A separate native `Ergo Bluetooth.app` now builds from `Sources/ErgoBluetooth/`, preserving Ergo Probe's working executable and Input Monitoring permission. It verifies the exact paired HID identity without opening input devices, then uses only the matching CoreBluetooth identifier and the proven Protocol 30 service. Runtime transport uses acknowledged sequential writes, one outstanding command, the tested bounded response assembler, and a five-second timeout.
 
-The helper reads the current mode, saves and synchronizes a recovery record before any write, verifies temporary mode 3, schedules restoration after 60 seconds, and reads back the original mode before clearing recovery state. Normal-mode queries, temporary driver-mode writes, periodic verification, and manual early restoration have now succeeded on hardware. Timer expiry, forced process exit, and disconnect recovery remain untested failure paths.
+The helper reads the current mode, saves and synchronizes a recovery record before any write, verifies temporary mode 3, schedules restoration after 60 seconds, and reads back the original mode before clearing recovery state. Normal-mode queries, battery list/level queries, temporary driver-mode writes, periodic verification, and manual early restoration have now succeeded on hardware. Timer expiry, forced process exit, and disconnect recovery remain untested failure paths.
 
 Bluetooth permission was granted and refreshed for helper 0.1.1. Service discovery confirmed the known write characteristic (property 8) and read/notify characteristic (properties 18) on the exact paired keyboard. Query responses arrive as a 20-byte header followed by a padded 20-byte payload; only the announced two payload bytes belong to the mode result. One initial query returned status 3 (vendor name “Command Failure”), then success for the same transaction about 30 ms later. The assembler now waits through vendor retry statuses 1/3 until success or timeout. Exchange completion also waits for every header/payload write acknowledgement, preventing the following command from consuming a previous write acknowledgement.
 
@@ -48,12 +48,18 @@ The user operated each control in a separate recording. Every listed input used 
 | M4 | `050423000000000000000000` | 3 |
 | M5 | `050424000000000000000000` | 3 |
 | AI | `0504f7000000000000000000` | 3 |
+| Left dial click | `050460000000000000000000` | 3 |
+| Battery button | `050441000000000000000000` | 3 |
 
-All six used release snapshot `050400000000000000000000`. M1 was requested three times, but the recording contains four complete cycles; do not silently normalize that discrepancy. These captures confirm the static key identifiers 32–36 and 247 on this keyboard. They required no Razer physical driver or Synapse runtime. No mapping writes were performed.
+All eight used release snapshot `050400000000000000000000`. M1 was requested three times, but the recording contains four complete cycles; do not silently normalize that discrepancy. These captures confirm static key identifiers 32–36, 247, 96, and 65 on this keyboard; key 65 (`DKM_D41`) is now physically identified as the battery button. They required no Razer physical driver or Synapse runtime. No mapping writes were performed.
 
 Local source recordings: `m1-9F7C5694-3875-469B-9F60-863F218B7C96.jsonl`, `m2-9FA7A4B3-2C4E-4399-9788-CC1EFF8C2CCE.jsonl`, `m3-919714BA-581B-456B-8452-10595CB5FB3A.jsonl`, `m4-8E6D3C0A-6C60-4BBF-8E35-509BD62EEB21.jsonl`, `m5-45A96C98-4544-47FE-B97E-4771155A4400.jsonl`, and `ai-button-A3EFBE35-6D09-43CC-BBAD-F9FFD72EB933.jsonl`, under the local capture directory. Mode requests and read-back verification are in `bluetooth-5E11E47A-F3E7-43D6-92BB-A6219B6F6C22.jsonl` under the Bluetooth log directory. These private logs remain outside Git.
 
-`ExtraKeyDecoder` now produces per-key press/release differences from report-5 snapshots, deduplicates held keys, and ignores unrelated or malformed reports without releasing held keys. The source UI integration displays button names. The currently running signed probe is deliberately kept unchanged during hardware tests; this UI change requires rebuilding/relaunching and refreshing its existing Input Monitoring entry afterward.
+The click/battery retests were recorded inside the verified 20:12:05–20:12:42 UTC driver-mode window. Their files are `left-dial-click-F9EB0B46-EF88-4B68-AA67-68A18B069139.jsonl` and `battery-button-707C998F-095D-4036-B004-6C3AD9702F6F.jsonl`. Restoration to mode 0/parameter 0 was verified and the recovery file removed.
+
+A separate battery list query returned `[1]`; battery ID 1 returned raw level 168, converted using the vendor formula to 65%. No button press is required to query battery status. These queries are in `bluetooth-24FD90E6-E536-43C1-A516-265977CC4C81.jsonl`.
+
+`ExtraKeyDecoder` now produces per-key press/release differences from report-5 snapshots, deduplicates held keys, and ignores unrelated or malformed reports without releasing held keys. The source UI integration displays button names, consumer actions, and brightness notifications, and re-decodes compatible saved recordings on launch. Shift + left click is explicitly optional and remains untested. Probe 0.3 adds named descriptions and re-decodes saved recordings. Rebuilding changes the ad-hoc signature, so the existing Input Monitoring grant needs refreshing for the current executable.
 
 The full standalone mapping app remains the goal. Input discovery comes first; shortcuts, macros, scripts, app launching, AI-button assignments, saved profiles, app-specific switching, and a background agent remain to implement after the input path is validated.
 
@@ -116,7 +122,7 @@ Disassembly and selected functions are preserved under `analysis/local/`. Native
 
 The connected `PT Ergo` has vendor 1678 (`0x068e`), product 707 (`0x02c3`), transport `Bluetooth Low Energy`, primary usage page 1 / usage 6. The maximum input report size is 12 bytes, output 2 bytes, feature 3 bytes.
 
-Its descriptor contains input report IDs 1–6. Report 1 carries keyboard modifiers and an array of key usages; report 2 describes pointer/scroll input; report 3 describes consumer usages; report 4 describes system controls. Reports 5 and 6 each declare an 11-byte input array under Generic Desktop page 1 / application usage 0. They are **not declared under a vendor-defined usage page**. Physical report 5/logical record 4 is now confirmed for macro/AI key snapshots; physical report 6 remains to be identified.
+Its descriptor contains input report IDs 1–6. Report 1 carries keyboard modifiers and an array of key usages; report 2 describes pointer/scroll input; report 3 describes consumer usages; report 4 describes system controls. Reports 5 and 6 each declare an 11-byte input array under Generic Desktop page 1 / application usage 0. They are **not declared under a vendor-defined usage page**. Physical report 5/logical record 4 is now confirmed for macro/AI key snapshots; physical report 6/logical record 5/event 8 is now associated with keyboard brightness changes during left-dial rotation.
 
 The product middleware separately defines `{4: "razerKeyReportID", 5: "hardwareEventReportID"}`. Its Protocol 30 hardware parser removes a leading byte before reading a logical type, with 4 meaning Razer keys and 5 meaning notifications. The new captures establish `[physical ID 5, logical record 4, key set…]` for M1–M5 and AI. This does not establish the layout of other logical records or physical report 6.
 
@@ -126,22 +132,34 @@ Earlier normal-input behavior is preserved from the handoff. Macro/AI identifier
 
 | Control | Earlier observed input | Ergo-specific static identifier | Activation / remaining question |
 | --- | --- | --- | --- |
-| Left dial CW/CCW, zoom mode | Command + keypad plus/minus | Default dial mapping uses `ScrollRight` / `ScrollLeft` | Capture raw scroll/key reports and note current dial mode |
-| Left dial click | None in earlier remappers | `DKM_KB_LEFTKNOB`, key 96 (`0x60`) | Source routes command-dial output to next mode; Shift modifiers select previous; raw event unconfirmed |
-| Right roller CW/CCW | Consumer volume up/down | Default `ScrollUp` / `ScrollDown` mappings | Capture actual report and determine independence from left dial |
-| Right roller click | Consumer mute | `DKM_KBMK_04`, key 82 (`0x52`), named `DIAL_CLICK` | Confirm physical association in labeled test |
+| Left dial CW/CCW, zoom mode | Command + keypad plus/minus | Default dial mapping uses `ScrollRight` / `ScrollLeft` | Verified driver mode: report 2 signed horizontal pan +1/−1; earlier captures also show zoom keys and brightness notifications |
+| Left dial click | None in earlier remappers | `DKM_KB_LEFTKNOB`, key 96 (`0x60`) | Confirmed report 5/logical 4/key 96 in driver mode |
+| Right roller CW/CCW | Consumer volume up/down | Default `ScrollUp` / `ScrollDown` mappings | Labeled captures confirm report 3 consumer volume up/down, separate from left report 2 |
+| Right roller click | Consumer mute | `DKM_KBMK_04`, key 82 (`0x52`), named `DIAL_CLICK` | Labeled capture confirms right click as report 3 consumer mute; raw key 82 is still static only |
 | M1 | No earlier event | `DKM_M_01`, key 32 (`0x20`) | Confirmed report 5/logical 4/key 32 in driver mode |
 | M2 | No earlier event | `DKM_M_02`, key 33 (`0x21`) | Confirmed report 5/logical 4/key 33 in driver mode |
 | M3 | No earlier event | `DKM_M_03`, key 34 (`0x22`) | Confirmed report 5/logical 4/key 34 in driver mode |
 | M4 | No earlier event | `DKM_M_04`, key 35 (`0x23`) | Confirmed report 5/logical 4/key 35 in driver mode |
 | M5 | No earlier event | `DKM_M_05`, key 36 (`0x24`) | Confirmed report 5/logical 4/key 36 in driver mode |
 | AI button | No earlier event | `DKM_SB_247`, key 247 (`0xf7`), named `AI_Launcher` | Confirmed report 5/logical 4/key 247 in driver mode; action assignment remains to implement |
-| Media single/double/triple | Play/pause, next, previous | `DKM_KBMK_02` key 85, `DKM_KBMK_03` key 83, `DKM_KBMK_01` key 84 | Confirm the multi-press timing and actual raw reports |
-| Battery button | No earlier event | No physical button mapping established | May only display device status internally |
-| Battery percentage | Not captured earlier | Protocol 30 `getBatteryList`, `getBatteryLevel`, `getChargingStatus` | Request/response code recovered; no local query sent yet |
-| Additional keys | Unverified | `DKM_D41` key 65 and `DKM_SB_251–253` | Physical identity and meaning need labeled testing |
+| Media single/double/triple | Play/pause, next, previous | `DKM_KBMK_02` key 85, `DKM_KBMK_03` key 83, `DKM_KBMK_01` key 84 | Three labeled trials each confirm consumer play/pause, next, and previous |
+| Battery button | No earlier event | `DKM_D41`, key 65 (`0x41`) | Confirmed report 5/logical 4/key 65 in driver mode |
+| Battery percentage | Not captured earlier | Protocol 30 `getBatteryList`, `getBatteryLevel`, `getChargingStatus` | Live query returned 65% (raw 168), battery ID 1 |
+| Additional keys | Unverified | `DKM_SB_251–253` | Physical identity and meaning need labeled testing |
 
-Confidence is high for the downloaded source identifiers and historical successful Protocol 30 connection; runtime exposure is confirmed for M1–M5 and AI; remaining controls need labeled driver-mode captures. No control is declared permanently unsupported from a failed or empty generic capture.
+Confidence is high for the downloaded source identifiers and historical successful Protocol 30 connection; runtime exposure is confirmed for the requested primary controls; optional Shift + click remains untested. No control is declared permanently unsupported from a failed or empty generic capture.
+
+## Self-directed dial/media tests
+
+The user separately recorded all other controls except optional Shift + left click. The Bluetooth log contains no new mode-change window during the 20:04–20:06 UTC captures, and the user was unsure whether they enabled the helper; mark their mode as unverified rather than claiming driver-mode coverage.
+
+- Left clockwise: report 6, logical record 5, event 8, values 12 → 25 → 38.
+- Left counterclockwise: the same structure, values 25 → 12 → 0. The vendor event enum defines 8 as brightness change, with an absolute level in the next byte. This establishes keyboard-brightness changes, not unrestricted relative turn events at the limits.
+- Right clockwise/counterclockwise/click: physical consumer report 3, usages `00e9` / `00ea` / `00e2`, each with three makes and zero-usage releases.
+- Media single/double/triple: report 3, usages `00cd` / `00b5` / `00b6`, each with three makes and releases.
+- Left click and battery initially had no reports in this batch; the later verified driver-mode retests above resolved both.
+
+The official manual, page 9, documents plain left click as next mode and Shift + click as previous mode. Page 11 describes the battery button's local status display and long-press power-saving function. These are documentation claims; optional Shift + click and battery long-press were not tested. Source: https://dl.razerzone.com/master-guides/RazerSynapse4/PROTYPEERGO-00000708-en.pdf
 
 ## Recovered configuration commands
 
@@ -175,4 +193,12 @@ Completed: release build, native app launch and visual inspection, strict device
 
 The core suite now covers strict target matching, Protocol 30 encoding/reassembly/acknowledgement ordering, the actual failure-then-success response sequence, and key snapshot decoding using the captured macro/AI identifiers. No Logitech device is opened or changed.
 
-Next: complete labeled driver-mode captures for both dials, clicks, media, and battery. Then implement configurable actions, saved app-specific profiles, and scoped background operation with safe mode restoration. Preserve the MX Master configuration.
+A final verified driver-mode window at 20:15:06–20:15:37 UTC exposed independent left-dial rotation on physical report 2, with nine-byte packets. Clockwise produced `020000010000000000` three times; counterclockwise produced `020000ff0000000000` three times. Byte 3 is signed horizontal pan, +1/−1, consistent with the descriptor's AC Pan field. The files are `left-dial-clockwise-438FA987-4580-440A-9F39-841DA6E8565C.jsonl` and `left-dial-counterclockwise-ACB8F47B-82B0-40BE-8935-203F33813643.jsonl`. Normal mode 0/parameter 0 was restored and verified afterward.
+
+Input discovery now confirms independent left/right rotation and clicks, M1–M5, AI, media multi-press outputs, battery button, and battery-level query over Bluetooth. Optional Shift + click remains untested. The right roller and media consumer captures are real inputs, but their self-directed mode was not established; do not claim those specific captures were in driver mode.
+
+Next: implement configurable actions, saved app-specific profiles, and scoped background operation with safe mode restoration. Preserve the MX Master configuration.
+
+## Updated diagnostic apps
+
+Ergo Bluetooth 0.1.2 successfully discovers battery ID 1 and displays its live level. Ergo Probe 0.3 was rebuilt after all hardware recordings finished; saved left-click, battery-button, and clockwise recordings were visually verified with decoded names. Re-adding over the stale Input Monitoring entry did not restore the new executable. Quitting the probe, removing only its old entry, adding the current build, and reopening restored access; a brief stopped baseline verified access status 0 and HID open result 0. Existing Logitech permissions were preserved. The suite passes 19 tests. Both capture and temporary mode are stopped.

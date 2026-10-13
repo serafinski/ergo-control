@@ -28,6 +28,12 @@ struct ErgoBluetoothApp: App {
                     Button("Try Driver Mode for 60 Seconds") { controller.tryDriverMode() }
                         .disabled(!controller.canTryDriverMode)
                 }
+                HStack {
+                    Text(controller.batteryText)
+                    Spacer()
+                    Button("Read Battery") { controller.readBattery() }
+                        .disabled(!controller.ready || controller.busy || controller.restoreOwed)
+                }
                 if controller.restoreOwed {
                     HStack {
                         Text(controller.secondsRemaining > 0 ? "Restoring in \(controller.secondsRemaining) seconds" : "Restoration pending")
