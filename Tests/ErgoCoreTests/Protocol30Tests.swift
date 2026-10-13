@@ -84,4 +84,41 @@ final class Protocol30Tests: XCTestCase {
         var bounded = try Protocol30ResponseAssembler(transaction: 4)
         XCTAssertThrowsError(try bounded.append(header(length: 4097)))
     }
+
+    func testActualKeyboardFailureThenSuccessSequence() throws {
+        var assembler = try Protocol30ResponseAssembler(transaction: 1)
+        // First live mode query: failure, successful header, padded payload.
+        XCTAssertNil(try assembler.append(header(transaction: 1, status: 3)))
+        XCTAssertNil(try assembler.append(header(transaction: 1, length: 2)))
+        let response = try XCTUnwrap(assembler.append(Data(repeating: 0, count: 20)))
+        XCTAssertEqual(response.payload, Data([0, 0]))
+    }
+
+    func testHeaderAndPayloadWritesMustBeAcknowledgedBeforeCompletion() throws {
+        let request = try Protocol30Request.deviceMode(transaction: 4, mode: 3, parameter: 0)
+        var exchange = try Protocol30Exchange(request: request)
+        XCTAssertEqual(exchange.nextWrite(), request.header)
+        XCTAssertNil(exchange.nextWrite())
+        try exchange.receive(header())
+        XCTAssertNil(exchange.completedResponse)
+        try exchange.acknowledgeWrite()
+        XCTAssertNil(exchange.completedResponse)
+        XCTAssertEqual(exchange.nextWrite(), Data([3, 0]))
+        XCTAssertNil(exchange.nextWrite())
+        XCTAssertNil(exchange.completedResponse)
+        try exchange.acknowledgeWrite()
+        XCTAssertTrue(try XCTUnwrap(exchange.completedResponse).succeeded)
+        XCTAssertThrowsError(try exchange.acknowledgeWrite())
+    }
+
+    func testReadResponseMayArriveBeforeWriteAcknowledgement() throws {
+        let request = try Protocol30Request.readDeviceMode(transaction: 4)
+        var exchange = try Protocol30Exchange(request: request)
+        XCTAssertNotNil(exchange.nextWrite())
+        try exchange.receive(header(length: 2))
+        try exchange.receive(Data([0, 0]))
+        XCTAssertNil(exchange.completedResponse)
+        try exchange.acknowledgeWrite()
+        XCTAssertEqual(exchange.completedResponse?.payload, Data([0, 0]))
+    }
 }

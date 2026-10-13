@@ -8,6 +8,7 @@ public enum Protocol30Error: Error, Equatable {
     case malformedHeader
     case responseTooLarge
     case alreadyCompleted
+    case unexpectedAcknowledgement
 }
 
 public struct TransactionSequence {
@@ -54,7 +55,7 @@ public struct Protocol30Request: Equatable {
         try Self(transaction: transaction, commandClass: 5, commandID: 0x81, argument7: batteryID)
     }
 
-    // Kept as an offline builder until baseline capture and restoration are implemented.
+    // Runtime callers must preserve and verify restoration of the original mode.
     public static func deviceMode(transaction: UInt8, mode: UInt8, parameter: UInt8) throws -> Self {
         try Self(transaction: transaction, commandClass: 1, commandID: 2, payload: Data([mode, parameter]))
     }
@@ -100,6 +101,10 @@ public struct Protocol30ResponseAssembler {
         // Vendor's unpacker accepts either the normal 20-byte header or an 8-byte variant.
         guard bytes.count == 20 || bytes.count == 8 else { throw Protocol30Error.malformedHeader }
         let status = bytes[7]
+        // Vendor retries statuses 1 and 3. This keyboard can send status 3 and
+        // then a successful header/payload for the same transaction ~30 ms later.
+        // Keep the transaction alive until success, another status, or caller timeout.
+        if status == 1 || status == 3 { return nil }
         if status != 2 {
             completed = true
             return Protocol30Response(transaction: transaction, status: status, header: notification, payload: Data())
@@ -112,5 +117,41 @@ public struct Protocol30ResponseAssembler {
             return Protocol30Response(transaction: transaction, status: status, header: notification, payload: Data())
         }
         return nil
+    }
+}
+
+/// Serial acknowledged writes plus response assembly. A response cannot complete
+/// the exchange until every header/payload write has been acknowledged.
+public struct Protocol30Exchange {
+    private let chunks: [Data]
+    private var nextIndex = 0
+    private var awaitingAcknowledgement = false
+    private var assembler: Protocol30ResponseAssembler
+    private var response: Protocol30Response?
+
+    public init(request: Protocol30Request) throws {
+        chunks = request.writeChunks
+        assembler = try Protocol30ResponseAssembler(transaction: request.transaction)
+    }
+
+    public mutating func nextWrite() -> Data? {
+        guard !awaitingAcknowledgement, nextIndex < chunks.count else { return nil }
+        let chunk = chunks[nextIndex]
+        nextIndex += 1
+        awaitingAcknowledgement = true
+        return chunk
+    }
+
+    public mutating func acknowledgeWrite() throws {
+        guard awaitingAcknowledgement else { throw Protocol30Error.unexpectedAcknowledgement }
+        awaitingAcknowledgement = false
+    }
+
+    public mutating func receive(_ data: Data) throws {
+        if let value = try assembler.append(data) { response = value }
+    }
+
+    public var completedResponse: Protocol30Response? {
+        nextIndex == chunks.count && !awaitingAcknowledgement ? response : nil
     }
 }

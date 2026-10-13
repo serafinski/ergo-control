@@ -11,6 +11,7 @@ final class CaptureLog: ObservableObject {
     @Published var fileURL: URL?
     @Published var failure: String?
     private var file: FileHandle?
+    private var extraKeys = ExtraKeyDecoder()
     private let formatter = ISO8601DateFormatter()
 
     static var captureDirectory: URL {
@@ -25,6 +26,7 @@ final class CaptureLog: ObservableObject {
     func resetView() {
         guard file == nil else { return }
         rows = []; eventRows = []; reportCount = 0; notificationCount = 0
+        extraKeys = ExtraKeyDecoder()
         fileURL = nil; failure = nil
     }
 
@@ -61,15 +63,26 @@ final class CaptureLog: ObservableObject {
             if kind == "hid_report" {
                 reportCount += 1
                 let id = (fields["reportID"] as? UInt32) ?? 0
-                let name: String
-                switch id {
-                case 1: name = "Keyboard input"
-                case 2: name = "Dial or pointer input"
-                case 3: name = "Media input"
-                case 4: name = "System input"
-                default: name = "Extra input · report \(id)"
+                let hex = fields["hex"] as? String ?? ""
+                let offsets = stride(from: 0, to: hex.count, by: 2)
+                let bytes = offsets.compactMap { offset -> UInt8? in
+                    let start = hex.index(hex.startIndex, offsetBy: offset)
+                    let end = hex.index(start, offsetBy: min(2, hex.count - offset))
+                    return UInt8(hex[start..<end], radix: 16)
                 }
-                eventRows.append("\(reportCount). \(name)")
+                if let events = extraKeys.decode(reportID: id, bytes: Data(bytes)) {
+                    eventRows.append(contentsOf: events.map { "\($0.name) · \($0.pressed ? "pressed" : "released")" })
+                } else {
+                    let name: String
+                    switch id {
+                    case 1: name = "Keyboard input"
+                    case 2: name = "Dial or pointer input"
+                    case 3: name = "Media input"
+                    case 4: name = "System input"
+                    default: name = "Extra input · report \(id)"
+                    }
+                    eventRows.append("\(reportCount). \(name)")
+                }
             } else if kind == "ble_notification" {
                 notificationCount += 1
                 eventRows.append("Bluetooth notification \(notificationCount)")

@@ -12,13 +12,13 @@ struct SavedMode: Codable {
 
 private final class PendingCommand {
     let request: Protocol30Request
-    var assembler: Protocol30ResponseAssembler
+    var exchange: Protocol30Exchange
     var nextWrite = 0
     let completion: (Result<Protocol30Response, Error>) -> Void
 
     init(_ request: Protocol30Request, completion: @escaping (Result<Protocol30Response, Error>) -> Void) throws {
         self.request = request
-        self.assembler = try Protocol30ResponseAssembler(transaction: request.transaction)
+        self.exchange = try Protocol30Exchange(request: request)
         self.completion = completion
     }
 }
@@ -137,6 +137,7 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
               device.identifier == targetID else { status = "Could not retrieve the paired PT Ergo endpoint"; scheduleRestoreRetry(); return }
         target = device
         device.delegate = self
+        guard device.state != .disconnecting else { scheduleRestoreRetry(); return }
         if device.state == .connected { device.discoverServices([serviceUUID]) }
         else { central.connect(device, options: nil) }
         connectionTimeout = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] _ in
@@ -240,18 +241,19 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
 
     private func writeNextChunk() {
         guard let pending, let target, let writeCharacteristic else { return }
-        let chunks = pending.request.writeChunks
-        guard pending.nextWrite < chunks.count else { return }
-        let chunk = chunks[pending.nextWrite]
+        guard let chunk = pending.exchange.nextWrite() else { return }
         pending.nextWrite += 1
         log("write", ["chunk": pending.nextWrite, "hex": chunk.hex])
         target.writeValue(chunk, for: writeCharacteristic, type: .withResponse)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard peripheral == target, characteristic.uuid == writeUUID, pending != nil else { return }
+        guard peripheral == target, characteristic.uuid == writeUUID, let pending else { return }
         if let error { complete(.failure(error)); return }
+        do { try pending.exchange.acknowledgeWrite() }
+        catch { complete(.failure(error)); return }
         writeNextChunk()
+        finishIfReady()
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -261,10 +263,14 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         log("response_fragment", ["hex": data.hex])
         guard let pending else { return }
         do {
-            if let response = try pending.assembler.append(data) {
-                complete(response.succeeded ? .success(response) : .failure(BluetoothFailure.message("Keyboard response status \(response.status)")))
-            }
+            try pending.exchange.receive(data)
+            finishIfReady()
         } catch { complete(.failure(error)) }
+    }
+
+    private func finishIfReady() {
+        guard let response = pending?.exchange.completedResponse else { return }
+        complete(response.succeeded ? .success(response) : .failure(BluetoothFailure.message("Keyboard response status \(response.status)")))
     }
 
     private func complete(_ result: Result<Protocol30Response, Error>) {
@@ -272,7 +278,14 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
         pending = nil
         busy = false
         commandTimeout?.invalidate(); commandTimeout = nil
-        if case .failure(let error) = result { log("command_failed", ["error": error.localizedDescription]) }
+        if case .failure(let error) = result {
+            log("command_failed", ["error": error.localizedDescription])
+            // Do not let a late reply or write acknowledgement from a failed
+            // exchange overlap restoration on the same connection.
+            ready = false
+            writeCharacteristic = nil
+            if let target, target.state == .connected { central?.cancelPeripheralConnection(target) }
+        }
         command.completion(result)
         if restoreRequested, pending == nil { restoreRequested = false; restore() }
     }
@@ -323,6 +336,9 @@ final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDel
             guard let self else { return }
             self.secondsRemaining = max(0, self.secondsRemaining - 1)
             if self.secondsRemaining == 0 { self.restoreTimer?.invalidate(); self.restore() }
+            else if self.secondsRemaining % 10 == 0 && self.ready && !self.busy {
+                self.verifyDriverMode()
+            }
         }
         guard let request = try? Protocol30Request.deviceMode(transaction: transactions.next(), mode: 3, parameter: 0) else { restore(); return }
         status = "Enabling temporary driver mode…"
