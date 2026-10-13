@@ -33,3 +33,13 @@ python3 tools/analyze_capture.py '/absolute/path/to/capture.jsonl'
 The Python tools verify evidence, collect scoped local facts, download public vendor source files for static inspection, and summarize marked captures. Downloaded JavaScript and libraries are never executed. Large vendor artifacts, private capture files, and local analysis remain outside Git.
 
 See [the investigation](docs/INVESTIGATION.md) for observed facts, source locations, control identifiers, and remaining work. The original [handoff](razer-ergo-codex-handoff/HANDOFF.md) retains the project goal and earlier tests.
+
+## Bluetooth configuration investigation
+
+`zsh tools/build_bluetooth.sh` builds a separate `build/Ergo Bluetooth.app`. It leaves the working Ergo Probe app and its Input Monitoring signature unchanged. This helper needs macOS Bluetooth access, but never opens HID input devices.
+
+**Connect & Read Mode** identifies the paired peripheral from the exact PT Ergo HID identity, discovers the vendor service, enables response notifications, and issues the recovered Get Device Mode query. Requests use acknowledged writes, an eight-byte header, separate payload fragments, one active transaction, a bounded response assembler, and a five-second command timeout. No Bluetooth mode query has been validated on hardware yet.
+
+The temporary-mode button remains disabled until a successful two-byte response identifies normal mode. Its implementation saves the original mode locally before sending a change, verifies driver mode with a read query, restores after 60 seconds, and verifies restoration with another read query. A pending-restoration file survives process exit; the app defers normal termination while restoration is owed and retries after connection loss. This restoration path is implemented but **not hardware-validated**. Do not treat a disconnected keyboard or an unacknowledged write as successful restoration.
+
+The helper logs command headers, payloads, responses, and restoration state locally under `~/Library/Application Support/ErgoControl/Bluetooth/`. No firmware or key-mapping writes are implemented.

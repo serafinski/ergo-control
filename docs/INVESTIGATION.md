@@ -2,7 +2,7 @@
 
 ## Status
 
-Ergo Probe builds and opens on this Mac. Its inventory detects exactly one matching Bluetooth HID device and obtains one paired CoreBluetooth identifier. After the user enabled Input Monitoring, HID open succeeded. A labeled positive control recorded exactly three A presses (`01 00 04 00 00 00 00 00 00 00 00 00`) and three releases (`01 00 00 00 00 00 00 00 00 00 00 00`), physical report ID 1. **No labeled extra-control capture or successful Bluetooth notification capture has happened yet.** No Razer commands have been sent by this project.
+Ergo Probe builds and opens on this Mac. Its inventory detects exactly one matching Bluetooth HID device and obtains one paired CoreBluetooth identifier. After the user enabled Input Monitoring, HID open succeeded. A labeled positive control recorded exactly three A presses (`01 00 04 00 00 00 00 00 00 00 00 00`) and three releases (`01 00 00 00 00 00 00 00 00 00 00 00`), physical report ID 1. Subsequent per-control tests recovered left-dial rotation but no reports for left click, M1, or AI in the current configuration. **No successful Bluetooth notification capture or mode query has happened yet.** No Razer commands have been sent by this project.
 
 The keyboard briefly disappeared from the local device inventory, then returned with a new registry entry while the user was typing. The original unscheduled HID manager retained an empty device set; restarting the probe restored detection and the successful open. Device enumeration now creates a fresh strictly matched manager on each Start Test, avoiding that stale cache. Do not infer disconnection solely from the old probe's message.
 
@@ -11,6 +11,30 @@ The user's initial attempt mixed controls without separate markers, so it cannot
 The 0.2 update changed the ad-hoc executable signature. macOS showed the old Input Monitoring entry as enabled, but the current process reported access state 1 and `IOHIDDeviceOpen` returned `kIOReturnNotPermitted`. Toggling the entry and relaunching did not restore it; re-adding the current app did. Subsequent HID opens returned 0. No driver or Logitech permission was changed.
 
 Live UI verification of the new flow completed: Start opened the actual PT Ergo and automatically labeled the baseline; Finish wrote a zero-input baseline result; selecting M1 showed its own empty section; starting and clearing an M1 attempt wrote `test_discarded`, reset M1, and preserved the baseline result. The saved baseline reappeared after quitting and reopening the app. The discarded M1 attempt is UI verification only, not a physical M1 key test.
+
+## New labeled baseline captures
+
+The user then ran the per-control tests. A scoped summary is saved in `analysis/local/control-baseline-summary.json`; originals remain in the local capture folder. The recorded tests are:
+
+| Test | Raw reports | Recorded behavior |
+| --- | ---: | --- |
+| Hands-off baseline | 0 | No input |
+| A | 6 | Three makes and three releases, physical report 1 |
+| Left dial clockwise | 12 | Command modifier `08`, keypad-plus usage `57`, then releases, physical report 1 |
+| Left dial counterclockwise | 12 | Command modifier `08`, keypad-minus usage `56`, then releases, physical report 1 |
+| Left dial click | 0 | No report in this attempt |
+| M1 | 0 | User explicitly confirmed no event when pressing M1 |
+| AI button | 0 | No report in this attempt |
+
+No report IDs 5 or 6 were observed in these completed tests. The current firmware mode has not yet been read, so do not call these normal-mode results as an established fact. M2–M5, the right roller, and other controls have not been newly established by these captures. Further baseline repetition alone does not resolve the activation question.
+
+## Bluetooth mode helper
+
+A separate native `Ergo Bluetooth.app` now builds from `Sources/ErgoBluetooth/`, preserving Ergo Probe's working executable and Input Monitoring permission. It verifies the exact paired HID identity without opening input devices, then uses only the matching CoreBluetooth identifier and the proven Protocol 30 service. Runtime transport uses acknowledged sequential writes, one outstanding command, the tested bounded response assembler, and a five-second timeout.
+
+The helper first reads the current mode. Temporary driver mode remains unavailable until a successful response identifies normal mode. The implemented temporary change saves and synchronizes a recovery record before writing, verifies mode 3, schedules restoration after 60 seconds, verifies the original mode after restoration, retries restoration after failures, and defers normal app termination while restoration remains owed. These state-changing and recovery behaviors have not yet been exercised on hardware.
+
+At the current checkpoint, CoreBluetooth had not delivered an initial state callback or exposed the helper in the Bluetooth permission list. The current helper was selected in System Settings → Privacy & Security → Bluetooth → Add, and the user was asked to complete that permission step. No query or mode write had been sent. Resolve permission/connection startup before attempting a temporary change.
 
 The full standalone mapping app remains the goal. Input discovery comes first; shortcuts, macros, scripts, app launching, AI-button assignments, saved profiles, app-specific switching, and a background agent remain to implement after the input path is validated.
 
