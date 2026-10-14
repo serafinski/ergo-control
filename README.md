@@ -1,59 +1,67 @@
-# ErgoControl
+# Ergo Control
 
-Bluetooth-first investigation and standalone macOS replacement for Synapse on the Razer Pro Type Ergo (RZ03-0544).
+A lightweight native macOS menu-bar app for the **Razer Pro Type Ergo (RZ03-0544)** over Bluetooth. Configure buttons, macros, application profiles, and dials without running Synapse.
 
-**Ergo Control** is a native SwiftUI menu-bar app using only macOS frameworks, with no third-party runtime packages. Hardware tests now confirm M1 text output, an M2 macro combining text, pauses and Command+A, and full keyboard access with a clockwise left-dial text mapping. Automatic test expiry restores the keyboard's saved normal mode, and the helper exits cleanly. Profiles, command-dial modes, additional actions and an alternate layer are implemented, but other live paths still need validation. It remains a development build.
+Ergo Control uses SwiftUI and macOS frameworks, with no third-party runtime packages. It targets only the keyboard’s Bluetooth identity (`068e:02c3`); other keyboards and mice are outside its capture scope. This is an independent project, not affiliated with Razer.
 
-Version 0.2.2 uses an optional, scoped input helper for full dial/keyboard replacement. The local installer and the helper's separate Input Monitoring grant now work on this Mac. Bundled Service Management registration was rejected for the unnotarized development build. See [helper architecture and validation](docs/INPUT_HELPER.md). The working latest build is `build/Ergo Control Preview.app`; the older non-seizing build remains separately at `build/Ergo Control.app`.
+## Features
 
-The 0.2.3 preview adds a persistent native Command+Tab dial switcher, native defaults for the separate split Space/B/Backspace records under full control, and **Show / minimize application** mappings. These changes pass automated checks; live verification of the new behavior is pending. The preview reuses the already installed 0.2.2 helper.
+- Assign M1–M5, AI, dial controls, media controls, and ordinary keys.
+- Run shortcuts, text actions, timed macros, selected scripts, and application actions.
+- Show or minimize a chosen application with one button.
+- Switch profiles automatically for the active application, or select one manually.
+- Configure command-dial modes, including zoom, scrolling, browser tabs, and the visible native ⌘Tab switcher.
+- Use an alternate layer and optional gaming-mode shortcut blocking.
+- See a brief popup when changing dial modes.
+- Keep the keyboard icon and battery percentage in the menu bar, without a Dock icon.
+- Store profiles locally and restore the keyboard’s saved mode when mappings stop.
 
-Preview **0.2.4** adds a brief on-screen dial-mode indicator and a keyboard icon with battery percentage in the menu bar. The app runs without a Dock icon; close Settings to leave it in the menu bar. Battery polling also works with mappings off and waits for an idle configuration channel. All 43 automated tests pass. The user confirmed the mode popup, menu-bar icon/percentage, and absence from the Dock after reopening the preview.
+## Supported hardware and current status
 
-Build with `zsh tools/build_app.sh`, then open `build/Ergo Control.app`. See [app setup and validation](docs/APP.md). The diagnostic apps below remain available separately.
+Version **0.2.4** supports **Bluetooth Low Energy** on the Pro Type Ergo. USB and the wireless receiver are not implemented. The deployment target is macOS 14 or later; hardware validation so far is on Apple Silicon with macOS 27.0.1.
 
-Build with `zsh tools/build_probe.sh`. Open `build/Ergo Probe.app`.
+Live tests confirm distinct M1–M5/AI/dial/battery inputs, M1 text output, an M2 timed macro, exclusive keyboard capture with left-dial output, normal-mode restoration after timed sessions, the mode popup, menu-bar battery display, and absence from the Dock. **43 automated tests pass.** Remaining validation includes the new split-key defaults, native application-switcher overlay, app minimize/restore, per-app profiles, alternate layers, non-US layouts, and abnormal recovery. See [setup and verification](docs/APP.md).
 
-1. Enable **Ergo Probe** under **System Settings → Privacy & Security → Input Monitoring**. If it is absent, use **+** to add the app from this repository's `build` folder. Relaunch if macOS requests it.
-2. Keep the keyboard connected over Bluetooth. Select a control in the left sidebar and click **Start Test**. Capture starts and labels the test automatically.
-3. Operate only that control three times, then click **Finish Test**. Capture stops, and the result remains in that control's section. Each attempt gets its own JSONL file, named for the control.
-4. Select **Baseline**, start a test, leave the keyboard alone for five seconds, then finish. Test **Ordinary key** by pressing A three times; this positive control distinguishes missing controls from a non-working capture.
-5. Test both dials, clicks, Shift + left click, M1–M5, AI, media, and battery controls separately. Record the left dial's current mode in your notes. You cannot switch controls while a test is recording; finish or clear the active test first.
-6. If an attempt goes wrong, click **Clear Test** to reset just that section, then **Start Test** to retry. Clear stops an active recording and marks it discarded. Earlier recording files remain locally for reference; the saved test list contains only the current result for each control.
-7. **Show This Test's File** reveals the selected control's recording; **Show All Recordings** opens the folder. Recordings and the persistent `tests-index.json` are in `~/Library/Application Support/ErgoControl/Captures/`. A new attempt replaces that control's displayed result when finished; other controls' results remain unchanged.
+Lighting/brightness configuration, firmware updates, onboard macro storage, and Fn-row primary-mode writes are not implemented. Profiles and macros run on the Mac while mappings are enabled. There is no signed/notarized release download yet.
 
-Optional: expand **Connection options** and enable Bluetooth observation before starting a test. This connects only to the paired peripheral identifier obtained from the matched keyboard and subscribes to its known Protocol 30 characteristic. Subscription changes the connection's notification setting; it sends no Razer configuration commands.
+## Build
 
-This development build uses an ad-hoc code signature. Rebuilding changes its signature, and macOS may keep an enabled Input Monitoring entry for the previous executable while denying the new one. If toggling the entry and relaunching does not restore access, remove only **Ergo Probe** from that list, then use **+** to add the current `build/Ergo Probe.app` and reopen it. Re-adding the current app restored access during local testing. Other input-tool permissions should remain unchanged.
-
-Capture includes ordinary keys from PT Ergo while active, so finish before entering private text. No other input device is opened, no input is seized or suppressed, and no driver, startup service, or mapping is installed. Start Test refreshes the matched device list after sleep or reconnection. If the keyboard disconnects during a recording, finish it, wake/reconnect the keyboard, then retry; automatic recovery during an active recording is not implemented yet.
-
-Useful commands:
+Install Xcode or its Command Line Tools with **Swift 5.9 or newer**, plus Python 3. The packaging scripts use macOS’s signing, Keychain, and installer tools and an `openssl` executable. Build on macOS:
 
 ```sh
+git clone https://github.com/serafinski/razer-ergo.git
+cd razer-ergo
 swift test
-python3 tools/collect_evidence.py
-python3 tools/fetch_device_sources.py
-python3 tools/analyze_capture.py '/absolute/path/to/capture.jsonl'
-'build/Ergo Probe.app/Contents/MacOS/ErgoProbe' --inventory
+zsh tools/build_app.sh
 ```
 
-The Python tools verify evidence, collect scoped local facts, download public vendor source files for static inspection, and summarize marked captures. Downloaded JavaScript and libraries are never executed. Large vendor artifacts, private capture files, and local analysis remain outside Git.
+Open `build/Ergo Control.app` in Finder. The script creates the app and optional helper installer packages; it does not install or start the helper.
 
-See [the investigation](docs/INVESTIGATION.md) for observed facts, source locations, control identifiers, and remaining work. The original [handoff](razer-ergo-codex-handoff/HANDOFF.md) retains the project goal and earlier tests.
+Local builds create a persistent development signing identity in the ignored `build/local-signing/` directory. Keep that directory private and preserve it between builds to retain the same signing identity. Developer ID signing/notarization is a separate distribution step. See [helper and signing details](docs/INPUT_HELPER.md).
 
-## Bluetooth configuration investigation
+## Setup and use
 
-`zsh tools/build_bluetooth.sh` builds a separate `build/Ergo Bluetooth.app`. It leaves the working Ergo Probe app and its Input Monitoring signature unchanged. This helper needs macOS Bluetooth access, but never opens HID input devices.
+1. Keep PT Ergo connected over Bluetooth. Quit the diagnostic apps and the Synapse/App Engine GUI before enabling mappings.
+2. Grant **Ergo Control** Input Monitoring and Accessibility in System Settings → Privacy & Security. Accept its Bluetooth prompt.
+3. For full dial/keyboard replacement, click **Install input helper…**, complete the macOS administrator installer, then grant the installed helper its own Input Monitoring entry. Its path is `/Library/PrivilegedHelperTools/dev.local.ergocontrol.inputhelper`.
+4. Configure a simple M1 **Type text** action, save it, and use **60-second test** before regular sessions. Focus **Try your mappings** and press M1.
+5. Use **Enable mappings** for normal operation. Close Settings to leave the app in the menu bar; reopen it through **Settings…** there. **Stop mappings** releases input and requests a verified restoration. **Quit Ergo Control** exits after restoration when required.
 
-**Connect & Read Mode** identifies the paired peripheral from the exact PT Ergo HID identity, discovers the vendor service, enables response notifications, and issues the recovered Get Device Mode query. Requests use acknowledged writes, an eight-byte header, separate payload fragments, one active transaction, a bounded response assembler, and a five-second command timeout. Hardware testing successfully read normal mode (0/0), enabled driver mode (3/0), and exposed distinct M1–M5, AI, left-dial-click, and battery-button press/release inputs. They share physical report ID 5 but contain different key identifiers (32–36, 247, 96, and 65).
+The optional input helper is this project’s small, narrowly scoped launch daemon; it is not a Razer driver or a kernel/system extension. A limited non-seizing extra-button mode is available without full capture, but cannot replace ordinary keys or dial/media actions. See [setup and limitations](docs/APP.md) and [the helper’s trust boundary](docs/INPUT_HELPER.md).
 
-The temporary-mode button remains disabled until a successful two-byte response identifies normal mode. Its implementation saves the original mode locally before sending a change, verifies driver mode with a read query, restores after 60 seconds, and verifies restoration with another read query. A pending-restoration file survives process exit; the app defers normal termination while restoration is owed and retries after connection loss. Manual early restoration and its read-back verification succeeded after the live tests. Timer expiry and failure recovery are implemented but not yet hardware-validated. Do not treat a disconnected keyboard or an unacknowledged write as successful restoration.
+Settings live under `~/Library/Application Support/ErgoControl/Settings/`. The mapping app does not save ordinary typed text; the optional probe records raw input only during explicitly started tests. Captures, Bluetooth diagnostics, vendor research artifacts, installers, and signing material are excluded from Git.
 
-The helper logs command headers, payloads, responses, and restoration state locally under `~/Library/Application Support/ErgoControl/Bluetooth/`. No firmware or key-mapping writes are implemented.
+## Documentation and development
 
-For self-directed driver-mode tests, start a 60-second window in Ergo Bluetooth, then use the existing per-control Start/Finish/Clear flow in Ergo Probe. Finish each recording before restoration; retry a cleared attempt if the countdown expires mid-test. Probe 0.3 decodes extra keys, media actions, left-dial turns, and brightness notifications into readable names and re-labels compatible saved recordings on launch.
+- [App setup, mappings, and validation](docs/APP.md)
+- [Helper architecture, signing, and installation](docs/INPUT_HELPER.md)
+- [Recovered Bluetooth and input protocol](docs/PROTOCOL.md)
+- [Optional diagnostic apps and tools](docs/DIAGNOSTICS.md)
+- [Research and hardware-test history](docs/research/INVESTIGATION.md)
+- [Contributing](CONTRIBUTING.md)
 
-The Bluetooth helper also has **Read Battery**, which queries the keyboard without changing its mode. Hardware validation returned battery ID 1, raw level 168, displayed as 65%. This is independent of capturing the battery button. Optional Shift + left click is documented by Razer but remains untested.
+The research archive preserves provenance and the distinction between static findings and observed hardware behavior. It contains documentation and hashes, not vendor binaries or extracted vendor source. A fresh clone can build and test the app without those artifacts or an installed Razer application.
 
-Verified driver-mode left-dial rotation produces independent horizontal-pan inputs (+1 clockwise, −1 counterclockwise), separate from its normal brightness behavior. Left dial click and battery button are also exposed in driver mode. Configurable actions and profiles are the next implementation stage; these probes do not yet remap controls.
+## License
+
+[MIT](LICENSE), copyright © 2026 serafinski. Razer product names and trademarks belong to their respective owners. The license applies to this project’s source and documentation, not to separately obtained vendor artifacts.

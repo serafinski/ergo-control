@@ -1,8 +1,10 @@
-# Ergo Control — first mapping build
+# Ergo Control — setup and validation
 
 Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle ID `dev.local.ergocontrol.app`.
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, gaming-mode shortcut blocking, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
+
+The current app is **0.2.4**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The local preview path is a development convention. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
 
 ## Current verification boundary
 

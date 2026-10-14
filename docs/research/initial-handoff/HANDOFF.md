@@ -1,5 +1,7 @@
 # Razer Pro Type Ergo: local Codex handoff
 
+> Historical pre-implementation notes. References to included evidence describe the original local handoff; those vendor files are not distributed with this repository. For current behavior, see the [protocol reference](../../PROTOCOL.md), [app guide](../../APP.md), and [subsequent investigation](../INVESTIGATION.md).
+
 ## Project goal
 
 Build a standalone macOS configuration application that replaces Synapse for the user's Razer Pro Type Ergo (RZ03-0544), rather than just a dial workaround. The user uses a MacBook Pro with Apple Silicon (M4 Pro) and wants daily operation over Bluetooth. Confirm the installed macOS version locally. RGB is optional and lower priority.
