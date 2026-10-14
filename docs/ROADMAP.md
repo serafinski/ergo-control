@@ -9,7 +9,7 @@ Before implementing macro-button status lighting, establish whether this model e
 ## Remaining hardware validation
 
 - Brightness long-term behavior; backlight control, 0–100% read-back, and percentage popup are now confirmed.
-- Resolve physical dial-mode colors: identify the Bluetooth indicator address from literal LED-list/type reads and native-mode comparisons. Positive-backlight tests, four-byte RGB payloads, and enabling the recovered switch first still reject RGB target 39. The native indicator’s backlight prerequisite is user-confirmed; no successful host-driven RGB control is claimed.
+- Resolve physical dial-mode colors: recover the dedicated dial control under driver mode. Both decoded and literal LED-list/type/RGB reads were rejected. Native colors return over Bluetooth when mappings are disabled with the app still open; separate firmware mode from capture and compare the USB knob API without assuming it works over Bluetooth. Positive-backlight tests, four-byte RGB payloads, and enabling the recovered switch first still reject RGB target 39. The native indicator’s backlight prerequisite is user-confirmed; no successful host-driven RGB control is claimed.
 - Split-space/B/Backspace defaults, native application-switcher overlay, app minimize/restore.
 - App-specific profiles, alternate layers, non-US layouts, sleep/disconnect/crash recovery.
 
