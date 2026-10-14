@@ -69,11 +69,11 @@ public extension Protocol30Request {
     static func readDialColor(transaction: UInt8, ledClass: UInt8 = 1, ledID: UInt8 = 39) throws -> Self {
         try Self(transaction: transaction, commandClass: 6, commandID: 0x84, argument6: ledClass, argument7: ledID)
     }
-    static func readLEDClasses(transaction: UInt8) throws -> Self {
+    static func readLEDList(transaction: UInt8) throws -> Self {
         try Self(transaction: transaction, commandClass: 6, commandID: 0x80)
     }
-    static func readLEDTargets(transaction: UInt8, ledClass: UInt8) throws -> Self {
-        try Self(transaction: transaction, commandClass: 6, commandID: 0x81, argument6: ledClass)
+    static func readLEDType(transaction: UInt8, ledID: UInt8) throws -> Self {
+        try Self(transaction: transaction, commandClass: 6, commandID: 0x81, argument7: ledID)
     }
     static func dialColor(transaction: UInt8, color: DialColor, brightness: UInt8 = 255) throws -> Self {
         // Correct the vendor's three-byte allocation: this command's template

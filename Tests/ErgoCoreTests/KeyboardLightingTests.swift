@@ -25,9 +25,12 @@ final class KeyboardLightingTests: XCTestCase {
                        [Data([5,4,0,0,6,4,1,39]), Data([255,0,0,255])])
         XCTAssertEqual(try Protocol30Request.dialColor(transaction: 5, color: .defaultColor(for: "Zoom"), brightness: 42).payload,
                        Data([255,0,0,42]))
+        // Literal inventory bytes are not Chroma-region IDs: keep high bits.
+        XCTAssertEqual(try Protocol30Request.readDialColor(transaction: 4, ledID: 194).header,
+                       Data([4,0,0,0,6,132,1,194]))
         XCTAssertEqual(try Protocol30Request.readDialLightState(transaction: 6).header, Data([6,0,0,0,6,130,1,39]))
-        XCTAssertEqual(try Protocol30Request.readLEDClasses(transaction: 8).header, Data([8,0,0,0,6,128,0,0]))
-        XCTAssertEqual(try Protocol30Request.readLEDTargets(transaction: 9, ledClass: 1).header, Data([9,0,0,0,6,129,1,0]))
+        XCTAssertEqual(try Protocol30Request.readLEDList(transaction: 8).header, Data([8,0,0,0,6,128,0,0]))
+        XCTAssertEqual(try Protocol30Request.readLEDType(transaction: 9, ledID: 194).header, Data([9,0,0,0,6,129,0,194]))
         XCTAssertEqual(try Protocol30Request.dialLightState(transaction: 7, on: true).writeChunks,
                        [Data([7,1,0,0,6,2,1,39]), Data([1])])
     }
