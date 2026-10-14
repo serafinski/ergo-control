@@ -1,14 +1,32 @@
 import Foundation
 import ServiceManagement
 import ErgoIPC
+import AppKit
+import Security
 
 final class FullControlHelper: ObservableObject {
     @Published private(set) var status = "Full dial control is optional"
     private let service = SMAppService.daemon(plistName: HelperIdentity.plist)
-    var enabled: Bool { service.status == .enabled }
-    var needsApproval: Bool { service.status == .requiresApproval }
+    @Published private(set) var installedForDevelopment = false
+    var enabled: Bool { installedForDevelopment || (!usesLocalCertificate && service.status == .enabled) }
+    var needsApproval: Bool { !usesLocalCertificate && service.status == .requiresApproval }
+    var usesLocalCertificate: Bool {
+        var code: SecStaticCode?, info: CFDictionary?
+        guard SecStaticCodeCreateWithPath(Bundle.main.bundleURL as CFURL, [], &code) == errSecSuccess, let code,
+              SecCodeCopySigningInformation(code, [], &info) == errSecSuccess,
+              let information = info as? [String: Any] else { return true }
+        return information[kSecCodeInfoTeamIdentifier as String] == nil
+    }
+    var installerURL: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/ErgoInputHelper-Install.pkg") }
+    var removalURL: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/ErgoInputHelper-Uninstall.pkg") }
     init() { refresh() }
     func refresh() {
+        installedForDevelopment = installedHelperMatches()
+        if installedForDevelopment { status = "Local input helper installed · full-control testing is available"; return }
+        if usesLocalCertificate {
+            status = "This development build needs the local helper installer. macOS does not offer approval for its unnotarized bundled daemon."
+            return
+        }
         switch service.status {
         case .enabled: status = "Input helper enabled"
         case .requiresApproval: status = "Approve Ergo Control in Login Items & Extensions to enable its input helper"
@@ -18,11 +36,50 @@ final class FullControlHelper: ObservableObject {
         }
     }
     func register() throws {
+        if usesLocalCertificate {
+            guard FileManager.default.fileExists(atPath: installerURL.path) else {
+                throw NSError(domain: "ErgoHelperInstall", code: 1, userInfo: [NSLocalizedDescriptionKey: "The helper installer is missing. Rebuild this app."])
+            }
+            guard NSWorkspace.shared.open(installerURL) else {
+                throw NSError(domain: "ErgoHelperInstall", code: 3, userInfo: [NSLocalizedDescriptionKey: "macOS could not open the helper installer."])
+            }
+            status = "Complete the input helper installer, then click Refresh status. Mappings remain off."
+            return
+        }
         try service.register(); refresh()
         if needsApproval { SMAppService.openSystemSettingsLoginItems() }
     }
-    func unregister() throws { try service.unregister(); refresh() }
+    func unregister() throws {
+        if installedForDevelopment {
+            guard FileManager.default.fileExists(atPath: removalURL.path) else {
+                throw NSError(domain: "ErgoHelperInstall", code: 2, userInfo: [NSLocalizedDescriptionKey: "The helper uninstaller is missing. Rebuild this app."])
+            }
+            guard NSWorkspace.shared.open(removalURL) else {
+                throw NSError(domain: "ErgoHelperInstall", code: 4, userInfo: [NSLocalizedDescriptionKey: "macOS could not open the helper uninstaller."])
+            }
+            status = "Complete the helper uninstaller, then click Refresh status."
+        } else { try service.unregister(); refresh() }
+    }
     func showApproval() { SMAppService.openSystemSettingsLoginItems() }
+    private func installedHelperMatches() -> Bool {
+        let tool = URL(fileURLWithPath: HelperIdentity.installedExecutable)
+        let plist = URL(fileURLWithPath: HelperIdentity.installedPlist)
+        let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/Library/HelperTools/ErgoInputHelper")
+        for url in [tool, plist] {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  (attributes[.type] as? FileAttributeType) == .typeRegular,
+                  (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == 0,
+                  let permissions = attributes[.posixPermissions] as? NSNumber,
+                  permissions.intValue & 0o022 == 0 else { return false }
+        }
+        guard let installedHash = try? PeerSigning.hash(at: tool), let expectedHash = try? PeerSigning.hash(at: bundled),
+              installedHash == expectedHash, let data = try? Data(contentsOf: plist),
+              let contents = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              contents["Label"] as? String == HelperIdentity.service,
+              contents["Program"] as? String == HelperIdentity.installedExecutable,
+              (contents["MachServices"] as? [String: Bool])?[HelperIdentity.service] == true else { return false }
+        return true
+    }
 }
 
 private final class InputReceiver: NSObject, InputClientProtocol {

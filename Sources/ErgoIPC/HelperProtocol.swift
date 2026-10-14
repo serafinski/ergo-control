@@ -5,6 +5,8 @@ public enum HelperIdentity {
     public static let service = "dev.local.ergocontrol.inputhelper"
     public static let plist = service + ".plist"
     public static let app = "dev.local.ergocontrol.app"
+    public static let installedExecutable = "/Library/PrivilegedHelperTools/" + service
+    public static let installedPlist = "/Library/LaunchDaemons/" + plist
 }
 
 // The privileged side exposes no commands, paths, output events, or configuration writes.

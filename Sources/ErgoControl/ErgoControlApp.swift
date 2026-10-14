@@ -163,7 +163,7 @@ struct ControlSettingsView: View {
                     GroupBox("Full dial control") {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(model.fullControlHelper.status).font(.callout)
-                            Text("The optional input helper gives Ergo Control exclusive access to PT Ergo so dial actions can be replaced. macOS requires administrator approval. The helper releases the keyboard when mappings stop or the app stops responding.")
+                            Text("The optional input helper gives Ergo Control exclusive access to PT Ergo so dial actions can be replaced. Installation requires administrator approval. The helper releases the keyboard when mappings stop or the app stops responding.")
                                 .font(.caption).foregroundStyle(.secondary)
                             HStack {
                                 if model.fullControlHelper.enabled || model.fullControlHelper.needsApproval {
@@ -172,7 +172,7 @@ struct ControlSettingsView: View {
                                     }
                                     Button("Remove input helper") { model.removeFullControl() }
                                 } else {
-                                    Button("Enable full dial control…") { model.enableFullControl() }
+                                    Button(model.fullControlHelper.usesLocalCertificate ? "Install input helper…" : "Enable full dial control…") { model.enableFullControl() }
                                 }
                                 Button("Refresh status") { model.fullControlHelper.refresh() }
                             }

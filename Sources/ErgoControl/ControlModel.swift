@@ -109,7 +109,7 @@ final class ControlModel: ObservableObject {
     }
     func removeFullControl() {
         stop()
-        do { try fullControlHelper.unregister(); inputAccessMode = nil; status = "Input helper removed. Extra-button mappings remain available." }
+        do { try fullControlHelper.unregister(); inputAccessMode = nil; status = fullControlHelper.status }
         catch { self.error = "Could not remove the input helper: " + error.localizedDescription }
     }
 

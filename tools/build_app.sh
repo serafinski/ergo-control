@@ -10,7 +10,7 @@ else
 fi
 app="$PWD/build/${ERGO_APP_NAME:-Ergo Control}.app"
 swift build -c release --product ErgoControl
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Library/HelperTools" "$app/Contents/Library/LaunchDaemons"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Library/HelperTools" "$app/Contents/Library/LaunchDaemons" "$app/Contents/Resources"
 cp .build/release/ErgoControl "$app/Contents/MacOS/ErgoControl"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -20,8 +20,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Ergo Control</string>
 <key>CFBundleExecutable</key><string>ErgoControl</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.0</string>
-<key>CFBundleVersion</key><string>3</string>
+<key>CFBundleShortVersionString</key><string>0.2.1</string>
+<key>CFBundleVersion</key><string>4</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSBluetoothAlwaysUsageDescription</key><string>Connect only to your paired PT Ergo to enable its extra controls, read battery status, and restore its saved mode when mappings stop.</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -35,6 +35,7 @@ swift build -c release --product ErgoInputHelper \
 cp .build/release/ErgoInputHelper "$app/Contents/Library/HelperTools/ErgoInputHelper"
 codesign --force --sign "$identity" "${signing_options[@]}" --identifier dev.local.ergocontrol.inputhelper "$app/Contents/Library/HelperTools/ErgoInputHelper"
 cp resources/dev.local.ergocontrol.inputhelper.plist "$app/Contents/Library/LaunchDaemons/"
+python3 tools/build_helper_packages.py "$app"
 codesign --force --sign "$identity" "${signing_options[@]}" "$app"
 python3 tools/helper_signing.py verify "$app" "$PWD/build/input-helper-info.plist"
 codesign --verify --strict "$app"
