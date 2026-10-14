@@ -20,6 +20,7 @@ final class ControlModel: ObservableObject {
     @Published var dirty = false
     @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController()
+    let fullControlHelper = FullControlHelper()
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
     private var subscriptions = Set<AnyCancellable>()
@@ -59,12 +60,14 @@ final class ControlModel: ObservableObject {
         }
         frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         bluetooth.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
             DispatchQueue.main.async { self?.updateProfile() }
         }.store(in: &subscriptions)
         relay.onReport = { [weak self] id, bytes in self?.receive(id, bytes) }
         relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.") }
+        relay.onFailure = { [weak self] message in self?.stop(message) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message) }
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBattery = { [weak self] in
@@ -98,6 +101,17 @@ final class ControlModel: ObservableObject {
     var profileIndex: Int { configuration.profiles.firstIndex(where: { $0.id == selectedProfileID }) ?? 0 }
     var activeProfile: MappingProfile { configuration.profile(for: frontmostID) }
     var layerActive: Bool { !layerKeys.isEmpty }
+
+    func enableFullControl() {
+        stop()
+        do { try fullControlHelper.register(); inputAccessMode = nil; status = fullControlHelper.status }
+        catch { self.error = "Could not enable the input helper: " + error.localizedDescription }
+    }
+    func removeFullControl() {
+        stop()
+        do { try fullControlHelper.unregister(); inputAccessMode = nil; status = "Input helper removed. Extra-button mappings remain available." }
+        catch { self.error = "Could not remove the input helper: " + error.localizedDescription }
+    }
 
     func save() {
         do {
@@ -168,6 +182,7 @@ final class ControlModel: ObservableObject {
     func start(testSeconds: TimeInterval? = nil) {
         guard !running, !preparing else { return }
         error = nil
+        fullControlHelper.refresh()
         guard accessibilityGranted, inputGranted else { status = "Enable Input Monitoring and Accessibility for Ergo Control, then try again."; return }
         let conflicts = NSWorkspace.shared.runningApplications.filter {
             ["dev.local.ergocontrol.probe", "dev.local.ergocontrol.bluetooth", "com.razer.synapse", "com.razer.appengine.app"].contains($0.bundleIdentifier ?? "")
@@ -198,9 +213,16 @@ final class ControlModel: ObservableObject {
         guard bluetooth.ready, !bluetooth.busy else { return }
         if bluetooth.canTryDriverMode, !activationStarted {
             if !batteryRequested { batteryRequested = true; bluetooth.readBattery(); return }
-            do { try relay.start(); relayOpened = true; inputAccessMode = relay.accessMode }
-            catch { stop(error.localizedDescription); return }
-            activationStarted = true; bluetooth.tryDriverMode()
+            activationStarted = true; relayOpened = true
+            // Forward ordinary input immediately, including during the helper's asynchronous open.
+            inputAccessMode = fullControlHelper.enabled ? .fullKeyboard : nil
+            relay.start(usingHelper: fullControlHelper.enabled) { [weak self] result in
+                guard let self, self.preparing, self.activationStarted else { return }
+                switch result {
+                case .success(let mode): self.inputAccessMode = mode; self.bluetooth.tryDriverMode()
+                case .failure(let error): self.stop(error.localizedDescription)
+                }
+            }
         }
     }
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified") {

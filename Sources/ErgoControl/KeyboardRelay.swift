@@ -5,12 +5,33 @@ import ErgoCore
 final class KeyboardRelay {
     var onReport: ((UInt32, Data) -> Void)?
     var onDisconnect: (() -> Void)?
+    var onFailure: ((String) -> Void)?
+    private var helper: HelperInputClient?
     private var device: IOHIDDevice?
     private var buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
     private var opened = false
     private(set) var accessMode = InputAccessMode.fullKeyboard
     init() { buffer.initialize(repeating: 0, count: 64) }
-    func start() throws {
+    func start(usingHelper: Bool, completion: @escaping (Result<InputAccessMode, Error>) -> Void) {
+        stop()
+        if usingHelper {
+            accessMode = .fullKeyboard
+            let client = HelperInputClient(); helper = client
+            client.onReport = { [weak self] id, bytes in self?.onReport?(id, bytes) }
+            client.onFailure = { [weak self] message in self?.onFailure?(message) }
+            client.start { [weak self, weak client] result in
+                guard let self, let client, self.helper === client else { return }
+                switch result {
+                case .success: self.recordOpen(kIOReturnSuccess, mode: .fullKeyboard); completion(.success(.fullKeyboard))
+                case .failure(let error): completion(.failure(error))
+                }
+            }
+        } else {
+            do { try startLocal(); completion(.success(accessMode)) }
+            catch { completion(.failure(error)) }
+        }
+    }
+    private func startLocal() throws {
         let manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
         IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: ErgoTarget.vendorID,
             kIOHIDProductIDKey: ErgoTarget.productID, kIOHIDTransportKey: ErgoTarget.transport] as CFDictionary)
@@ -63,6 +84,7 @@ final class KeyboardRelay {
         }
     }
     func stop() {
+        helper?.stop(); helper = nil
         guard opened, let device else { return }
         IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         IOHIDDeviceRegisterRemovalCallback(device, nil, nil)
