@@ -16,6 +16,9 @@ struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
     @StateObject private var model = ControlModel()
     init() {
+        if CommandLine.arguments.dropFirst().first == "--native-dial-read" {
+            NativeDialInspection.runCommandLine()
+        }
         if CommandLine.arguments.contains("--helper-access-status") { HelperPermissionCheck.runCommandLine() }
     }
     var body: some Scene {

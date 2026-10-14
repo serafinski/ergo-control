@@ -703,6 +703,41 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         lightingStatus = "Dial indicator under investigation · diagnostic reads recorded"
     }
 
+    /// Research-only comparison in normal mode. No driver-mode, LED, or knob
+    /// setters: the USB getter's Bluetooth equivalents are not yet established.
+    public func inspectNativeDial(completion: @escaping ([String]) -> Void) {
+        guard ready, !busy, !restoreOwed, currentMode?.0 == 0 else {
+            completion(["Normal-mode Bluetooth connection is required."]); return
+        }
+        inspectNativeDialRequests([0x84, 0x93, 0x95], results: [], completion: completion)
+    }
+
+    private func inspectNativeDialRequests(_ ids: [UInt8], results: [String],
+                                           completion: @escaping ([String]) -> Void) {
+        guard let id = ids.first else { completion(results); return }
+        guard ready, !busy, !restoreOwed, currentMode?.0 == 0 else {
+            completion(results + ["Read-only comparison interrupted."]); return
+        }
+        // 84 is the original RGB baseline. 93 is the USB current-knob getter;
+        // 95 tests the +2 offset used by the Bluetooth LED-state getter.
+        let request = try! Protocol30Request(transaction: transactions.next(), commandClass: 6,
+                                             commandID: id, argument6: 1, argument7: 39)
+        send(request) { [weak self] result in
+            guard let self else { return }
+            let line: String
+            switch result {
+            case .success(let reply):
+                let value = reply.payload.count <= 8 ? reply.payload.hex : "Unexpected reply length: \(reply.payload.count)"
+                self.log("native_dial_candidate_response", ["commandID": id, "result": value])
+                line = "06/\(String(id, radix: 16)): \(value)"
+            case .failure(let error):
+                self.log("native_dial_candidate_failed", ["commandID": id, "error": error.localizedDescription])
+                line = "06/\(String(id, radix: 16)): \(error.localizedDescription)"
+            }
+            self.inspectNativeDialRequests(Array(ids.dropFirst()), results: results + [line], completion: completion)
+        }
+    }
+
     private func restoreLightCommand(_ request: Protocol30Request, failed: @escaping () -> Void,
                                      completion: @escaping (Protocol30Response) -> Void) {
         send(request) { [weak self] result in

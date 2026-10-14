@@ -19,9 +19,9 @@ Ergo Control uses SwiftUI and macOS frameworks, with no third-party runtime pack
 
 ## Supported hardware and current status
 
-Version **0.2.6** supports **Bluetooth Low Energy** on the Pro Type Ergo. USB and the wireless receiver are not implemented. The deployment target is macOS 14 or later; hardware validation so far is on Apple Silicon with macOS 27.0.1.
+Version **0.2.6** supports **Bluetooth Low Energy** on the Pro Type Ergo. USB and wireless-receiver mappings are not implemented. A separate [read-only USB dial diagnostic](docs/USB_RESEARCH.md) is available for research. The deployment target is macOS 14 or later; hardware validation so far is on Apple Silicon with macOS 27.0.1.
 
-Live tests confirm distinct M1–M5/AI/dial/battery inputs, keyboard brightness across 0–100%, M1 text output, an M2 timed macro, exclusive keyboard capture with left-dial output, normal-mode restoration after timed sessions, the mode popup, menu-bar battery display, and absence from the Dock. **54 automated tests pass.** Remaining validation includes the physical dial indicator, the new split-key defaults, native application-switcher overlay, app minimize/restore, per-app profiles, alternate layers, non-US layouts, and abnormal recovery. See [setup and verification](docs/APP.md).
+Live tests confirm distinct M1–M5/AI/dial/battery inputs, keyboard brightness across 0–100%, M1 text output, an M2 timed macro, exclusive keyboard capture with left-dial output, normal-mode restoration after timed sessions, the mode popup, menu-bar battery display, and absence from the Dock. **58 automated tests pass.** Remaining validation includes the physical dial indicator, the new split-key defaults, native application-switcher overlay, app minimize/restore, per-app profiles, alternate layers, non-US layouts, and abnormal recovery. See [setup and verification](docs/APP.md).
 
 The battery popup requests a fresh reading, stays visible for two seconds after the result, and keeps the current app focused. The user confirmed the popup works. Quick reads display the percentage directly; **Checking…** appears only if retrieval takes more than two seconds.
 

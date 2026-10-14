@@ -63,7 +63,11 @@ Build 19's low-six-bit targets 0–5 all returned status 7. Build 20 follows the
 
 The user confirmed native colors operate over Bluetooth without Razer software and return when mappings are disabled while Ergo Control remains open. Build 20 reproduces their loss without sending new indicator writes. The mapping session's firmware driver mode (3/0) is therefore a leading cause to investigate; exclusive capture also changes during that session, so this comparison alone does not isolate the two. Preserving normal mode is not an equivalent replacement: the earlier normal-mode captures did not expose the extra macro inputs needed by the application.
 
-The USB implementation exposes dedicated knob controls that rzDevice30 does not implement: `getKnobConfigurationInformation` (class 3, ID 0x92, 50-byte template) and `getCurrentKnobMode` (class 3, ID 0x93, eight-byte template). USB current-mode data is `[ledClass, ledID, disabled, stage, modeID, red, green, blue]`. Their USB setters use IDs 0x12 and 0x13. These are static USB facts, not recovered Bluetooth equivalents; no ported or guessed knob command is sent. This may explain why a generic LED address is insufficient for the native mode indicator.
+The USB implementation exposes dedicated knob controls that rzDevice30 does not implement: `getKnobConfigurationInformation` (class 3, ID 0x92, 50-byte template) and `getCurrentKnobMode` (class 3, ID 0x93, eight-byte template). USB current-mode data is `[ledClass, ledID, disabled, stage, modeID, red, green, blue]`. Their USB setters use IDs 0x12 and 0x13. These are static USB facts, not recovered Bluetooth equivalents. Only the bounded read-only adaptations described below have been tried; no Bluetooth knob setter has been recovered or sent. This may explain why a generic LED address is insufficient for the native mode indicator.
+
+Read-only USB inspection subsequently succeeded on product `1532:02c4`, configuration interface 3. Both dedicated getters returned success (2). Before a native dial click, current stage/mode was 2/2, RGB `0,0,255`; afterward it was 3/3, RGB `255,255,0`. The eight-stage table contained four enabled green/red/blue/yellow stages. This correlates the dedicated getter with native physical mode switching. The configuration table was unchanged between reads. No knob or LED setter was sent.
+
+A bounded normal-mode Bluetooth comparison used class 6, arguments 1/39: the original RGB getter 0x84 returned status 7, while USB-derived knob getter candidates 0x93 and 0x95 returned status 5. The 0x95 offset was an explicit unverified hypothesis based on the LED-state getter's USB-to-Bluetooth +2 offset. None is a supported Bluetooth knob API. Normal-mode RGB rejection also shows that driver mode alone does not explain failure of that getter. The native indicator still works when mappings are off. The observed Bluetooth HID descriptor has only a two-byte feature payload and one-byte keyboard LED output payload (plus report IDs), not a 90-byte USB configuration channel. These facts do not prove that another GATT command is impossible. See [USB_RESEARCH.md](USB_RESEARCH.md) for the tested reader and packet layout.
 
 Static provenance (vendor sources remain local and ignored):
 
@@ -71,6 +75,7 @@ Static provenance (vendor sources remain local and ignored):
 | --- | --- |
 | `main.c8f8537456ab6ae7c847.js` | `7ffb823c6fb1586bcc19e44781b2be4076f44e6589d98797b52029f8c80c1a55` |
 | `6737.5b007c860f4efa22ab87.js` | `4b1973cfa843afc214f8166ab14e5428ed9814f5a5c6b866cfa8e0ecfd939a86` |
+| `rzDevice25.72e2cedb9d2be4eb79fd.js` | `647f673dfbc34f928cf99d8c73762d6d5258b6b3314161e6e76332905418a642` |
 | `rzDevice30.a29e745b43244151d1fa.js` | `09da5fc929809723c8589ce28008ccf87b476a027e2f69ba32540f2f2e994637` |
 
 ## Input reports
