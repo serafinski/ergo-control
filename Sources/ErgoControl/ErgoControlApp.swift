@@ -366,7 +366,7 @@ struct ActionEditor: View {
             case .standard: Text("Use the normal action, or the current dial mode.").font(.caption).foregroundStyle(.secondary)
             case .layer: Text("Other controls use this profile’s alternate layer while this button is held.").font(.caption).foregroundStyle(.secondary)
             case .cycleDial: Text("Switch to the next enabled command-dial mode.").font(.caption).foregroundStyle(.secondary)
-            case .battery: Text("Read and display the keyboard’s battery level.").font(.caption).foregroundStyle(.secondary)
+            case .battery: Text("Show the current keyboard battery percentage in a brief on-screen popup.").font(.caption).foregroundStyle(.secondary)
             case .disabled: EmptyView()
             }
         }.frame(maxWidth: .infinity, alignment: .leading)

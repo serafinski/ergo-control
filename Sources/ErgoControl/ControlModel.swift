@@ -23,7 +23,8 @@ final class ControlModel: ObservableObject {
     let fullControlHelper = FullControlHelper()
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
-    private let dialIndicator = DialModeIndicator()
+    private let controlIndicator = ControlIndicator()
+    private var batteryPopupTicket: UUID?
     private var batterySchedule = BatteryRefreshSchedule()
     private var batteryTimer: Timer?
     private var terminating = false
@@ -74,13 +75,16 @@ final class ControlModel: ObservableObject {
         relay.onFailure = { [weak self] message in self?.stop(message) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message) }
         engine.onCycle = { [weak self] in self?.cycleDial() }
-        engine.onBattery = { [weak self] in
-            guard let self else { return }
-            self.bluetooth.readBattery()
-            self.status = self.bluetooth.batteryText
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows.first(where: { $0.title == "Ergo Control" })?.makeKeyAndOrderFront(nil)
-        }
+        engine.onBattery = { [weak self] in self?.showBattery() }
+        bluetooth.$batteryReadState.sink { [weak self] state in
+            guard let self, let ticket = self.batteryPopupTicket else { return }
+            switch state {
+            case .ready, .failed:
+                self.controlIndicator.updateBattery(state, for: ticket)
+                self.batteryPopupTicket = nil
+            case .idle, .reading: break
+            }
+        }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification).sink { [weak self] note in
             self?.frontmostID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
             self?.updateProfile()
@@ -117,6 +121,12 @@ final class ControlModel: ObservableObject {
     func refreshBattery() {
         batterySchedule.refresh()
         pollBattery()
+    }
+    private func showBattery() {
+        batteryPopupTicket = controlIndicator.requestBattery()
+        // Share an in-flight read. Otherwise request one as soon as the serial
+        // configuration channel is idle, rather than dropping a busy-button press.
+        if bluetooth.batteryReadState != .reading { refreshBattery() }
     }
     private func pollBattery() {
         guard !terminating else { return }
@@ -205,7 +215,7 @@ final class ControlModel: ObservableObject {
         let backwards = engine.physicalModifiers & 0x22 != 0
         modeIndices[id] = (modeIndices[id, default: 0] + (backwards ? count - 1 : 1)) % count
         updateProfile()
-        dialIndicator.show(mode: dialName, profile: activeProfileName)
+        controlIndicator.showDial(mode: dialName, profile: activeProfileName)
     }
 
     func start(testSeconds: TimeInterval? = nil) {
@@ -256,7 +266,8 @@ final class ControlModel: ObservableObject {
         }
     }
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified") {
-        dialIndicator.dismiss()
+        batteryPopupTicket = nil
+        controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
         sessionDeadline = nil
         relay.stop(); relayOpened = false; engine.stop()

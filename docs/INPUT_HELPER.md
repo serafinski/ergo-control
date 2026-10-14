@@ -1,6 +1,6 @@
 # Optional full keyboard input helper
 
-Ergo Control 0.2.4 bundles the input helper introduced in 0.2.2 to address the live `kIOReturnNotPrivileged` failure when the ordinary settings app attempts exclusive IOHID access. It is a small root launch daemon, not a Razer component or a kernel/system extension. The settings app still runs as the logged-in user. Notarized distribution builds can register it through Apple's `SMAppService`; local development builds use an explicit macOS installer. The build script only packages these options and never installs, registers, or starts the helper. Historical hashes and permissions below describe one development Mac, not identities a fresh clone should copy.
+Ergo Control 0.2.5 bundles the input helper introduced in 0.2.2 to address the live `kIOReturnNotPrivileged` failure when the ordinary settings app attempts exclusive IOHID access. It is a small root launch daemon, not a Razer component or a kernel/system extension. The settings app still runs as the logged-in user. Notarized distribution builds can register it through Apple's `SMAppService`; local development builds use an explicit macOS installer. The build script only packages these options and never installs, registers, or starts the helper. Historical hashes and permissions below describe one development Mac, not identities a fresh clone should copy.
 
 ## Scope and trust boundary
 

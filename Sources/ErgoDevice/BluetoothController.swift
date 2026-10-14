@@ -30,6 +30,10 @@ enum BluetoothFailure: LocalizedError {
     }
 }
 
+public enum BatteryReadState: Equatable {
+    case idle, reading, ready(Int), failed(String)
+}
+
 public final class BluetoothController: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @Published public var status = "Ready to read PT Ergo's current mode"
     @Published public var modeText = "Not read yet"
@@ -42,6 +46,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     @Published public var driverModeVerified = false
     @Published public var batteryText = "Battery status has not been read"
     @Published public private(set) var batteryPercent: Int?
+    @Published public private(set) var batteryReadState: BatteryReadState = .idle
 
     private var central: CBCentralManager?
     private var target: CBPeripheral?
@@ -324,6 +329,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     public func readBattery() {
         guard ready, !busy, !restoreOwed || driverModeVerified else { return }
         batteryText = "Reading battery status…"
+        batteryReadState = .reading
         guard let request = try? Protocol30Request.readBatteryList(transaction: transactions.next()) else { return }
         send(request) { [weak self] result in
             guard let self else { return }
@@ -331,12 +337,12 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             case .success(let response):
                 let ids = Array(response.payload)
                 guard !ids.isEmpty, ids.count <= 16, Set(ids).count == ids.count else {
-                    self.batteryText = "The keyboard returned an unexpected battery list"
+                    self.batteryFailed("The keyboard returned an unexpected battery list")
                     return
                 }
                 self.log("battery_list", ["ids": ids])
                 self.readBatteryLevels(ids, readings: [])
-            case .failure(let error): self.batteryText = "Battery read failed: \(error.localizedDescription)"
+            case .failure(let error): self.batteryFailed("Battery read failed: \(error.localizedDescription)")
             }
         }
     }
@@ -344,11 +350,12 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private func readBatteryLevels(_ ids: [UInt8], readings: [String]) {
         guard let id = ids.first else {
             batteryText = readings.joined(separator: " · ")
+            if let percent = batteryPercent { batteryReadState = .ready(percent) }
             return
         }
         guard ready, !restoreOwed || driverModeVerified,
               let request = try? Protocol30Request.readBatteryLevel(transaction: transactions.next(), batteryID: id) else {
-            batteryText = "Battery read interrupted; try again"
+            batteryFailed("Battery read interrupted; try again")
             return
         }
         send(request) { [weak self] result in
@@ -356,7 +363,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             switch result {
             case .success(let response):
                 guard let raw = response.payload.first else {
-                    self.batteryText = "The keyboard returned an empty battery level"
+                    self.batteryFailed("The keyboard returned an empty battery level")
                     return
                 }
                 let percent = Int(raw) * 100 / 255
@@ -364,9 +371,14 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
                 self.log("battery_level", ["batteryID": id, "raw": raw, "percent": percent])
                 let label = ids.count == 1 && readings.isEmpty ? "Battery" : "Battery \(id)"
                 self.readBatteryLevels(Array(ids.dropFirst()), readings: readings + ["\(label): \(percent)%"])
-            case .failure(let error): self.batteryText = "Battery read failed: \(error.localizedDescription)"
+            case .failure(let error): self.batteryFailed("Battery read failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func batteryFailed(_ message: String) {
+        batteryText = message
+        batteryReadState = .failed(message)
     }
 
     public func tryDriverMode() {
