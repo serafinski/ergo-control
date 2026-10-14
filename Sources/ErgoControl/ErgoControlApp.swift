@@ -322,12 +322,15 @@ struct ActionEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Action", selection: Binding(get: { action.kind }, set: { kind in
+                let previousKind = action.kind
                 action.kind = kind
                 switch kind {
                 case .shortcut: action.value = "cmd+c"
                 case .macro: action.value = "cmd+c\nwait 200\ncmd+v"
                 case .scroll: action.value = "down"
                 case .media: action.value = "playPause"
+                case .application, .toggleApplication:
+                    if previousKind != .application && previousKind != .toggleApplication { action.value = "" }
                 default: action.value = ""
                 }
             })) { ForEach(ActionKind.allCases) { kind in Text(kind.rawValue).tag(kind) } }
@@ -340,9 +343,10 @@ struct ActionEditor: View {
                 Text("One shortcut per line. “wait 200” pauses 200 ms. “text Hello” types text. One macro runs at a time.").font(.caption).foregroundStyle(.secondary)
             case .text:
                 TextEditor(text: $action.value).frame(minHeight: 70)
-            case .application, .script:
-                HStack { Text(action.value.isEmpty ? "Choose a file" : URL(fileURLWithPath: action.value).lastPathComponent).lineLimit(1); Spacer(); Button("Choose…") { chooseFile() } }
+            case .application, .toggleApplication, .script:
+                HStack { Text(action.value.isEmpty ? (action.kind == .script ? "Choose a file" : "Choose an application") : URL(fileURLWithPath: action.value).lastPathComponent).lineLimit(1); Spacer(); Button("Choose…") { chooseFile() } }
                 if action.kind == .script { Text("Runs the selected zsh script when this control is pressed. Stops after 10 seconds.").font(.caption).foregroundStyle(.secondary) }
+                if action.kind == .toggleApplication { Text("Bring this app forward. Press again while it is active to minimize its window; press once more to restore it.").font(.caption).foregroundStyle(.secondary) }
             case .scroll:
                 Picker("Direction", selection: $action.value) { ForEach(["up","down","left","right"], id: \.self) { Text($0.capitalized).tag($0) } }
             case .media:
@@ -360,7 +364,7 @@ struct ActionEditor: View {
     }
     private func chooseFile() {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false
-        if action.kind == .application { panel.allowedContentTypes = [.applicationBundle] }
+        if action.kind == .application || action.kind == .toggleApplication { panel.allowedContentTypes = [.applicationBundle] }
         if panel.runModal() == .OK, let url = panel.url { action.value = url.path }
     }
 }

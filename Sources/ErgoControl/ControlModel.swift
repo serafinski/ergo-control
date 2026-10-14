@@ -134,7 +134,7 @@ final class ControlModel: ObservableObject {
                 switch action.kind {
                 case .shortcut: _ = try KeyChord(action.value)
                 case .macro: _ = try MacroStep.parse(action.value)
-                case .application: guard action.value.hasSuffix(".app") else { throw MappingValidationError.message("Choose an application for Open application") }
+                case .application, .toggleApplication: guard action.value.hasSuffix(".app") else { throw MappingValidationError.message("Choose an application for \(action.kind.rawValue)") }
                 case .script: guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("Choose an existing script") }
                 case .text: guard action.value.utf16.count <= 4096 else { throw MappingValidationError.message("Text actions can contain up to 4096 characters") }
                 default: break
@@ -164,6 +164,7 @@ final class ControlModel: ObservableObject {
         }
     }
     private func updateProfile() {
+        engine.endAppSwitcher()
         activeProfileName = activeProfile.name
         let modes = activeProfile.dialModes.filter(\.enabled)
         let index = modeIndices[activeProfile.id, default: 0]
@@ -251,8 +252,9 @@ final class ControlModel: ObservableObject {
     }
     private func execute(_ action: MappingAction, control: String, pressed: Bool) {
         if action.kind == .layer {
+            engine.endAppSwitcher()
             if pressed { layerKeys.insert(control) } else { layerKeys.remove(control) }
-        } else if pressed { engine.perform(action) }
+        } else if pressed { engine.perform(action, fromDial: ["leftCW", "leftCCW", "rightCW", "rightCCW"].contains(control)) }
     }
     private func receive(_ id: UInt32, _ data: Data) {
         guard relay.accessMode.accepts(reportID: id) else { return }
@@ -268,6 +270,7 @@ final class ControlModel: ObservableObject {
             }
             let released = ordinary.subtracting(current).sorted()
             let pressed = current.subtracting(ordinary).sorted()
+            if !released.isEmpty || !pressed.isEmpty { engine.endAppSwitcher() }
             for usage in released {
                 guard relayOpened else { return }
                 let action = keyActions.removeValue(forKey: usage) ?? MappingAction()
@@ -287,13 +290,16 @@ final class ControlModel: ObservableObject {
             ordinary = current
         } else if id == 5 {
             guard let events = extraDecoder.decode(reportID: id, bytes: data) else { stop("Unexpected extra-key packet; mappings stopped."); return }
-            guard running else { return }
+            guard running || relayOpened && relay.accessMode == .fullKeyboard else { return }
             for event in events {
                 guard relayOpened else { return }
                 let control = "extra:\(event.key)"
-                if event.pressed { lastControl = ControlCatalog.label(control); extraActions[event.key] = action(for: control) }
+                if event.pressed { lastControl = ControlCatalog.label(control); extraActions[event.key] = running ? action(for: control) : MappingAction() }
                 let mapping = extraActions[event.key] ?? MappingAction()
-                execute(mapping, control: control, pressed: event.pressed)
+                if mapping.kind == .standard, relay.accessMode == .fullKeyboard,
+                   let usage = NativeExtraKeys.usage(for: event.key) {
+                    engine.relay(usage, pressed: event.pressed, owner: control)
+                } else { execute(mapping, control: control, pressed: event.pressed) }
                 if !event.pressed { extraActions.removeValue(forKey: event.key) }
             }
         } else if id == 2 {
@@ -303,7 +309,7 @@ final class ControlModel: ObservableObject {
             let steps = Int(Int8(bitPattern: bytes[3])); guard running, steps != 0 else { return }
             let control = steps > 0 ? "leftCW" : "leftCCW"
             lastControl = ControlCatalog.label(control)
-            for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control)) }
+            for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control), fromDial: true) }
         } else if id == 3 {
             guard bytes.count == 12, bytes.dropFirst(3).allSatisfy({ $0 == 0 }) else { stop("Unexpected media packet; mappings stopped."); return }
             let usage = UInt16(bytes[1]) | UInt16(bytes[2]) << 8

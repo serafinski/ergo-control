@@ -43,39 +43,54 @@ final class ActionEngine {
     private var macroActive = false
     private var generation = 0
     private var capsLock = CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift)
+    private var nativeOwners = NativeKeyOwners()
+    private var appSwitcher = DialAppSwitcher()
+    private var switcherTimer: Timer?
+    private let keyOutput: ((KeyboardOutput, Bool) -> Void)?
+    private let applicationToggle = ApplicationToggle()
 
-    func key(_ usage: UInt8, pressed: Bool, repeated: Bool = false, modifiers: UInt8? = nil) {
+    init(keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) { self.keyOutput = keyOutput }
+
+    func key(_ usage: UInt8, pressed: Bool, repeated: Bool = false, modifiers: UInt8? = nil, tracked: Bool = true) {
         guard let code = MacKeys.codes[usage] else { onError?("This keyboard key needs support (\(usage)); mappings were stopped"); return }
         guard let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: pressed) else { return }
         if usage >= 224 || usage == 57 { event.type = .flagsChanged }
         event.flags = MacKeys.flags(modifiers ?? physicalModifiers)
         if capsLock { event.flags.insert(.maskAlphaShift) }
         if repeated { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
-        event.post(tap: .cghidEventTap)
-        if !repeated {
+        if let keyOutput { keyOutput(KeyboardOutput(usage, pressed: pressed, modifiers: modifiers ?? physicalModifiers), repeated) }
+        else { event.post(tap: .cghidEventTap) }
+        if !repeated && tracked {
             if pressed { down.insert(usage) } else { down.remove(usage) }
         }
     }
 
-    func relay(_ usage: UInt8, pressed: Bool) {
+    func relay(_ usage: UInt8, pressed: Bool, owner: String? = nil) {
+        endAppSwitcher()
+        guard nativeOwners.change(usage, owner: owner ?? "key:\(usage)", pressed: pressed) else { return }
         if usage == 57 && pressed { capsLock.toggle() }
         key(usage, pressed: pressed)
         guard usage < 224, usage != 57 else { return }
         if pressed {
             repeatTimer?.invalidate(); repeating = usage
             let delay = max(0.25, min(2, UserDefaults.standard.double(forKey: "InitialKeyRepeat") * 0.015))
-            repeatTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            repeatTimer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
                 guard let self, self.repeating == usage else { return }
+                self.endAppSwitcher()
                 self.key(usage, pressed: true, repeated: true)
                 let interval = max(0.015, min(0.15, UserDefaults.standard.double(forKey: "KeyRepeat") * 0.015))
-                self.repeatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                self.repeatTimer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+                    self?.endAppSwitcher()
                     self?.key(usage, pressed: true, repeated: true)
                 }
+                if let timer = self.repeatTimer { RunLoop.main.add(timer, forMode: .common) }
             }
+            if let repeatTimer { RunLoop.main.add(repeatTimer, forMode: .common) }
         } else if repeating == usage { repeatTimer?.invalidate(); repeatTimer = nil; repeating = nil }
     }
 
     func media(_ usage: UInt16, pressed: Bool) -> Bool {
+        endAppSwitcher()
         let codes: [UInt16: Int] = [0xe9:0,0xea:1,0x6f:2,0x70:3,0xe2:7,0xcd:16,0xb5:17,0xb6:18,0xb3:19,0xb4:20]
         guard let code = codes[usage] else { return false }
         if pressed { heldMedia.insert(usage) } else { heldMedia.remove(usage) }
@@ -85,8 +100,17 @@ final class ActionEngine {
         return true
     }
 
-    func perform(_ action: MappingAction) {
+    func perform(_ action: MappingAction, fromDial: Bool = false) {
         do {
+            if fromDial, action.kind == .shortcut,
+               let events = appSwitcher.step(try KeyChord(action.value), physicalModifiers: physicalModifiers) {
+                outputSwitcher(events)
+                switcherTimer?.invalidate()
+                let timer = Timer(timeInterval: 1, repeats: false) { [weak self] _ in self?.endAppSwitcher() }
+                switcherTimer = timer; RunLoop.main.add(timer, forMode: .common)
+                return
+            }
+            endAppSwitcher()
             switch action.kind {
             case .shortcut: chord(try KeyChord(action.value))
             case .macro: run(try MacroStep.parse(action.value))
@@ -96,6 +120,10 @@ final class ActionEngine {
                 guard url.pathExtension == "app" else { throw MappingValidationError.message("Choose an application") }
                 NSWorkspace.shared.openApplication(at: url, configuration: .init()) { [weak self] _, error in
                     if let error { DispatchQueue.main.async { self?.onError?(error.localizedDescription) } }
+                }
+            case .toggleApplication:
+                try applicationToggle.perform(URL(fileURLWithPath: action.value)) { [weak self] message in
+                    self?.onError?(message)
                 }
             case .script:
                 guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("The selected script is missing") }
@@ -120,11 +148,13 @@ final class ActionEngine {
     }
 
     private func chord(_ chord: KeyChord) {
+        endAppSwitcher()
         let combined = chord.modifiers
         key(chord.usage, pressed: true, modifiers: combined)
         key(chord.usage, pressed: false, modifiers: physicalModifiers)
     }
     private func type(_ text: String) {
+        endAppSwitcher()
         let utf16 = Array(text.utf16)
         var offset = 0
         while offset < utf16.count {
@@ -158,13 +188,23 @@ final class ActionEngine {
         }
         jobs.append(end); DispatchQueue.main.asyncAfter(deadline: .now() + elapsed, execute: end)
     }
+    private func outputSwitcher(_ events: [KeyboardOutput]) {
+        for event in events { key(event.usage, pressed: event.pressed, modifiers: event.modifiers, tracked: false) }
+    }
+    func endAppSwitcher() {
+        switcherTimer?.invalidate(); switcherTimer = nil
+        outputSwitcher(appSwitcher.finish(physicalModifiers: physicalModifiers))
+    }
     func stop() {
+        endAppSwitcher()
+        applicationToggle.cancelPending()
         generation += 1; jobs.forEach { $0.cancel() }; jobs.removeAll(); macroActive = false
         repeatTimer?.invalidate(); repeatTimer = nil; repeating = nil
         tasks.filter(\.isRunning).forEach { $0.terminate() }; tasks.removeAll()
         physicalModifiers = 0
         for usage in down.sorted() { key(usage, pressed: false, modifiers: 0) }
         down.removeAll()
+        nativeOwners = NativeKeyOwners()
         for usage in heldMedia.sorted() { _ = media(usage, pressed: false) }
         heldMedia.removeAll()
     }

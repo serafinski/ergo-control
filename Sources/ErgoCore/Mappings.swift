@@ -3,6 +3,7 @@ import Foundation
 public enum ActionKind: String, CaseIterable, Codable, Identifiable {
     case standard = "Default", shortcut = "Shortcut", macro = "Macro", text = "Type text"
     case application = "Open application", script = "Run script", scroll = "Scroll"
+    case toggleApplication = "Show / minimize application"
     case media = "Media action", cycleDial = "Next dial mode", layer = "Hold alternate layer"
     case battery = "Show battery", disabled = "Do nothing"
     public var id: String { rawValue }
@@ -125,7 +126,8 @@ public enum ControlCatalog {
         ("rightCW", "Right roller · clockwise"), ("rightCCW", "Right roller · counterclockwise"), ("rightClick", "Right roller · click"),
         ("extra:32", "M1"), ("extra:33", "M2"), ("extra:34", "M3"), ("extra:35", "M4"), ("extra:36", "M5"),
         ("extra:247", "AI button"), ("mediaSingle", "Media · single press"), ("mediaDouble", "Media · double press"),
-        ("mediaTriple", "Media · triple press"), ("extra:65", "Battery button")]
+        ("mediaTriple", "Media · triple press"), ("extra:65", "Battery button"),
+        ("extra:253", "Right space"), ("extra:252", "Split B · extra key"), ("extra:251", "Split Backspace · extra key")]
     public static func label(_ id: String) -> String {
         if let label = controls.first(where: { $0.0 == id })?.1 { return label }
         if id.hasPrefix("key:"), let value = UInt8(id.dropFirst(4)),

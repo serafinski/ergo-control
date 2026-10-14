@@ -6,6 +6,8 @@ Bluetooth-first investigation and standalone macOS replacement for Synapse on th
 
 Version 0.2.2 uses an optional, scoped input helper for full dial/keyboard replacement. The local installer and the helper's separate Input Monitoring grant now work on this Mac. Bundled Service Management registration was rejected for the unnotarized development build. See [helper architecture and validation](docs/INPUT_HELPER.md). The working latest build is `build/Ergo Control Preview.app`; the older non-seizing build remains separately at `build/Ergo Control.app`.
 
+The 0.2.3 preview adds a persistent native Command+Tab dial switcher, native defaults for the separate split Space/B/Backspace records under full control, and **Show / minimize application** mappings. These changes pass automated checks; live verification of the new behavior is pending. The preview reuses the already installed 0.2.2 helper.
+
 Build with `zsh tools/build_app.sh`, then open `build/Ergo Control.app`. See [app setup and validation](docs/APP.md). The diagnostic apps below remain available separately.
 
 Build with `zsh tools/build_probe.sh`. Open `build/Ergo Probe.app`.

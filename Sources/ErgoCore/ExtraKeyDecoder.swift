@@ -10,6 +10,9 @@ public struct ExtraKeyEvent: Equatable {
         case 247: return "AI button"
         case 96: return "Left dial click"
         case 65: return "Battery button"
+        case 251: return "Split Backspace · extra key"
+        case 252: return "Split B · extra key"
+        case 253: return "Right space"
         default: return "Extra key \(key)"
         }
     }
