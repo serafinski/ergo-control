@@ -8,6 +8,17 @@ struct SavedMode: Codable {
     let peripheral: UUID
     let mode: UInt8
     let parameter: UInt8
+    var dialLight: SavedDialLight? = nil
+}
+
+struct SavedDialLight: Codable {
+    let color: DialColor?
+    let on: Bool
+
+    static func fallbackForUnsupportedRGB(state: UInt8, status: UInt8) -> Self? {
+        guard state == 0, status == 7 else { return nil }
+        return Self(color: nil, on: false)
+    }
 }
 
 private final class PendingCommand {
@@ -25,8 +36,16 @@ private final class PendingCommand {
 
 enum BluetoothFailure: LocalizedError {
     case message(String)
+    case rejected(UInt8)
+    var requiresReconnect: Bool {
+        if case .rejected = self { return false }
+        return true
+    }
     var errorDescription: String? {
-        switch self { case .message(let text): return text }
+        switch self {
+        case .message(let text): return text
+        case .rejected(let status): return "Keyboard response status \(status)"
+        }
     }
 }
 
@@ -48,6 +67,18 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     @Published public private(set) var batteryPercent: Int?
     @Published public private(set) var batteryReadState: BatteryReadState = .idle
 
+    @Published public private(set) var lightingStatus = ""
+    @Published public private(set) var keyboardBrightnessPercent: Int?
+    private var brightnessSteps = BrightnessSteps()
+    private var lightingRegion: UInt8?
+    private var lightingTimer: Timer?
+    private var lightingOperation = false
+    private var requestedDialColor: DialColor?
+    private var dialDeadline: TimeInterval?
+    private var dialLightChanged = false
+    private var indicatorUnavailable = false
+    private var brightnessUnavailable = false
+
     private var central: CBCentralManager?
     private var target: CBPeripheral?
     private var targetID: UUID?
@@ -62,6 +93,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private var original: SavedMode?
     private var currentMode: (UInt8, UInt8)?
     private var restoreRequested = false
+    private var restorationChain = false
     private var closing = false
     private var logfile: FileHandle?
     private let serviceUUID = CBUUID(string: ErgoTarget.service)
@@ -280,7 +312,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     private func finishIfReady() {
         guard let response = pending?.exchange.completedResponse else { return }
-        complete(response.succeeded ? .success(response) : .failure(BluetoothFailure.message("Keyboard response status \(response.status)")))
+        complete(response.succeeded ? .success(response) : .failure(BluetoothFailure.rejected(response.status)))
     }
 
     private func complete(_ result: Result<Protocol30Response, Error>) {
@@ -292,12 +324,17 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             log("command_failed", ["error": error.localizedDescription])
             // Do not let a late reply or write acknowledgement from a failed
             // exchange overlap restoration on the same connection.
-            ready = false
-            writeCharacteristic = nil
-            if let target, target.state == .connected { central?.cancelPeripheralConnection(target) }
+            // A fully received negative acknowledgement leaves the stream in
+            // sync. Optional lighting being unsupported must not stop mappings.
+            if (error as? BluetoothFailure)?.requiresReconnect != false {
+                ready = false
+                writeCharacteristic = nil
+                if let target, target.state == .connected { central?.cancelPeripheralConnection(target) }
+            }
         }
         command.completion(result)
         if restoreRequested, pending == nil { restoreRequested = false; restore() }
+        else { DispatchQueue.main.async { [weak self] in self?.pumpLighting() } }
     }
 
     public func readMode() {
@@ -394,6 +431,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             try recoveryFile.close()
         } catch { status = "Cannot save restoration state; the keyboard was not changed"; return }
         original = saved
+        indicatorUnavailable = false; brightnessUnavailable = false
+        lightingStatus = ""; lightingOperation = false
+        brightnessSteps.clear(); requestedDialColor = nil; dialDeadline = nil; dialLightChanged = false
+        lightingRegion = nil
         restoreOwed = true
         secondsRemaining = 60
         leaseDeadline = ProcessInfo.processInfo.systemUptime + 60
@@ -446,13 +487,20 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     public func restore() {
+        lightingTimer?.invalidate(); lightingTimer = nil
+        brightnessSteps.clear(); requestedDialColor = nil; dialDeadline = nil
         driverModeVerified = false
-        guard restoreOwed, let original else { return }
+        guard restoreOwed, let original, !restorationChain else { return }
         restoreTimer?.invalidate(); restoreTimer = nil
         secondsRemaining = 0
         leaseDeadline = nil
         if pending != nil { restoreRequested = true; return }
         guard ready, target?.identifier == original.peripheral else { connect(); scheduleRestoreRetry(); return }
+        restorationChain = true
+        restoreOriginalMode(original)
+    }
+
+    private func restoreOriginalMode(_ original: SavedMode) {
         status = "Restoring the original keyboard mode…"
         guard let request = try? Protocol30Request.deviceMode(transaction: transactions.next(), mode: original.mode, parameter: original.parameter) else { return }
         send(request) { [weak self] result in
@@ -460,8 +508,238 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             switch result {
             case .success: self.verifyRestoration(original)
             case .failure(let error):
+                self.restorationChain = false
                 self.status = "Restoration not confirmed: \(error.localizedDescription). Keep the keyboard connected."
                 self.scheduleRestoreRetry()
+            }
+        }
+    }
+
+    // Lighting shares the acknowledged, single-command transport with mode/battery
+    // reads. Never continue a lighting chain once restoration has been requested.
+    public func adjustKeyboardBrightness(_ direction: Int) {
+        guard driverModeVerified, !brightnessUnavailable else { return }
+        guard brightnessSteps.append(direction) else {
+            lightingStatus = "Too many brightness turns; let the keyboard finish adjusting."; return
+        }
+        startLightingTimer(); pumpLighting()
+    }
+
+    public func flashDialIndicator(_ color: DialColor) {
+        guard driverModeVerified, !indicatorUnavailable else { return }
+        requestedDialColor = color
+        startLightingTimer(); pumpLighting()
+    }
+
+    private func startLightingTimer() {
+        guard lightingTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.pumpLighting() }
+        lightingTimer = timer; RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func pumpLighting() {
+        guard driverModeVerified, ready, !busy, !lightingOperation, !restoreRequested, !closing else { return }
+        // Retire the previous flash before processing brightness. A newer mode
+        // selection supersedes its timeout and is coalesced to the latest color.
+        if requestedDialColor != nil, !indicatorUnavailable {
+            lightingOperation = true
+            if original?.dialLight == nil { captureDialLight() } else { applyDialColor() }
+        } else if dialLightChanged, let deadline = dialDeadline,
+                  ProcessInfo.processInfo.systemUptime >= deadline, let light = original?.dialLight {
+            lightingOperation = true
+            restoreDialLight(light) { [weak self] success in
+                self?.lightingOperation = false
+                if success { self?.dialLightChanged = false; self?.dialDeadline = nil }
+            }
+        } else if !brightnessSteps.isEmpty, !brightnessUnavailable {
+            lightingOperation = true
+            if lightingRegion == nil {
+                lightingCommand(try! .readLightingRegions(transaction: transactions.next()), brightness: true) { [weak self] response in
+                    guard let self else { return }
+                    let regions = response.payload.map { $0 & 63 }.filter { $0 != 0 }
+                    guard let region = regions.first else { self.lightingFailed("No keyboard lighting region was returned", brightness: true); return }
+                    self.lightingRegion = region; self.changeBrightness()
+                }
+            } else { changeBrightness() }
+        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged {
+            lightingTimer?.invalidate(); lightingTimer = nil
+        }
+    }
+
+    private func lightingCommand(_ request: Protocol30Request, brightness: Bool = false,
+                                 rejected: ((UInt8) -> Void)? = nil, completion: @escaping (Protocol30Response) -> Void) {
+        guard driverModeVerified, !restoreRequested else { lightingOperation = false; return }
+        send(request) { [weak self] result in
+            guard let self else { return }
+            guard self.driverModeVerified, !self.restoreRequested else { self.lightingOperation = false; return }
+            switch result {
+            case .success(let response): completion(response)
+            case .failure(let error):
+                if case .rejected(let status) = error as? BluetoothFailure, let rejected { rejected(status) }
+                else { self.lightingFailed(error.localizedDescription, brightness: brightness) }
+            }
+        }
+    }
+
+    private func lightingFailed(_ message: String, brightness: Bool) {
+        lightingOperation = false
+        if brightness { brightnessUnavailable = true; brightnessSteps.clear() }
+        else {
+            indicatorUnavailable = true; requestedDialColor = nil
+            if dialLightChanged { dialDeadline = ProcessInfo.processInfo.systemUptime }
+        }
+        lightingStatus = "\(brightness ? "Keyboard brightness" : "Dial indicator") unavailable: \(message)"
+        log("lighting_failed", ["brightness": brightness, "error": message])
+    }
+
+    private func changeBrightness() {
+        guard let region = lightingRegion else { lightingOperation = false; return }
+        lightingCommand(try! .readKeyboardBrightness(transaction: transactions.next(), region: region), brightness: true) { [weak self] response in
+            guard let self else { return }
+            guard response.payload.count == 1, let raw = response.payload.first else {
+                self.lightingFailed("Unexpected brightness response", brightness: true); return
+            }
+            let target = self.brightnessSteps.takeTarget(from: raw)
+            if target == raw { self.brightnessFinished(raw); return }
+            self.lightingCommand(try! .keyboardBrightness(transaction: self.transactions.next(), raw: target), brightness: true) { [weak self] _ in
+                guard let self else { return }
+                self.lightingCommand(try! .readKeyboardBrightness(transaction: self.transactions.next(), region: region), brightness: true) { [weak self] reply in
+                    guard let self else { return }
+                    guard reply.payload == Data([target]) else {
+                        self.lightingFailed("Brightness read-back did not match", brightness: true); return
+                    }
+                    self.brightnessFinished(target)
+                }
+            }
+        }
+    }
+
+    private func brightnessFinished(_ raw: UInt8) {
+        lightingOperation = false
+        let percent = Int(ceil(Double(raw) / 255 * 100))
+        keyboardBrightnessPercent = percent
+        lightingStatus = "Keyboard brightness: \(percent)%"
+        log("keyboard_brightness_verified", ["percent": percent, "raw": raw])
+    }
+
+    private func captureDialLight() {
+        lightingCommand(try! .readDialLightState(transaction: transactions.next())) { [weak self] state in
+            guard let self else { return }
+            guard state.payload.count == 1, let on = state.payload.first, on <= 1 else {
+                self.lightingFailed("Unexpected dial light state", brightness: false); return
+            }
+            self.lightingCommand(try! .readDialColor(transaction: self.transactions.next()), rejected: { [weak self] status in
+                guard let self else { return }
+                // This PT Ergo firmware supports state reads but rejects RGB reads
+                // with status 7. If the light is off, its color is not visible:
+                // preserve off/on state and use the vendor's transient color write.
+                guard let saved = SavedDialLight.fallbackForUnsupportedRGB(state: on, status: status) else {
+                    self.lightingFailed("Cannot preserve the dial’s existing color (status \(status))", brightness: false); return
+                }
+                self.log("dial_rgb_read_unsupported_light_off")
+                self.saveDialLight(saved)
+            }) { [weak self] response in
+                guard let self else { return }
+                guard (3...4).contains(response.payload.count) else {
+                    self.lightingFailed("Unexpected dial color response", brightness: false); return
+                }
+                let bytes = Array(response.payload)
+                self.saveDialLight(SavedDialLight(color: DialColor(red: bytes[0], green: bytes[1], blue: bytes[2]), on: on == 1))
+            }
+        }
+    }
+
+    private func saveDialLight(_ light: SavedDialLight) {
+        guard var saved = original else { lightingOperation = false; return }
+        saved.dialLight = light
+        // Persist the original visible state before the first color write.
+        do {
+            try JSONEncoder().encode(saved).write(to: recoveryURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: recoveryURL.path)
+            let file = try FileHandle(forWritingTo: recoveryURL)
+            try file.synchronize(); try file.close()
+        } catch { lightingFailed("Cannot save the original dial light", brightness: false); return }
+        original = saved; applyDialColor()
+    }
+
+    private func applyDialColor() {
+        guard let color = requestedDialColor else { lightingOperation = false; return }
+        requestedDialColor = nil
+        // Snapshot is already durable; even a partial write is restored on stop/reconnect.
+        dialLightChanged = true
+        lightingCommand(try! .dialColor(transaction: transactions.next(), color: color)) { [weak self] _ in
+            guard let self else { return }
+            self.lightingCommand(try! .dialLightState(transaction: self.transactions.next(), on: true)) { [weak self] _ in
+                guard let self else { return }
+                self.lightingCommand(try! .readDialLightState(transaction: self.transactions.next())) { [weak self] response in
+                    guard let self else { return }
+                    guard response.payload == Data([1]) else {
+                        self.lightingFailed("Dial light did not turn on", brightness: false); return
+                    }
+                    self.lightingOperation = false
+                    self.dialDeadline = ProcessInfo.processInfo.systemUptime + 3
+                    self.lightingStatus = "Dial indicator color applied"
+                    self.log("dial_color_write_acknowledged_state_verified", ["red": color.red, "green": color.green, "blue": color.blue])
+                }
+            }
+        }
+    }
+
+    private func restoreLightCommand(_ request: Protocol30Request, failed: @escaping () -> Void,
+                                     completion: @escaping (Protocol30Response) -> Void) {
+        send(request) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let response): completion(response)
+            case .failure:
+                self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5
+                self.log("dial_light_restoration_unconfirmed"); failed()
+            }
+        }
+    }
+
+    private func restoreDialLight(_ light: SavedDialLight, completion: @escaping (Bool) -> Void) {
+        guard let color = light.color else { restoreDialLightState(light, completion: completion); return }
+        // First read: a rejected optional color write may have changed nothing.
+        // Avoid making restoration depend on a setter the device rejected.
+        restoreLightCommand(try! .readDialColor(transaction: transactions.next()), failed: { completion(false) }) { [weak self] response in
+            guard let self else { return }
+            guard (3...4).contains(response.payload.count) else {
+                self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5; completion(false); return
+            }
+            if Data(response.payload.prefix(3)) == color.bytes {
+                self.restoreDialLightState(light, completion: completion)
+            } else {
+                self.restoreLightCommand(try! .dialColor(transaction: self.transactions.next(), color: color), failed: { completion(false) }) { [weak self] _ in
+                    guard let self else { return }
+                    self.restoreLightCommand(try! .readDialColor(transaction: self.transactions.next()), failed: { completion(false) }) { [weak self] response in
+                        guard let self else { return }
+                        guard Data(response.payload.prefix(3)) == color.bytes else {
+                            self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5; completion(false); return
+                        }
+                        self.restoreDialLightState(light, completion: completion)
+                    }
+                }
+            }
+        }
+    }
+
+    private func restoreDialLightState(_ light: SavedDialLight, completion: @escaping (Bool) -> Void) {
+        let expected = Data([light.on ? UInt8(1) : 0])
+        restoreLightCommand(try! .readDialLightState(transaction: transactions.next()), failed: { completion(false) }) { [weak self] response in
+            guard let self else { return }
+            if response.payload == expected { completion(true); return }
+            guard response.payload.count == 1, response.payload[0] <= 1 else {
+                self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5; completion(false); return
+            }
+            self.restoreLightCommand(try! .dialLightState(transaction: self.transactions.next(), on: light.on), failed: { completion(false) }) { [weak self] _ in
+                guard let self else { return }
+                self.restoreLightCommand(try! .readDialLightState(transaction: self.transactions.next()), failed: { completion(false) }) { [weak self] response in
+                    guard let self else { return }
+                    let success = response.payload == expected
+                    if !success { self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5 }
+                    completion(success)
+                }
             }
         }
     }
@@ -472,20 +750,34 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             guard let self else { return }
             if case .success(let response) = result, response.payload == Data([saved.mode, saved.parameter]) {
                 self.log("original_mode_restored", ["mode": saved.mode, "parameter": saved.parameter])
-                self.driverModeVerified = false
-                self.restoreOwed = false
-                self.original = nil
-                self.currentMode = (saved.mode, saved.parameter)
-                self.modeText = "Original mode restored (\(saved.mode))"
-                self.status = "Original keyboard mode restored and verified"
-                self.retryTimer?.invalidate(); self.retryTimer = nil
-                try? FileManager.default.removeItem(at: self.recoveryURL)
-                if self.closing { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
+                if let light = saved.dialLight {
+                    self.restoreDialLight(light) { [weak self] success in
+                        guard let self else { return }
+                        if success { self.finishRestoration(saved) }
+                        else {
+                            self.restorationChain = false
+                            self.status = "Normal keyboard mode restored; dial light restoration is pending. Keep PT Ergo connected."
+                            self.scheduleRestoreRetry()
+                        }
+                    }
+                } else { self.finishRestoration(saved) }
             } else {
+                self.restorationChain = false
                 self.status = "Restoration has not been verified; retrying while PT Ergo is connected…"
                 self.scheduleRestoreRetry()
             }
         }
+    }
+
+    private func finishRestoration(_ saved: SavedMode) {
+        restorationChain = false; lightingOperation = false; dialLightChanged = false
+        driverModeVerified = false; restoreOwed = false; original = nil
+        currentMode = (saved.mode, saved.parameter)
+        modeText = "Original mode restored (\(saved.mode))"
+        status = "Original keyboard mode restored and verified"
+        retryTimer?.invalidate(); retryTimer = nil
+        try? FileManager.default.removeItem(at: recoveryURL)
+        if closing { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
     }
 
     private func scheduleRestoreRetry() {

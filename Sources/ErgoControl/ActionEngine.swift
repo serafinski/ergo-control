@@ -30,6 +30,7 @@ enum MacKeys {
 
 final class ActionEngine {
     var onCycle: (() -> Void)?
+    var onBrightness: ((Int) -> Void)?
     var onBattery: (() -> Void)?
     var onError: ((String) -> Void)?
     var physicalModifiers: UInt8 = 0
@@ -142,6 +143,9 @@ final class ActionEngine {
                 if let usage = usages[action.value] { _ = media(usage, pressed: true); _ = media(usage, pressed: false) }
             case .cycleDial: onCycle?()
             case .battery: onBattery?()
+            case .keyboardBrightness:
+                guard action.value == "up" || action.value == "down" else { throw MappingValidationError.message("Choose Increase or Decrease for keyboard brightness") }
+                onBrightness?(action.value == "up" ? 1 : -1)
             case .standard, .disabled, .layer: break
             }
         } catch { onError?(error.localizedDescription) }

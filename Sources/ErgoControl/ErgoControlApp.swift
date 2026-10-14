@@ -59,7 +59,6 @@ struct ControlSettingsView: View {
     @State private var showAddKey = false
     @State private var testText = ""
     @State private var showDialModes = false
-    @State private var showGamingMode = false
     private var index: Int { model.profileIndex }
     private var profile: Binding<MappingProfile> {
         let id = model.selectedProfileID
@@ -150,8 +149,11 @@ struct ControlSettingsView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(model.status).font(.callout)
                             if model.inputAccessMode == .macroButtons {
-                                Text("Custom dial modes, media-button replacement, ordinary-key remaps and gaming mode need full keyboard control. macOS denied that access. The left dial uses horizontal scrolling while driver mode is active.")
+                                Text("Custom dial modes, media-button replacement, ordinary-key remaps need full keyboard control. macOS denied that access. The left dial uses horizontal scrolling while driver mode is active.")
                                     .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if !model.bluetooth.lightingStatus.isEmpty {
+                                Text(model.bluetooth.lightingStatus).font(.caption).foregroundStyle(.secondary)
                             }
                             if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
                             HStack {
@@ -250,13 +252,22 @@ struct ControlSettingsView: View {
                     HStack { Text("Command dial modes").font(.title2.bold()); Spacer(); Button("Add mode") {
                         model.configuration.profiles[index].dialModes.append(DialMode(name: "Custom mode", clockwise: MappingAction(.shortcut, "cmd+equal"), counterclockwise: MappingAction(.shortcut, "cmd+minus")))
                     } }
-                    Text("Click the left dial to cycle enabled modes. Profiles keep their own mode selection.").foregroundStyle(.secondary)
+                    Text("Click the left dial to cycle enabled modes. The keyboard indicator flashes each mode’s color for three seconds.").foregroundStyle(.secondary)
                     ForEach(model.configuration.profiles[index].dialModes) { mode in
                         let modeBinding = dialBinding(mode)
                         GroupBox {
                             VStack(alignment: .leading, spacing: 14) {
                                 HStack {
                                     Toggle("", isOn: modeBinding.enabled).labelsHidden().toggleStyle(.switch)
+                                    ColorPicker("Indicator color", selection: Binding(get: {
+                                        let c = modeBinding.wrappedValue.color
+                                        return Color(red: Double(c.red) / 255, green: Double(c.green) / 255, blue: Double(c.blue) / 255)
+                                    }, set: { value in
+                                        if let rgb = NSColor(value).usingColorSpace(.deviceRGB) {
+                                            modeBinding.wrappedValue.color = DialColor(red: UInt8((rgb.redComponent * 255).rounded()),
+                                                green: UInt8((rgb.greenComponent * 255).rounded()), blue: UInt8((rgb.blueComponent * 255).rounded()))
+                                        }
+                                    }), supportsOpacity: false).labelsHidden()
                                     TextField("Mode name", text: modeBinding.name).font(.headline)
                                     Button { model.configuration.profiles[index].dialModes.removeAll { $0.id == mode.id } } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
                                 }
@@ -268,13 +279,6 @@ struct ControlSettingsView: View {
                         }
                     }
                         }
-                    }.disabled(model.inputAccessMode == .macroButtons)
-                    DisclosureGroup("Gaming mode", isExpanded: $showGamingMode) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Toggle("Block selected shortcuts in this profile", isOn: profile.gamingMode)
-                            HStack { Toggle("Command + Q", isOn: profile.blockQuit); Toggle("Command + Tab", isOn: profile.blockAppSwitch); Toggle("Command + Space", isOn: profile.blockSpotlight) }
-                                .disabled(!model.configuration.profiles[index].gamingMode)
-                        }.padding(8)
                     }.disabled(model.inputAccessMode == .macroButtons)
                     Text("Only PT Ergo is handled while mappings are enabled. Profiles are stored on this Mac. No account or cloud service is required.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -338,6 +342,7 @@ struct ActionEditor: View {
                 case .macro: action.value = "cmd+c\nwait 200\ncmd+v"
                 case .scroll: action.value = "down"
                 case .media: action.value = "playPause"
+                case .keyboardBrightness: action.value = "up"
                 case .application, .toggleApplication:
                     if previousKind != .application && previousKind != .toggleApplication { action.value = "" }
                 default: action.value = ""
@@ -363,6 +368,11 @@ struct ActionEditor: View {
                     Text("Play / pause").tag("playPause"); Text("Next track").tag("next"); Text("Previous track").tag("previous")
                     Text("Volume up").tag("volumeUp"); Text("Volume down").tag("volumeDown"); Text("Mute").tag("mute")
                 }
+            case .keyboardBrightness:
+                Picker("Brightness", selection: $action.value) {
+                    Text("Increase").tag("up"); Text("Decrease").tag("down")
+                }
+                Text("Adjust PT Ergo’s backlight in 5% steps.").font(.caption).foregroundStyle(.secondary)
             case .standard: Text("Use the normal action, or the current dial mode.").font(.caption).foregroundStyle(.secondary)
             case .layer: Text("Other controls use this profile’s alternate layer while this button is held.").font(.caption).foregroundStyle(.secondary)
             case .cycleDial: Text("Switch to the next enabled command-dial mode.").font(.caption).foregroundStyle(.secondary)

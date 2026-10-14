@@ -5,6 +5,7 @@ public enum ActionKind: String, CaseIterable, Codable, Identifiable {
     case application = "Open application", script = "Run script", scroll = "Scroll"
     case toggleApplication = "Show / minimize application"
     case media = "Media action", cycleDial = "Next dial mode", layer = "Hold alternate layer"
+    case keyboardBrightness = "Keyboard brightness"
     case battery = "Show battery", disabled = "Do nothing"
     public var id: String { rawValue }
 }
@@ -21,9 +22,25 @@ public struct DialMode: Codable, Identifiable, Equatable {
     public var enabled: Bool
     public var clockwise: MappingAction
     public var counterclockwise: MappingAction
-    public init(name: String, clockwise: MappingAction, counterclockwise: MappingAction) {
+    public var color: DialColor
+    public init(name: String, clockwise: MappingAction, counterclockwise: MappingAction, color: DialColor? = nil) {
         id = UUID(); self.name = name; enabled = true
         self.clockwise = clockwise; self.counterclockwise = counterclockwise
+        self.color = color ?? .defaultColor(for: name)
+    }
+    private enum CodingKeys: String, CodingKey { case id, name, enabled, clockwise, counterclockwise, color }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        enabled = try values.decode(Bool.self, forKey: .enabled)
+        clockwise = try values.decode(MappingAction.self, forKey: .clockwise)
+        counterclockwise = try values.decode(MappingAction.self, forKey: .counterclockwise)
+        color = try values.decodeIfPresent(DialColor.self, forKey: .color) ?? .defaultColor(for: name)
+    }
+    public static var keyboardBrightness: Self {
+        Self(name: "Keyboard brightness", clockwise: MappingAction(.keyboardBrightness, "up"),
+             counterclockwise: MappingAction(.keyboardBrightness, "down"))
     }
 }
 
@@ -34,14 +51,10 @@ public struct MappingProfile: Codable, Identifiable, Equatable {
     public var mappings: [String: MappingAction]
     public var alternate: [String: MappingAction]
     public var dialModes: [DialMode]
-    public var gamingMode: Bool
-    public var blockQuit: Bool
-    public var blockAppSwitch: Bool
-    public var blockSpotlight: Bool
     public init(name: String = "Default") {
         id = UUID(); self.name = name; applicationIDs = []; mappings = [:]; alternate = [:]
-        gamingMode = false; blockQuit = true; blockAppSwitch = false; blockSpotlight = false
         dialModes = [
+            .keyboardBrightness,
             DialMode(name: "Zoom", clockwise: MappingAction(.shortcut, "cmd+keypadplus"), counterclockwise: MappingAction(.shortcut, "cmd+keypadminus")),
             DialMode(name: "Scroll", clockwise: MappingAction(.scroll, "down"), counterclockwise: MappingAction(.scroll, "up")),
             DialMode(name: "Switch applications", clockwise: MappingAction(.shortcut, "cmd+tab"), counterclockwise: MappingAction(.shortcut, "cmd+shift+tab")),
@@ -51,11 +64,27 @@ public struct MappingProfile: Codable, Identifiable, Equatable {
 }
 
 public struct MappingConfiguration: Codable, Equatable {
-    public var schema = 1
+    public var schema = 2
     public var profiles: [MappingProfile]
     public var manualProfileID: UUID
     public var autoSwitch = true
     public init() { let profile = MappingProfile(); profiles = [profile]; manualProfileID = profile.id }
+    private enum CodingKeys: String, CodingKey { case schema, profiles, manualProfileID, autoSwitch }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try values.decode(Int.self, forKey: .schema)
+        profiles = try values.decode([MappingProfile].self, forKey: .profiles)
+        manualProfileID = try values.decode(UUID.self, forKey: .manualProfileID)
+        autoSwitch = try values.decode(Bool.self, forKey: .autoSwitch)
+        if schema == 1 {
+            for index in profiles.indices {
+                if !profiles[index].dialModes.contains(where: {
+                    $0.clockwise.kind == .keyboardBrightness || $0.counterclockwise.kind == .keyboardBrightness
+                }) { profiles[index].dialModes.append(.keyboardBrightness) }
+            }
+            schema = 2
+        }
+    }
     public func profile(for applicationID: String?) -> MappingProfile {
         if autoSwitch, let applicationID,
            let profile = profiles.first(where: { $0.applicationIDs.contains(applicationID) }) { return profile }

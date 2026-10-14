@@ -4,6 +4,20 @@ import ErgoCore
 
 /// Exercise the real engine with an output sink; never post input to the Mac.
 final class ActionEngineTests: XCTestCase {
+    func testKeyboardBrightnessUsesDeviceCallbackInsteadOfMacKeyEvents() {
+        var output: [KeyboardOutput] = []
+        var turns: [Int] = []
+        var error: String?
+        let engine = ActionEngine { event, _ in output.append(event) }
+        engine.onBrightness = { turns.append($0) }
+        engine.onError = { error = $0 }
+        engine.perform(MappingAction(.keyboardBrightness, "up"), fromDial: true)
+        engine.perform(MappingAction(.keyboardBrightness, "down"), fromDial: true)
+        engine.perform(MappingAction(.keyboardBrightness, "invalid"))
+        XCTAssertEqual(turns, [1, -1]); XCTAssertTrue(output.isEmpty)
+        XCTAssertNotNil(error)
+        engine.stop()
+    }
     func testDialSwitcherRenewsIdleTimerThenReleasesCommand() {
         var output: [KeyboardOutput] = []
         let engine = ActionEngine { event, _ in output.append(event) }

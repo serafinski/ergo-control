@@ -39,7 +39,7 @@ The package installs only `/Library/PrivilegedHelperTools/dev.local.ergocontrol.
 
 Distribution builds retain **Enable full dial control…** for `SMAppService` registration and system approval; **Remove input helper** unregisters that route. The helper may require its own Input Monitoring permission. An open failure reports the returned code instead of silently claiming success.
 
-When approved, the next mapping session uses the helper's exclusive input route. Existing command-dial modes, left-click cycling, media controls, ordinary-key mappings, and gaming mode use the full report stream. This route remains unverified on hardware. When no helper is enabled, the tested non-seizing extra-button path is retained.
+When approved, the next mapping session uses the helper's exclusive input route. Existing command-dial modes, left-click cycling, media controls, ordinary-key mappings use the full report stream. This route remains unverified on hardware. When no helper is enabled, the tested non-seizing extra-button path is retained.
 
 ## Verification so far
 
@@ -79,3 +79,5 @@ The user installed the 0.2.2 helper and confirmed the live test works. Installed
 The first CLI permission check overlapped the user's active capture session and was refused: the helper accepts only one client. After mappings stopped, the same signed `--helper-access-status` command returned **granted (0)** with no device open; the helper then showed runs 2 and last exit code 0. Use this check only with mappings off; the GUI disables its check during active/preparing sessions. The CLI's generic disconnect message mentions an update but can also mean that the helper is busy. Future wording should distinguish that case.
 
 Other dial directions, right roller/media output, mode cycling, ordinary modifiers/repeat/caps and secure-input fields, per-app switching, alternate layers, script/app actions, uninstall, and forced-failure recovery are still pending live validation. No further rebuild or permission change was made after this successful session.
+
+App 0.2.6 adds Bluetooth keyboard brightness and dial-indicator commands in the unprivileged app. The input helper remains 0.2.2 and does not send lighting commands. GUI-only preview updates reuse the installed helper and its existing grants.

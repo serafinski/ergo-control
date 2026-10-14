@@ -41,6 +41,8 @@ final class ControlModel: ObservableObject {
     private var consumer: UInt16 = 0
     private var extraDecoder = ExtraKeyDecoder()
     private var layerKeys: Set<String> = []
+    private struct IndicatorSelection: Equatable { let profile: UUID; let mode: UUID; let color: DialColor }
+    private var indicatedMode: IndicatorSelection?
     private var modeIndices: [UUID: Int] = [:]
     private var frontmostID: String?
     private var tick = 0
@@ -58,7 +60,7 @@ final class ControlModel: ObservableObject {
         if let data = try? Data(contentsOf: Self.settingsURL) {
             do {
                 let saved = try JSONDecoder().decode(MappingConfiguration.self, from: data)
-                guard saved.schema == 1, !saved.profiles.isEmpty,
+                guard saved.schema == 2, !saved.profiles.isEmpty,
                       Set(saved.profiles.map(\.id)).count == saved.profiles.count else { throw MappingValidationError.message("Unsupported settings format") }
                 configuration = saved; selectedProfileID = saved.manualProfileID
             } catch { self.error = "Saved settings could not be loaded. The original file has been preserved." }
@@ -75,6 +77,7 @@ final class ControlModel: ObservableObject {
         relay.onFailure = { [weak self] message in self?.stop(message) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message) }
         engine.onCycle = { [weak self] in self?.cycleDial() }
+        engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
         bluetooth.$batteryReadState.sink { [weak self] state in
             guard let self, let ticket = self.batteryPopupTicket else { return }
@@ -96,6 +99,8 @@ final class ControlModel: ObservableObject {
             guard let self else { return }
             if verified && self.preparing && self.relayOpened {
                 self.running = true; self.preparing = false
+                self.indicatedMode = nil
+                DispatchQueue.main.async { [weak self] in self?.updateProfile() }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
                     : "Mappings active · PT Ergo only"
@@ -173,6 +178,7 @@ final class ControlModel: ObservableObject {
                 case .macro: _ = try MacroStep.parse(action.value)
                 case .application, .toggleApplication: guard action.value.hasSuffix(".app") else { throw MappingValidationError.message("Choose an application for \(action.kind.rawValue)") }
                 case .script: guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("Choose an existing script") }
+                case .keyboardBrightness: guard action.value == "up" || action.value == "down" else { throw MappingValidationError.message("Choose Increase or Decrease for keyboard brightness") }
                 case .text: guard action.value.utf16.count <= 4096 else { throw MappingValidationError.message("Text actions can contain up to 4096 characters") }
                 default: break
                 }
@@ -200,12 +206,18 @@ final class ControlModel: ObservableObject {
             configuration.profiles[profileIndex].applicationIDs.append(id)
         }
     }
-    private func updateProfile() {
+    private func updateProfile(forceIndicator: Bool = false) {
         engine.endAppSwitcher()
+        let previousMode = indicatedMode
         activeProfileName = activeProfile.name
         let modes = activeProfile.dialModes.filter(\.enabled)
         let index = modeIndices[activeProfile.id, default: 0]
-        dialName = modes.isEmpty ? "No enabled dial modes" : modes[index % modes.count].name
+        let mode = modes.isEmpty ? nil : modes[index % modes.count]
+        dialName = mode?.name ?? "No enabled dial modes"
+        indicatedMode = mode.map { IndicatorSelection(profile: activeProfile.id, mode: $0.id, color: $0.color) }
+        if running, inputAccessMode == .fullKeyboard, (forceIndicator || previousMode != indicatedMode), let mode {
+            bluetooth.flashDialIndicator(mode.color)
+        }
     }
     private func cycleDial() {
         guard inputAccessMode != .macroButtons else { status = "Custom dial modes need full keyboard control, which macOS denied."; return }
@@ -214,7 +226,7 @@ final class ControlModel: ObservableObject {
         guard count > 0 else { return }
         let backwards = engine.physicalModifiers & 0x22 != 0
         modeIndices[id] = (modeIndices[id, default: 0] + (backwards ? count - 1 : 1)) % count
-        updateProfile()
+        updateProfile(forceIndicator: true)
         controlIndicator.showDial(mode: dialName, profile: activeProfileName)
     }
 
@@ -324,10 +336,7 @@ final class ControlModel: ObservableObject {
             }
             for usage in pressed {
                 guard relayOpened else { return }
-                var mapping = running ? action(for: "key:\(usage)") : MappingAction()
-                let profile = activeProfile
-                if running, profile.gamingMode, engine.physicalModifiers & 0x88 != 0,
-                   (usage == 20 && profile.blockQuit || usage == 43 && profile.blockAppSwitch || usage == 44 && profile.blockSpotlight) { mapping = MappingAction(.disabled) }
+                let mapping = running ? action(for: "key:\(usage)") : MappingAction()
                 keyActions[usage] = mapping
                 if mapping.kind == .standard { engine.relay(usage, pressed: true) }
                 else { execute(mapping, control: "key:\(usage)", pressed: true) }
