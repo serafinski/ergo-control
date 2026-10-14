@@ -252,7 +252,7 @@ struct ControlSettingsView: View {
                     HStack { Text("Command dial modes").font(.title2.bold()); Spacer(); Button("Add mode") {
                         model.configuration.profiles[index].dialModes.append(DialMode(name: "Custom mode", clockwise: MappingAction(.shortcut, "cmd+equal"), counterclockwise: MappingAction(.shortcut, "cmd+minus")))
                     } }
-                    Text("Click the left dial to cycle enabled modes. The keyboard indicator flashes each mode’s color for three seconds.").foregroundStyle(.secondary)
+                    Text("Click the left dial to cycle enabled modes. The physical mode indicator needs keyboard brightness above 0%. Color control is experimental.").foregroundStyle(.secondary)
                     ForEach(model.configuration.profiles[index].dialModes) { mode in
                         let modeBinding = dialBinding(mode)
                         GroupBox {

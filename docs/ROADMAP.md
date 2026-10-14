@@ -8,8 +8,8 @@ Before implementing macro-button status lighting, establish whether this model e
 
 ## Remaining hardware validation
 
-- Keyboard brightness in both directions, rapid turns, and limits.
-- Physical dial-mode colors and the three-second indicator restoration.
+- Brightness long-term behavior; backlight control, 0–100% read-back, and percentage popup are now confirmed.
+- Resolve physical dial-mode colors: identify the Bluetooth indicator address from read-only inventory/native-mode comparisons. Positive-backlight tests, four-byte RGB payloads, and enabling the recovered switch first still reject RGB target 39. The native indicator’s backlight prerequisite is user-confirmed; no successful host-driven RGB control is claimed.
 - Split-space/B/Backspace defaults, native application-switcher overlay, app minimize/restore.
 - App-specific profiles, alternate layers, non-US layouts, sleep/disconnect/crash recovery.
 

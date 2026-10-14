@@ -39,6 +39,22 @@ public struct BrightnessSteps {
     public mutating func clear() { steps.removeAll() }
 }
 
+/// The physical mode light needs the backlight enabled. Waiting for a user
+/// brightness change must not repeatedly probe RGB or force the backlight on.
+public struct DialBacklightGate {
+    private var waiting = false
+    public init() {}
+    public mutating func mayFlash(rawBrightness: UInt8) -> Bool {
+        waiting = rawBrightness == 0
+        return !waiting
+    }
+    public mutating func retryAfterBrightnessChange(rawBrightness: UInt8) -> Bool {
+        guard waiting, rawBrightness > 0 else { return false }
+        waiting = false; return true
+    }
+    public mutating func cancel() { waiting = false }
+}
+
 public extension Protocol30Request {
     static func readLightingRegions(transaction: UInt8) throws -> Self {
         try Self(transaction: transaction, commandClass: 16, commandID: 0x80, argument7: 1)
@@ -50,13 +66,20 @@ public extension Protocol30Request {
         // Synapse's live brightness task uses profile 1, AllRegion (0).
         try Self(transaction: transaction, commandClass: 16, commandID: 5, argument6: 1, payload: Data([raw]))
     }
-    static func readDialColor(transaction: UInt8) throws -> Self {
-        try Self(transaction: transaction, commandClass: 6, commandID: 0x84, argument6: 1, argument7: 39)
+    static func readDialColor(transaction: UInt8, ledClass: UInt8 = 1, ledID: UInt8 = 39) throws -> Self {
+        try Self(transaction: transaction, commandClass: 6, commandID: 0x84, argument6: ledClass, argument7: ledID)
     }
-    static func dialColor(transaction: UInt8, color: DialColor) throws -> Self {
-        // rzDevice30's Zo allocates three bytes; _createDataSend uses that actual
-        // length, despite its command template advertising four. Match the wire encoder.
-        try Self(transaction: transaction, commandClass: 6, commandID: 4, argument6: 1, argument7: 39, payload: color.bytes)
+    static func readLEDClasses(transaction: UInt8) throws -> Self {
+        try Self(transaction: transaction, commandClass: 6, commandID: 0x80)
+    }
+    static func readLEDTargets(transaction: UInt8, ledClass: UInt8) throws -> Self {
+        try Self(transaction: transaction, commandClass: 6, commandID: 0x81, argument6: ledClass)
+    }
+    static func dialColor(transaction: UInt8, color: DialColor, brightness: UInt8 = 255) throws -> Self {
+        // Correct the vendor's three-byte allocation: this command's template
+        // and getter specify RGB plus a fourth brightness byte. Product LED = 39.
+        try Self(transaction: transaction, commandClass: 6, commandID: 4, argument6: 1, argument7: 39,
+                 payload: color.bytes + Data([brightness]))
     }
     static func readDialLightState(transaction: UInt8) throws -> Self {
         try Self(transaction: transaction, commandClass: 6, commandID: 0x82, argument6: 1, argument7: 39)

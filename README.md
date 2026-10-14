@@ -12,7 +12,7 @@ Ergo Control uses SwiftUI and macOS frameworks, with no third-party runtime pack
 - Switch profiles automatically for the active application, or select one manually.
 - Configure command-dial modes, including keyboard brightness, zoom, scrolling, browser tabs, and the visible native ⌘Tab switcher.
 - Use an alternate layer.
-- See a brief popup when changing dial modes; choose a color for the keyboard’s dial indicator.
+- See a brief popup when changing dial modes. Per-mode physical indicator colors are experimental.
 - Press the battery button, or any control assigned **Show battery**, for an on-screen percentage.
 - Keep the keyboard icon and battery percentage in the menu bar, without a Dock icon.
 - Store profiles locally and restore the keyboard’s saved mode when mappings stop.
@@ -21,11 +21,11 @@ Ergo Control uses SwiftUI and macOS frameworks, with no third-party runtime pack
 
 Version **0.2.6** supports **Bluetooth Low Energy** on the Pro Type Ergo. USB and the wireless receiver are not implemented. The deployment target is macOS 14 or later; hardware validation so far is on Apple Silicon with macOS 27.0.1.
 
-Live tests confirm distinct M1–M5/AI/dial/battery inputs, M1 text output, an M2 timed macro, exclusive keyboard capture with left-dial output, normal-mode restoration after timed sessions, the mode popup, menu-bar battery display, and absence from the Dock. **52 automated tests pass.** Remaining validation includes keyboard brightness and the physical dial indicator, the new split-key defaults, native application-switcher overlay, app minimize/restore, per-app profiles, alternate layers, non-US layouts, and abnormal recovery. See [setup and verification](docs/APP.md).
+Live tests confirm distinct M1–M5/AI/dial/battery inputs, keyboard brightness across 0–100%, M1 text output, an M2 timed macro, exclusive keyboard capture with left-dial output, normal-mode restoration after timed sessions, the mode popup, menu-bar battery display, and absence from the Dock. **54 automated tests pass.** Remaining validation includes the physical dial indicator, the new split-key defaults, native application-switcher overlay, app minimize/restore, per-app profiles, alternate layers, non-US layouts, and abnormal recovery. See [setup and verification](docs/APP.md).
 
 The battery popup requests a fresh reading, stays visible for two seconds after the result, and keeps the current app focused. The user confirmed the popup works. Quick reads display the percentage directly; **Checking…** appears only if retrieval takes more than two seconds.
 
-Keyboard backlight brightness and transient dial-indicator colors are implemented from the recovered vendor protocol, with live testing in progress. The keyboard rejects RGB reads; the app can flash a light that was initially off and restore its off state. Unsupported lighting commands leave mappings active. General RGB/Chroma effects, firmware updates, onboard macro storage, and Fn-row primary-mode writes are not implemented. Profiles and macros run on the Mac while mappings are enabled. There is no signed/notarized release download yet.
+Keyboard backlight brightness is hardware-confirmed and now shows a brief percentage popup. Physical dial-indicator colors are still under investigation: earlier color targets/commands were rejected over Bluetooth. Tests with nonzero backlight still rejected RGB target 39, including the four-byte payload and enabling the indicator first. The on/off command is accepted and read back, but physical illumination is unconfirmed; read-only LED-address discovery is in progress. Mode colors remain experimental; no physical indicator success is claimed. Unsupported lighting commands leave mappings active. General RGB/Chroma effects, firmware updates, onboard macro storage, and Fn-row primary-mode writes are not implemented. Profiles and macros run on the Mac while mappings are enabled. There is no signed/notarized release download yet.
 
 ## Build
 

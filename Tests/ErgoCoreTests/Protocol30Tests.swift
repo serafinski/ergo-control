@@ -58,6 +58,21 @@ final class Protocol30Tests: XCTestCase {
         XCTAssertThrowsError(try assembler.append(header()))
     }
 
+    func testRejectedLightingResponseWaitsForAllWriteAcknowledgements() throws {
+        let request = try Protocol30Request.dialColor(transaction: 4, color: .defaultColor(for: "Zoom"))
+        var exchange = try Protocol30Exchange(request: request)
+        XCTAssertEqual(exchange.nextWrite(), request.header)
+        try exchange.receive(header(status: 7))
+        XCTAssertNil(exchange.completedResponse)
+        try exchange.acknowledgeWrite()
+        XCTAssertEqual(exchange.nextWrite(), request.payload)
+        XCTAssertNil(exchange.completedResponse)
+        try exchange.acknowledgeWrite()
+        XCTAssertEqual(exchange.completedResponse?.status, 7)
+        XCTAssertEqual(exchange.completedResponse?.succeeded, false)
+        XCTAssertNil(exchange.nextWrite())
+    }
+
     func testPayloadFragmentsAreNotMistakenForHeaders() throws {
         var assembler = try Protocol30ResponseAssembler(transaction: 4)
         XCTAssertNil(try assembler.append(header(length: 45)))

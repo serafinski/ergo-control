@@ -79,6 +79,10 @@ final class ControlModel: ObservableObject {
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
+        bluetooth.$keyboardBrightnessPercent.dropFirst().sink { [weak self] percent in
+            guard let self, self.running, let percent else { return }
+            self.controlIndicator.showBrightness(percent)
+        }.store(in: &subscriptions)
         bluetooth.$batteryReadState.sink { [weak self] state in
             guard let self, let ticket = self.batteryPopupTicket else { return }
             switch state {

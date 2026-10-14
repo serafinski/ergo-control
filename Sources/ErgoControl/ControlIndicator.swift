@@ -14,6 +14,11 @@ final class ControlIndicator {
              icon: "arrow.triangle.2.circlepath", duration: 1.5)
     }
 
+    func showBrightness(_ percent: Int) {
+        show(title: "Keyboard brightness", value: "\(percent)%", detail: "PT Ergo",
+             icon: "lightbulb.fill", duration: 2)
+    }
+
     func requestBattery() -> UUID {
         dismiss()
         let ticket = UUID()

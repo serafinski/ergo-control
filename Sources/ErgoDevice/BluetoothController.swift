@@ -14,9 +14,10 @@ struct SavedMode: Codable {
 struct SavedDialLight: Codable {
     let color: DialColor?
     let on: Bool
+    var brightness: UInt8? = nil
 
     static func fallbackForUnsupportedRGB(state: UInt8, status: UInt8) -> Self? {
-        guard state == 0, status == 7 else { return nil }
+        guard state == 0, status == 5 || status == 7 else { return nil }
         return Self(color: nil, on: false)
     }
 }
@@ -44,6 +45,8 @@ enum BluetoothFailure: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .message(let text): return text
+        case .rejected(5): return "Keyboard does not support this command (status 5)"
+        case .rejected(7): return "Keyboard does not support this target (status 7)"
         case .rejected(let status): return "Keyboard response status \(status)"
         }
     }
@@ -74,6 +77,8 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private var lightingTimer: Timer?
     private var lightingOperation = false
     private var requestedDialColor: DialColor?
+    private var lastRequestedDialColor: DialColor?
+    private var indicatorBacklight = DialBacklightGate()
     private var dialDeadline: TimeInterval?
     private var dialLightChanged = false
     private var indicatorUnavailable = false
@@ -431,7 +436,9 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             try recoveryFile.close()
         } catch { status = "Cannot save restoration state; the keyboard was not changed"; return }
         original = saved
-        indicatorUnavailable = false; brightnessUnavailable = false
+        brightnessUnavailable = false
+        // A rejected indicator API stays disabled for this app session.
+        // Repeated mapping starts must not repeat known-unsupported probes.
         lightingStatus = ""; lightingOperation = false
         brightnessSteps.clear(); requestedDialColor = nil; dialDeadline = nil; dialLightChanged = false
         lightingRegion = nil
@@ -488,6 +495,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public func restore() {
         lightingTimer?.invalidate(); lightingTimer = nil
+        indicatorBacklight.cancel()
         brightnessSteps.clear(); requestedDialColor = nil; dialDeadline = nil
         driverModeVerified = false
         guard restoreOwed, let original, !restorationChain else { return }
@@ -528,6 +536,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     public func flashDialIndicator(_ color: DialColor) {
         guard driverModeVerified, !indicatorUnavailable else { return }
         requestedDialColor = color
+        lastRequestedDialColor = color
         startLightingTimer(); pumpLighting()
     }
 
@@ -543,7 +552,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         // selection supersedes its timeout and is coalesced to the latest color.
         if requestedDialColor != nil, !indicatorUnavailable {
             lightingOperation = true
-            if original?.dialLight == nil { captureDialLight() } else { applyDialColor() }
+            checkDialBacklight()
         } else if dialLightChanged, let deadline = dialDeadline,
                   ProcessInfo.processInfo.systemUptime >= deadline, let light = original?.dialLight {
             lightingOperation = true
@@ -553,16 +562,38 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             }
         } else if !brightnessSteps.isEmpty, !brightnessUnavailable {
             lightingOperation = true
-            if lightingRegion == nil {
-                lightingCommand(try! .readLightingRegions(transaction: transactions.next()), brightness: true) { [weak self] response in
-                    guard let self else { return }
-                    let regions = response.payload.map { $0 & 63 }.filter { $0 != 0 }
-                    guard let region = regions.first else { self.lightingFailed("No keyboard lighting region was returned", brightness: true); return }
-                    self.lightingRegion = region; self.changeBrightness()
-                }
-            } else { changeBrightness() }
+            ensureLightingRegion(brightness: true) { [weak self] in self?.changeBrightness() }
         } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged {
             lightingTimer?.invalidate(); lightingTimer = nil
+        }
+    }
+
+    private func ensureLightingRegion(brightness: Bool, completion: @escaping () -> Void) {
+        if lightingRegion != nil { completion(); return }
+        lightingCommand(try! .readLightingRegions(transaction: transactions.next()), brightness: brightness) { [weak self] response in
+            guard let self else { return }
+            let regions = response.payload.map { $0 & 63 }.filter { $0 != 0 }
+            guard let region = regions.first else { self.lightingFailed("No keyboard lighting region was returned", brightness: brightness); return }
+            self.lightingRegion = region; completion()
+        }
+    }
+
+    private func checkDialBacklight() {
+        ensureLightingRegion(brightness: false) { [weak self] in
+            guard let self, let region = self.lightingRegion else { return }
+            self.lightingCommand(try! .readKeyboardBrightness(transaction: self.transactions.next(), region: region)) { [weak self] response in
+                guard let self else { return }
+                guard response.payload.count == 1, let raw = response.payload.first else {
+                    self.lightingFailed("Unexpected brightness response", brightness: false); return
+                }
+                self.log("dial_indicator_backlight_checked", ["raw": raw])
+                guard self.indicatorBacklight.mayFlash(rawBrightness: raw) else {
+                    self.requestedDialColor = nil; self.lightingOperation = false
+                    self.lightingStatus = "Keyboard mode indicator needs the backlight above 0%"
+                    return
+                }
+                if self.original?.dialLight == nil { self.captureDialLight() } else { self.applyDialColor() }
+            }
         }
     }
 
@@ -620,6 +651,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         keyboardBrightnessPercent = percent
         lightingStatus = "Keyboard brightness: \(percent)%"
         log("keyboard_brightness_verified", ["percent": percent, "raw": raw])
+        if indicatorBacklight.retryAfterBrightnessChange(rawBrightness: raw), let color = lastRequestedDialColor {
+            indicatorUnavailable = false
+            flashDialIndicator(color)
+        }
     }
 
     private func captureDialLight() {
@@ -637,20 +672,43 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
                     self.lightingFailed("Cannot preserve the dial’s existing color (status \(status))", brightness: false); return
                 }
                 self.log("dial_rgb_read_unsupported_light_off")
-                self.saveDialLight(saved)
+                if status == 5 {
+                    self.readIndicatorInventory { [weak self] in self?.saveDialLight(saved) }
+                } else { self.saveDialLight(saved) }
             }) { [weak self] response in
                 guard let self else { return }
                 guard (3...4).contains(response.payload.count) else {
                     self.lightingFailed("Unexpected dial color response", brightness: false); return
                 }
                 let bytes = Array(response.payload)
-                self.saveDialLight(SavedDialLight(color: DialColor(red: bytes[0], green: bytes[1], blue: bytes[2]), on: on == 1))
+                self.saveDialLight(SavedDialLight(color: DialColor(red: bytes[0], green: bytes[1], blue: bytes[2]),
+                                                 on: on == 1, brightness: bytes.count == 4 ? bytes[3] : nil))
             }
         }
     }
 
-    private func saveDialLight(_ light: SavedDialLight) {
-        guard var saved = original else { lightingOperation = false; return }
+    private func readIndicatorInventory(completion: @escaping () -> Void) {
+        // Bounded, read-only discovery from the adjacent vendor templates.
+        // Raw replies are diagnostic evidence only: never infer another writable
+        // LED address from an unparsed list or probe unrelated lights.
+        lightingCommand(try! .readLEDClasses(transaction: transactions.next()), rejected: { [weak self] status in
+            self?.log("led_class_inventory_rejected", ["status": status])
+            completion()
+        }) { [weak self] response in
+            guard let self else { return }
+            self.log("led_class_inventory", ["payload": response.payload.hex])
+            self.lightingCommand(try! .readLEDTargets(transaction: self.transactions.next(), ledClass: 1), rejected: { [weak self] status in
+                self?.log("led_target_inventory_rejected", ["ledClass": 1, "status": status])
+                completion()
+            }) { [weak self] response in
+                self?.log("led_target_inventory", ["ledClass": 1, "payload": response.payload.hex])
+                completion()
+            }
+        }
+    }
+
+    @discardableResult private func saveDialLight(_ light: SavedDialLight, apply: Bool = true) -> Bool {
+        guard var saved = original else { lightingOperation = false; return false }
         saved.dialLight = light
         // Persist the original visible state before the first color write.
         do {
@@ -658,31 +716,105 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: recoveryURL.path)
             let file = try FileHandle(forWritingTo: recoveryURL)
             try file.synchronize(); try file.close()
-        } catch { lightingFailed("Cannot save the original dial light", brightness: false); return }
-        original = saved; applyDialColor()
+        } catch { lightingFailed("Cannot save the original dial light", brightness: false); return false }
+        original = saved
+        if apply { applyDialColor() }
+        return true
     }
 
     private func applyDialColor() {
         guard let color = requestedDialColor else { lightingOperation = false; return }
         requestedDialColor = nil
-        // Snapshot is already durable; even a partial write is restored on stop/reconnect.
+        // Snapshot is durable before enabling the LED. Some indicator circuits
+        // may expose RGB only while enabled; prove the switch before color writes.
         dialLightChanged = true
-        lightingCommand(try! .dialColor(transaction: transactions.next(), color: color)) { [weak self] _ in
+        lightingCommand(try! .dialLightState(transaction: transactions.next(), on: true)) { [weak self] _ in
             guard let self else { return }
-            self.lightingCommand(try! .dialLightState(transaction: self.transactions.next(), on: true)) { [weak self] _ in
+            self.lightingCommand(try! .readDialLightState(transaction: self.transactions.next())) { [weak self] response in
                 guard let self else { return }
-                self.lightingCommand(try! .readDialLightState(transaction: self.transactions.next())) { [weak self] response in
+                guard response.payload == Data([1]) else {
+                    self.lightingFailed("The indicator on/off switch was not verified", brightness: false); return
+                }
+                self.log("dial_light_switch_on_verified")
+                self.lightingCommand(try! .readDialColor(transaction: self.transactions.next()), rejected: { [weak self] status in
                     guard let self else { return }
-                    guard response.payload == Data([1]) else {
-                        self.lightingFailed("Dial light did not turn on", brightness: false); return
+                    self.log("dial_rgb_enabled_read_rejected", ["status": status])
+                    self.writeDialColor(color)
+                }) { [weak self] response in
+                    guard let self else { return }
+                    guard (3...4).contains(response.payload.count), let previous = self.original?.dialLight else {
+                        self.lightingFailed("Unexpected enabled-indicator RGB response", brightness: false); return
                     }
-                    self.lightingOperation = false
-                    self.dialDeadline = ProcessInfo.processInfo.systemUptime + 3
-                    self.lightingStatus = "Dial indicator color applied"
-                    self.log("dial_color_write_acknowledged_state_verified", ["red": color.red, "green": color.green, "blue": color.blue])
+                    if previous.color == nil {
+                        let bytes = Array(response.payload)
+                        let saved = SavedDialLight(color: DialColor(red: bytes[0], green: bytes[1], blue: bytes[2]),
+                                                   on: previous.on, brightness: bytes.count == 4 ? bytes[3] : nil)
+                        guard self.saveDialLight(saved, apply: false) else { return }
+                    }
+                    self.writeDialColor(color)
                 }
             }
         }
+    }
+
+    private func writeDialColor(_ color: DialColor) {
+        lightingCommand(try! .dialColor(transaction: transactions.next(), color: color), rejected: { [weak self] status in
+            guard let self else { return }
+            self.lightingFailed("RGB color control unavailable (status \(status)); on/off command acknowledged", brightness: false)
+            // Keep the verified switch on briefly for the physical check, then
+            // restore it. Discovery is read-only and stays on this keyboard.
+            self.dialDeadline = ProcessInfo.processInfo.systemUptime + 3
+            if status == 7 { self.probeRGBClasses() }
+        }) { [weak self] _ in
+            guard let self else { return }
+            if self.original?.dialLight?.color != nil {
+                self.lightingCommand(try! .readDialColor(transaction: self.transactions.next())) { [weak self] response in
+                    guard let self else { return }
+                    guard Data(response.payload.prefix(3)) == color.bytes else {
+                        self.lightingFailed("Dial color read-back did not match", brightness: false); return
+                    }
+                    self.dialColorFinished(color, readBack: true)
+                }
+            } else { self.dialColorFinished(color, readBack: false) }
+        }
+    }
+
+    private func probeRGBClasses() {
+        // The inventory may describe target IDs, rather than classes. Compare
+        // both interpretations with reads only; no inferred target is written.
+        lightingOperation = true
+        lightingCommand(try! .readLEDClasses(transaction: transactions.next()), rejected: { [weak self] status in
+            self?.log("led_rgb_inventory_rejected", ["status": status])
+            self?.lightingOperation = false
+        }) { [weak self] response in
+            guard let self else { return }
+            let ids = Array(Set(response.payload.map { $0 & 63 }).sorted().prefix(16))
+            self.log("led_rgb_target_candidates", ["payload": response.payload.hex, "targets": ids])
+            self.readRGBTargets(ids)
+        }
+    }
+
+    private func readRGBTargets(_ targets: [UInt8]) {
+        guard let target = targets.first else { lightingOperation = false; return }
+        let rest = Array(targets.dropFirst())
+        lightingCommand(try! .readDialColor(transaction: transactions.next(), ledID: target), rejected: { [weak self] status in
+            self?.log("led_rgb_target_rejected", ["target": target, "status": status])
+            self?.readRGBTargets(rest)
+        }) { [weak self] response in
+            guard let self else { return }
+            self.log("led_rgb_target_response", ["target": target, "payload": response.payload.hex])
+            // A color read alone does not identify the physical indicator.
+            // Compare with native mode changes before enabling another writer.
+            self.readRGBTargets(rest)
+        }
+    }
+
+    private func dialColorFinished(_ color: DialColor, readBack: Bool) {
+        lightingOperation = false
+        dialDeadline = ProcessInfo.processInfo.systemUptime + 3
+        lightingStatus = "Dial indicator color applied"
+        log(readBack ? "dial_color_verified" : "dial_color_write_acknowledged_state_verified",
+            ["red": color.red, "green": color.green, "blue": color.blue])
     }
 
     private func restoreLightCommand(_ request: Protocol30Request, failed: @escaping () -> Void,
@@ -707,14 +839,16 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             guard (3...4).contains(response.payload.count) else {
                 self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5; completion(false); return
             }
-            if Data(response.payload.prefix(3)) == color.bytes {
+            if Data(response.payload.prefix(3)) == color.bytes,
+               light.brightness == nil || response.payload.count == 4 && response.payload[3] == light.brightness {
                 self.restoreDialLightState(light, completion: completion)
             } else {
-                self.restoreLightCommand(try! .dialColor(transaction: self.transactions.next(), color: color), failed: { completion(false) }) { [weak self] _ in
+                self.restoreLightCommand(try! .dialColor(transaction: self.transactions.next(), color: color, brightness: light.brightness ?? 255), failed: { completion(false) }) { [weak self] _ in
                     guard let self else { return }
                     self.restoreLightCommand(try! .readDialColor(transaction: self.transactions.next()), failed: { completion(false) }) { [weak self] response in
                         guard let self else { return }
-                        guard Data(response.payload.prefix(3)) == color.bytes else {
+                        guard Data(response.payload.prefix(3)) == color.bytes,
+                              light.brightness == nil || response.payload.count == 4 && response.payload[3] == light.brightness else {
                             self.dialDeadline = ProcessInfo.processInfo.systemUptime + 5; completion(false); return
                         }
                         self.restoreDialLightState(light, completion: completion)

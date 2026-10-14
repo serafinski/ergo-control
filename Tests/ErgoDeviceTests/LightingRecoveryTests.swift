@@ -13,7 +13,9 @@ final class LightingRecoveryTests: XCTestCase {
         XCTAssertNotNil(off); XCTAssertNil(off?.color); XCTAssertEqual(off?.on, false)
         XCTAssertNil(SavedDialLight.fallbackForUnsupportedRGB(state: 1, status: 7))
         XCTAssertNil(SavedDialLight.fallbackForUnsupportedRGB(state: 2, status: 7))
-        XCTAssertNil(SavedDialLight.fallbackForUnsupportedRGB(state: 0, status: 5))
+        XCTAssertNotNil(SavedDialLight.fallbackForUnsupportedRGB(state: 0, status: 5))
+        XCTAssertNil(SavedDialLight.fallbackForUnsupportedRGB(state: 1, status: 5))
+        XCTAssertNil(SavedDialLight.fallbackForUnsupportedRGB(state: 0, status: 6))
     }
 
     func testOldRecoveryJournalAndOffOnlySnapshotRoundTrip() throws {

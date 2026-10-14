@@ -2,17 +2,32 @@ import XCTest
 @testable import ErgoCore
 
 final class KeyboardLightingTests: XCTestCase {
-    func testLightingPacketsMatchRecoveredVendorWireEncoding() throws {
+    func testPhysicalIndicatorWaitsForBacklightThenRetriesOnceAndCancelsOnStop() {
+        var gate = DialBacklightGate()
+        XCTAssertFalse(gate.mayFlash(rawBrightness: 0))
+        XCTAssertFalse(gate.retryAfterBrightnessChange(rawBrightness: 0))
+        XCTAssertTrue(gate.retryAfterBrightnessChange(rawBrightness: 1))
+        XCTAssertFalse(gate.retryAfterBrightnessChange(rawBrightness: 1))
+        XCTAssertTrue(gate.mayFlash(rawBrightness: 127))
+        XCTAssertFalse(gate.mayFlash(rawBrightness: 0))
+        gate.cancel()
+        XCTAssertFalse(gate.retryAfterBrightnessChange(rawBrightness: 127))
+    }
+    func testLightingPacketsMatchRecoveredProtocolTemplates() throws {
         XCTAssertEqual(try Protocol30Request.readLightingRegions(transaction: 1).header, Data([1,0,0,0,16,128,0,1]))
         XCTAssertEqual(try Protocol30Request.readKeyboardBrightness(transaction: 2, region: 5).header, Data([2,0,0,0,16,133,1,5]))
         XCTAssertEqual(try Protocol30Request.keyboardBrightness(transaction: 3, raw: 127).writeChunks,
                        [Data([3,1,0,0,16,5,1,0]), Data([127])])
         XCTAssertEqual(try Protocol30Request.readDialColor(transaction: 4).header, Data([4,0,0,0,6,132,1,39]))
-        // Actual Zo/_createDataSend encoding uses three RGB bytes, not the
-        // four-byte length suggested by the generic command template.
+        // The template/getter use RGB plus brightness; correct the vendor's
+        // undersized allocation while preserving a saved brightness on restore.
         XCTAssertEqual(try Protocol30Request.dialColor(transaction: 5, color: .defaultColor(for: "Zoom")).writeChunks,
-                       [Data([5,3,0,0,6,4,1,39]), Data([255,0,0])])
+                       [Data([5,4,0,0,6,4,1,39]), Data([255,0,0,255])])
+        XCTAssertEqual(try Protocol30Request.dialColor(transaction: 5, color: .defaultColor(for: "Zoom"), brightness: 42).payload,
+                       Data([255,0,0,42]))
         XCTAssertEqual(try Protocol30Request.readDialLightState(transaction: 6).header, Data([6,0,0,0,6,130,1,39]))
+        XCTAssertEqual(try Protocol30Request.readLEDClasses(transaction: 8).header, Data([8,0,0,0,6,128,0,0]))
+        XCTAssertEqual(try Protocol30Request.readLEDTargets(transaction: 9, ledClass: 1).header, Data([9,0,0,0,6,129,1,0]))
         XCTAssertEqual(try Protocol30Request.dialLightState(transaction: 7, on: true).writeChunks,
                        [Data([7,1,0,0,6,2,1,39]), Data([1])])
     }
