@@ -33,6 +33,16 @@ To make **AI** toggle Codex, select **AI button**, choose **Show / minimize appl
 
 **Enable mappings** is the regular session control. Closing the settings window leaves the menu-bar app available. **Stop mappings** releases the keyboard and requests a read-verified mode restoration. Quit defers termination while restoration remains owed.
 
+## Menu bar and dial-mode indicator (0.2.4)
+
+Click the left dial with its mapping set to **Default**, or use any **Next dial mode** mapping, to cycle enabled command-dial modes. A small popup near the bottom of the display under the pointer shows the selected mode and profile for 1.5 seconds. Repeated clicks update that popup and restart its timeout. The overlay ignores mouse input and does not activate Ergo Control or take keyboard focus; stopping mappings dismisses it. Full-screen and multi-display presentation still need visual verification.
+
+The menu-bar label now contains a keyboard icon and the keyboard's battery percentage. `—%` means the configuration connection or a battery reading is unavailable; it does not imply ordinary keyboard input is disconnected. The menu includes **Refresh battery**, the active profile/mode, mapping controls, **Settings…**, and **Quit Ergo Control**. A typed battery-percent value from the existing hardware-verified battery query supplies the label; displayed status strings are not parsed.
+
+At launch the app requests a configuration connection to the same strictly matched Bluetooth PT Ergo and reads battery status when the channel is idle. It checks for pending work every five seconds, polls battery no more than once every five minutes, and limits automatic reconnection attempts to one per minute. Mapping preparation, a busy command, and pending normal-mode restoration take priority; a manual refresh remains pending until safe. Background polling reads configuration only and never activates mappings or changes the keyboard mode. A previously owed restoration remains handled by the existing restoration workflow. Quitting stops polling before releasing/restoring input.
+
+`LSUIElement` and the accessory activation policy keep Ergo Control out of the Dock and normal Command+Tab application list, including while Settings is open. Close Settings for menu-bar-only operation; use **Settings…** to reopen it. Quit from the menu bar when you want to exit. This is a GUI-only update with the same helper and permissions. The signed release, helper policy check, and all 43 automated tests (including serial-channel polling priorities and throttling) pass. Native UI inspection again failed with a closed computer-use pipe; the popup, menu-bar rendering, and Dock behavior require a user visual check after quitting/reopening the updated app.
+
 ## Implementation
 
 - `ErgoCore` contains packet codecs, snapshot decoders, profile models, shortcut validation, and the macro parser.

@@ -41,6 +41,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     @Published public var logURL: URL?
     @Published public var driverModeVerified = false
     @Published public var batteryText = "Battery status has not been read"
+    @Published public private(set) var batteryPercent: Int?
 
     private var central: CBCentralManager?
     private var target: CBPeripheral?
@@ -359,6 +360,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
                     return
                 }
                 let percent = Int(raw) * 100 / 255
+                if id == 1 || readings.isEmpty { self.batteryPercent = percent }
                 self.log("battery_level", ["batteryID": id, "raw": raw, "percent": percent])
                 let label = ids.count == 1 && readings.isEmpty ? "Battery" : "Battery \(id)"
                 self.readBatteryLevels(Array(ids.dropFirst()), readings: readings + ["\(label): \(percent)%"])

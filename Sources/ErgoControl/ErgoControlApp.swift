@@ -6,6 +6,7 @@ import ErgoCore
 
 final class ControlAppDelegate: NSObject, NSApplicationDelegate {
     var model: ControlModel?
+    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.setActivationPolicy(.accessory) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { model?.terminate() ?? .terminateNow }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
@@ -21,8 +22,15 @@ struct ErgoControlApp: App {
         WindowGroup("Ergo Control", id: "settings") {
             ControlSettingsView(model: model).onAppear { delegate.model = model }
         }.defaultSize(width: 1280, height: 850)
-        MenuBarExtra("Ergo Control", systemImage: "keyboard") {
+        MenuBarExtra {
             ControlMenu(model: model).onAppear { delegate.model = model }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "keyboard")
+                Text(model.menuBarBatteryLabel).monospacedDigit()
+            }
+            .accessibilityLabel("Ergo Control, keyboard battery \(model.menuBarBatteryLabel)")
+            .onAppear { delegate.model = model }
         }
     }
 }
@@ -34,6 +42,7 @@ struct ControlMenu: View {
         Text(model.running ? "Mappings active" : "Mappings off")
         Text("\(model.activeProfileName) · \(model.dialName)")
         Text(model.bluetooth.batteryText)
+        Button("Refresh battery") { model.refreshBattery() }
         Divider()
         Button("Settings…") { openWindow(id: "settings"); NSApp.activate(ignoringOtherApps: true) }
         Button(model.running || model.preparing ? "Stop mappings" : "Enable mappings") {

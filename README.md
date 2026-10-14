@@ -8,6 +8,8 @@ Version 0.2.2 uses an optional, scoped input helper for full dial/keyboard repla
 
 The 0.2.3 preview adds a persistent native Command+Tab dial switcher, native defaults for the separate split Space/B/Backspace records under full control, and **Show / minimize application** mappings. These changes pass automated checks; live verification of the new behavior is pending. The preview reuses the already installed 0.2.2 helper.
 
+Preview **0.2.4** adds a brief on-screen dial-mode indicator and a keyboard icon with battery percentage in the menu bar. The app runs without a Dock icon; close Settings to leave it in the menu bar. Battery polling also works with mappings off and waits for an idle configuration channel. All 43 automated tests pass; live visual verification is pending.
+
 Build with `zsh tools/build_app.sh`, then open `build/Ergo Control.app`. See [app setup and validation](docs/APP.md). The diagnostic apps below remain available separately.
 
 Build with `zsh tools/build_probe.sh`. Open `build/Ergo Probe.app`.

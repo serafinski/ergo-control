@@ -23,6 +23,10 @@ final class ControlModel: ObservableObject {
     let fullControlHelper = FullControlHelper()
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
+    private let dialIndicator = DialModeIndicator()
+    private var batterySchedule = BatteryRefreshSchedule()
+    private var batteryTimer: Timer?
+    private var terminating = false
     private var subscriptions = Set<AnyCancellable>()
     private var timer: Timer?
     private var stageStarted = Date()
@@ -94,6 +98,10 @@ final class ControlModel: ObservableObject {
             } else if !verified && self.running { self.stop("Keyboard mode changed. Mappings stopped safely.") }
         }.store(in: &subscriptions)
         updateProfile()
+        let batteryTimer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.pollBattery() }
+        self.batteryTimer = batteryTimer
+        RunLoop.main.add(batteryTimer, forMode: .common)
+        DispatchQueue.main.async { [weak self] in self?.pollBattery() }
     }
 
     var accessibilityGranted: Bool { AXIsProcessTrusted() }
@@ -101,6 +109,25 @@ final class ControlModel: ObservableObject {
     var profileIndex: Int { configuration.profiles.firstIndex(where: { $0.id == selectedProfileID }) ?? 0 }
     var activeProfile: MappingProfile { configuration.profile(for: frontmostID) }
     var layerActive: Bool { !layerKeys.isEmpty }
+    var menuBarBatteryLabel: String {
+        guard bluetooth.ready, let percent = bluetooth.batteryPercent else { return "—%" }
+        return "\(percent)%"
+    }
+
+    func refreshBattery() {
+        batterySchedule.refresh()
+        pollBattery()
+    }
+    private func pollBattery() {
+        guard !terminating else { return }
+        switch batterySchedule.next(at: ProcessInfo.processInfo.systemUptime, ready: bluetooth.ready,
+                                    busy: bluetooth.busy, preparingMappings: preparing,
+                                    restorationOwed: bluetooth.restoreOwed, driverModeVerified: bluetooth.driverModeVerified) {
+        case .connect: bluetooth.connect()
+        case .read: bluetooth.readBattery()
+        case nil: break
+        }
+    }
 
     func enableFullControl() {
         stop()
@@ -178,6 +205,7 @@ final class ControlModel: ObservableObject {
         let backwards = engine.physicalModifiers & 0x22 != 0
         modeIndices[id] = (modeIndices[id, default: 0] + (backwards ? count - 1 : 1)) % count
         updateProfile()
+        dialIndicator.show(mode: dialName, profile: activeProfileName)
     }
 
     func start(testSeconds: TimeInterval? = nil) {
@@ -228,13 +256,19 @@ final class ControlModel: ObservableObject {
         }
     }
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified") {
+        dialIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
         sessionDeadline = nil
         relay.stop(); relayOpened = false; engine.stop()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()
         bluetooth.restore(); status = message
     }
-    func terminate() -> NSApplication.TerminateReply { stop(); return bluetooth.requestTermination() }
+    func terminate() -> NSApplication.TerminateReply {
+        terminating = true
+        batteryTimer?.invalidate(); batteryTimer = nil
+        stop()
+        return bluetooth.requestTermination()
+    }
 
     private func action(for control: String) -> MappingAction {
         let profile = activeProfile
