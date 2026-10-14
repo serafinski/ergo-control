@@ -27,7 +27,7 @@ if mode == "prepare":
     plist.write_bytes(plistlib.dumps({
         "CFBundleIdentifier": "dev.local.ergocontrol.inputhelper",
         "CFBundleName": "Ergo Control Input Helper",
-        "CFBundleVersion": "4",
+        "CFBundleVersion": "5",
         "ErgoAcceptedClientRequirement": requirement,
     }))
 elif mode == "verify":

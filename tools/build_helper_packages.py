@@ -79,6 +79,7 @@ shutil.copyfile(helper, tools / service)
     "Label": service, "Program": tool_path,
     "AssociatedBundleIdentifiers": ["dev.local.ergocontrol.app"],
     "MachServices": {service: True}, "ProcessType": "Interactive",
+    "ThrottleInterval": 1,
 }))
 (daemons / (service + ".plist")).chmod(0o644)
 install_scripts, remove_scripts = work / "install-scripts", work / "remove-scripts"
@@ -95,9 +96,9 @@ output = app / "Contents/Resources"
 output.mkdir(parents=True, exist_ok=True)
 package_environment = dict(os.environ, COPYFILE_DISABLE="1")
 subprocess.run(["pkgbuild", "--root", str(payload), "--ownership", "recommended",
-                "--identifier", service + ".install", "--version", "0.2.1",
+                "--identifier", service + ".install", "--version", "0.2.2",
                 "--install-location", "/", "--scripts", str(install_scripts),
                 str(output / "ErgoInputHelper-Install.pkg")], check=True, env=package_environment)
 subprocess.run(["pkgbuild", "--nopayload", "--identifier", service + ".uninstall",
-                "--version", "0.2.1", "--scripts", str(remove_scripts),
+                "--version", "0.2.2", "--scripts", str(remove_scripts),
                 str(output / "ErgoInputHelper-Uninstall.pkg")], check=True, env=package_environment)

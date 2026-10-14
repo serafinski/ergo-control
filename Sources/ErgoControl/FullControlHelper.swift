@@ -8,6 +8,8 @@ final class FullControlHelper: ObservableObject {
     @Published private(set) var status = "Full dial control is optional"
     private let service = SMAppService.daemon(plistName: HelperIdentity.plist)
     @Published private(set) var installedForDevelopment = false
+    @Published private(set) var checkingPermission = false
+    private var permissionCheck: HelperPermissionCheck?
     var enabled: Bool { installedForDevelopment || (!usesLocalCertificate && service.status == .enabled) }
     var needsApproval: Bool { !usesLocalCertificate && service.status == .requiresApproval }
     var usesLocalCertificate: Bool {
@@ -61,6 +63,22 @@ final class FullControlHelper: ObservableObject {
         } else { try service.unregister(); refresh() }
     }
     func showApproval() { SMAppService.openSystemSettingsLoginItems() }
+    func checkPermission() {
+        guard enabled, !checkingPermission else { return }
+        checkingPermission = true
+        let check = HelperPermissionCheck(); permissionCheck = check
+        status = "Checking helper input permission without opening the keyboard…"
+        check.start { [weak self] result in
+            guard let self else { return }
+            self.checkingPermission = false; self.permissionCheck = nil
+            switch result {
+            case .success(let access):
+                self.status = access == 0 ? "Helper Input Monitoring ready · start a short mapping test"
+                    : "Helper Input Monitoring is blocked (\(access)). Enable its separate entry, then check again."
+            case .failure(let error): self.status = "Helper permission check failed: " + error.localizedDescription
+            }
+        }
+    }
     private func installedHelperMatches() -> Bool {
         let tool = URL(fileURLWithPath: HelperIdentity.installedExecutable)
         let plist = URL(fileURLWithPath: HelperIdentity.installedPlist)

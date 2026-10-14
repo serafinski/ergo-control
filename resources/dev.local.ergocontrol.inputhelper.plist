@@ -6,4 +6,5 @@
 <key>AssociatedBundleIdentifiers</key><array><string>dev.local.ergocontrol.app</string></array>
 <key>MachServices</key><dict><key>dev.local.ergocontrol.inputhelper</key><true/></dict>
 <key>ProcessType</key><string>Interactive</string>
+<key>ThrottleInterval</key><integer>1</integer>
 </dict></plist>

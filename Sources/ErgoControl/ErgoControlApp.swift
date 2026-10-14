@@ -14,6 +14,9 @@ final class ControlAppDelegate: NSObject, NSApplicationDelegate {
 struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
     @StateObject private var model = ControlModel()
+    init() {
+        if CommandLine.arguments.contains("--helper-access-status") { HelperPermissionCheck.runCommandLine() }
+    }
     var body: some Scene {
         WindowGroup("Ergo Control", id: "settings") {
             ControlSettingsView(model: model).onAppear { delegate.model = model }
@@ -175,6 +178,8 @@ struct ControlSettingsView: View {
                                     Button(model.fullControlHelper.usesLocalCertificate ? "Install input helper…" : "Enable full dial control…") { model.enableFullControl() }
                                 }
                                 Button("Refresh status") { model.fullControlHelper.refresh() }
+                                Button("Check helper permission") { model.fullControlHelper.checkPermission() }
+                                    .disabled(!model.fullControlHelper.enabled || model.fullControlHelper.checkingPermission || model.running || model.preparing)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                     }

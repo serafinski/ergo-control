@@ -62,6 +62,9 @@ private final class CaptureService: NSObject, NSXPCListenerDelegate, InputHelper
     private func disconnected(_ candidate: NSXPCConnection?) {
         guard let candidate, connection === candidate else { return }
         release(); connection = nil; candidate.invalidate()
+        // IOHID/TCC can cache an earlier denial for the life of a process. Each
+        // new session starts a fresh helper; launchd keeps the Mach service available.
+        exit(0)
     }
     private var client: InputClientProtocol? {
         guard let peer = connection else { return nil }
@@ -73,6 +76,15 @@ private final class CaptureService: NSObject, NSXPCListenerDelegate, InputHelper
         } as? InputClientProtocol
     }
 
+    func permission(withReply reply: @escaping (Int32) -> Void) {
+        let caller = NSXPCConnection.current()
+        DispatchQueue.main.async {
+            guard self.connection === caller, self.connection?.effectiveUserIdentifier == consoleUID() else {
+                reply(-1); return
+            }
+            reply(Int32(IOHIDCheckAccess(kIOHIDRequestTypeListenEvent).rawValue))
+        }
+    }
     func begin(withReply reply: @escaping (Int32, String) -> Void) {
         let caller = NSXPCConnection.current()
         DispatchQueue.main.async { [self] in
@@ -94,7 +106,8 @@ private final class CaptureService: NSObject, NSXPCListenerDelegate, InputHelper
             }
             let result = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
             guard result == kIOReturnSuccess else {
-                reply(result, "The input helper could not open PT Ergo (\(result)). It may need its own Input Monitoring permission."); return
+                let access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent).rawValue
+                reply(result, "The input helper could not open PT Ergo (\(result), permission check \(access)). It will restart when this attempt closes. Check helper Input Monitoring, then retry."); return
             }
             self.device = device; self.lease.begin(now: now())
             let context = Unmanaged.passUnretained(self).toOpaque()

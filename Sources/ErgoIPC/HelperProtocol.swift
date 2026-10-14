@@ -11,6 +11,7 @@ public enum HelperIdentity {
 
 // The privileged side exposes no commands, paths, output events, or configuration writes.
 @objc public protocol InputHelperProtocol {
+    func permission(withReply reply: @escaping (Int32) -> Void)
     func begin(withReply reply: @escaping (Int32, String) -> Void)
     func renew(_ acknowledgedReport: UInt64, withReply reply: @escaping (Bool) -> Void)
     func end(withReply reply: @escaping () -> Void)

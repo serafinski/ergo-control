@@ -181,6 +181,7 @@ final class ControlModel: ObservableObject {
 
     func start(testSeconds: TimeInterval? = nil) {
         guard !running, !preparing else { return }
+        guard !fullControlHelper.checkingPermission else { status = "Wait for the helper permission check to finish."; return }
         error = nil
         fullControlHelper.refresh()
         guard accessibilityGranted, inputGranted else { status = "Enable Input Monitoring and Accessibility for Ergo Control, then try again."; return }
