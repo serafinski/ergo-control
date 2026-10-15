@@ -22,3 +22,5 @@ Never commit raw typing captures, user profiles, signing keys/keychains, local l
 For a GUI-only local update with unchanged helper/IPC/signing policy, the build supports `ERGO_REUSE_HELPER=1` against an existing bundle. A fresh clone needs the normal full build. Neither build mode installs the helper; installation requires the user's normal macOS administrator approval.
 
 Describe behavior changes and the validation performed in pull requests. Contributions are made under the repository's [MIT license](LICENSE).
+
+The product build has one output: `build/Ergo Control.app`. Optional Probe/Bluetooth app bundles are built only by their dedicated scripts and go under `build/diagnostics/`. Keep their source targets for research; they are not runtime dependencies of the main app. Original app/menu-bar artwork is in `tools/render_icons.swift`; run `swift tools/render_icons.swift resources` to regenerate committed icon assets, then rebuild the app.

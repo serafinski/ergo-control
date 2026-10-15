@@ -2,7 +2,7 @@
 set -eu
 cd "${0:A:h:h}"
 swift build -c release --product ErgoProbe
-app="$PWD/build/Ergo Probe.app"
+app="$PWD/build/diagnostics/Ergo Probe.app"
 mkdir -p "$app/Contents/MacOS"
 cp .build/release/ErgoProbe "$app/Contents/MacOS/ErgoProbe"
 cat > "$app/Contents/Info.plist" <<'PLIST'

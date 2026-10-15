@@ -4,7 +4,15 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.2.8**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The local preview path is a development convention. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.2.8**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+
+## One app for normal use
+
+Use **Ergo Control.app**. It contains the current settings UI, menu-bar control, Bluetooth configuration, and optional input-helper installers. Ergo Probe and Ergo Bluetooth are optional developer tools kept under `build/diagnostics/`; they are not launched or needed by Ergo Control. Their sources remain available for protocol research. ErgoInputHelper is a bundled background component rather than another settings app; ErgoUSBInspector is a developer command-line tool.
+
+The local 0.2.8/build-27 cleanup moved the known-good Preview bundle to the canonical Ergo Control path and preserved the old 0.1.1/build-2 bundle under `build/archive/` with a `.bundle-archive` suffix. Nothing from profiles, captures, recovery, or signing storage was removed. The existing helper was reused unchanged. The main build no longer accepts `ERGO_APP_NAME`; this prevents accidental duplicate product bundles.
+
+The app has original split-keyboard/dial artwork in its Finder icon and settings header, plus a monochrome menu-bar mark that follows macOS appearance. Artwork is generated from native vector drawing code in `tools/render_icons.swift`, with PNG/ICNS assets committed under `resources`. Regenerate with `swift tools/render_icons.swift resources` before rebuilding. No Razer artwork, font, third-party image dependency, or vendor asset is bundled.
 
 ## Current verification boundary
 
@@ -94,4 +102,4 @@ Settings are stored locally in `~/Library/Application Support/ErgoControl/Settin
 
 The earlier build used an ad-hoc signature. Version 0.2.2 uses a persistent, isolated local development certificate by default, or ERGO_CODESIGN_IDENTITY when supplied. The first signing-identity change may require refreshed macOS grants. Developer ID signing/notarization and publication are deferred; the optional helper requires separate macOS administrator authorization. Bundled Service Management registration failed for the local build; the explicit local installer, helper permission grant, and first full-control session now work on this Mac. Removal and distribution signing remain unverified.
 
-For GUI-only development changes with an existing valid bundle, `ERGO_APP_NAME='Ergo Control Preview' ERGO_REUSE_HELPER=1 zsh tools/build_app.sh` preserves its helper and installer packages. Use this only when the helper/IPC code and signing policy do not need updating. The build verifies both signatures and runs the reused helper's read-only signing-policy self-check; it does not install or start a service.
+For GUI-only development changes with an existing valid bundle, `ERGO_REUSE_HELPER=1 zsh tools/build_app.sh` preserves its helper and installer packages. Use this only when the helper/IPC code and signing policy do not need updating. The build verifies both signatures and runs the reused helper's read-only signing-policy self-check; it does not install or start a service.

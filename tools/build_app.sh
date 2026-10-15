@@ -8,7 +8,10 @@ else
   identity="$(python3 tools/setup_local_signing.py)"
   signing_options=(--keychain "$PWD/build/local-signing/ErgoDevelopment.keychain-db")
 fi
-app="$PWD/build/${ERGO_APP_NAME:-Ergo Control}.app"
+app="$PWD/build/Ergo Control.app"
+for asset in AppIcon.icns AppIcon.png ErgoMarkTemplate.png ErgoMarkTemplate@2x.png; do
+  [[ -f "resources/$asset" ]] || { print -u2 "Missing resources/$asset. Run: swift tools/render_icons.swift resources"; exit 1; }
+done
 if [[ "${ERGO_REUSE_HELPER:-0}" == 1 ]]; then
   # GUI-only updates preserve the installed helper's signature and TCC identity.
   for file in Contents/Library/HelperTools/ErgoInputHelper Contents/Library/LaunchDaemons/dev.local.ergocontrol.inputhelper.plist Contents/Resources/ErgoInputHelper-Install.pkg Contents/Resources/ErgoInputHelper-Uninstall.pkg; do
@@ -18,6 +21,7 @@ if [[ "${ERGO_REUSE_HELPER:-0}" == 1 ]]; then
 fi
 swift build -c release --product ErgoControl
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Library/HelperTools" "$app/Contents/Library/LaunchDaemons" "$app/Contents/Resources"
+cp resources/AppIcon.icns resources/AppIcon.png resources/ErgoMarkTemplate.png resources/ErgoMarkTemplate@2x.png "$app/Contents/Resources/"
 cp .build/release/ErgoControl "$app/Contents/MacOS/ErgoControl"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -27,8 +31,9 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Ergo Control</string>
 <key>CFBundleExecutable</key><string>ErgoControl</string>
 <key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>CFBundleShortVersionString</key><string>0.2.8</string>
-<key>CFBundleVersion</key><string>26</string>
+<key>CFBundleVersion</key><string>27</string>
 <key>LSUIElement</key><true/>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSBluetoothAlwaysUsageDescription</key><string>Connect only to your paired PT Ergo to enable its extra controls, read battery status, adjust keyboard lighting and the dial indicator, and restore its saved mode when mappings stop.</string>

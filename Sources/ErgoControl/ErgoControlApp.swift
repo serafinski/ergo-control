@@ -35,7 +35,7 @@ struct ErgoControlApp: App {
             ControlMenu(model: model).onAppear { delegate.model = model }
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "keyboard")
+                Image(nsImage: AppBranding.menuMark).renderingMode(.template)
                 Text(model.menuBarBatteryLabel).monospacedDigit()
             }
             .accessibilityLabel("Ergo Control, keyboard battery \(model.menuBarBatteryLabel)")
@@ -97,7 +97,10 @@ struct ControlSettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 18) {
-                Label("Ergo Control", systemImage: "keyboard").font(.title2.bold())
+                HStack(spacing: 10) {
+                    Image(nsImage: AppBranding.appIcon).resizable().frame(width: 32, height: 32).accessibilityHidden(true)
+                    Text("Ergo Control").font(.title2.bold())
+                }
                 Text("PRO TYPE ERGO").font(.caption).foregroundStyle(.secondary)
                 Divider()
                 HStack { Text("Profiles").font(.headline); Spacer(); Button { model.addProfile() } label: { Image(systemName: "plus") }.help("New profile") }

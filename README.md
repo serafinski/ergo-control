@@ -1,3 +1,5 @@
+<img src="resources/AppIcon.png" width="96" height="96" alt="Ergo Control icon">
+
 # Ergo Control
 
 A lightweight native macOS menu-bar app for the **Razer Pro Type Ergo (RZ03-0544)** over Bluetooth. Configure buttons, macros, application profiles, and dials without running Synapse.
@@ -37,6 +39,8 @@ cd razer-ergo
 swift test
 zsh tools/build_app.sh
 ```
+
+**Ergo Control is the only app needed for everyday use.** “Ergo Control Preview” was a development name for the same app, not a second product. Builds now always produce `build/Ergo Control.app`, with its own app icon and matching menu-bar mark.
 
 Open `build/Ergo Control.app` in Finder. The script creates the app and optional helper installer packages; it does not install or start the helper.
 
