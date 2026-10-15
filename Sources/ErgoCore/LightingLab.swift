@@ -93,6 +93,33 @@ public enum LightingLabError: LocalizedError {
     }
 }
 
+/// Research-only profile-0 operations from rzDevice30's lighting-engine path.
+/// Kept separate from the regular app's five-effect writer.
+public enum BluetoothLightingLabCommand {
+    case readRegions, readEffect, selectCustom, restore(KeyboardEffect), frame([DialColor])
+
+    public func request(transaction: UInt8, region: UInt8 = 0) throws -> Protocol30Request {
+        switch self {
+        case .readRegions: return try .readLightingRegions(transaction: transaction)
+        case .readEffect:
+            return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 0x83, argument7: region)
+        case .selectCustom:
+            return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 3,
+                                         argument7: region, payload: Data([8, 0, 0, 0]))
+        case .restore(let effect):
+            _ = try Protocol30Request.keyboardEffect(transaction: transaction, effect: effect)
+            return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 3,
+                                         argument7: region, payload: effect.payload)
+        case .frame(let colors):
+            guard colors.count == 19 else { throw LightingLabError.invalidPattern }
+            // Frame type 4, rows 0…0, columns 0…18; then row-major RGB.
+            let payload = colors.reduce(Data([4, 0, 0, 0, 18])) { $0 + $1.bytes }
+            return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 4,
+                                         argument7: region, payload: payload)
+        }
+    }
+}
+
 /// USB protocol 2.5, recovered from this model's middleware. Bluetooth uses a
 /// different command family. No generic command/address or onboard storage API.
 public struct USBLightingCommand {

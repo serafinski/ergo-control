@@ -391,6 +391,21 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         startLightingTimer(); pumpLighting()
     }
 
+    /// Fixed, opt-in research commands. Normal mappings never call this path.
+    public func runLightingLabCommand(_ operation: BluetoothLightingLabCommand,
+                                      region: UInt8 = 0,
+                                      completion: @escaping (Result<Data, Error>) -> Void) {
+        guard ready, !busy, !keyboardEffectBusy, !driverModeVerified, !restoreOwed,
+              !closing, !restoreRequested, !restorationChain else {
+            completion(.failure(BluetoothFailure.message("Stop mappings and finish pending operations before a Bluetooth lighting experiment.")))
+            return
+        }
+        do {
+            let request = try operation.request(transaction: transactions.next(), region: region)
+            send(request) { result in completion(result.map(\.payload)) }
+        } catch { completion(.failure(error)) }
+    }
+
     private func beginKeyboardEffectRead() {
         effectCommand(try! .readKeyboardEffectIDs(transaction: transactions.next())) { [weak self] response in
             guard let self else { return }

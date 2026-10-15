@@ -5,13 +5,24 @@ public struct LightingLabSnapshot: Codable {
     public let connection: String
     public let identity: String
     public let effect: Data
+    public let bluetoothProfile: UInt8?
+    public let bluetoothRegion: UInt8?
 
-    public init(connection: String, identity: String, effect: KeyboardEffect) {
+    public init(connection: String, identity: String, effect: KeyboardEffect, bluetoothProfile: UInt8? = nil,
+                bluetoothRegion: UInt8? = nil) {
         version = 1; self.connection = connection; self.identity = identity; self.effect = effect.payload
+        self.bluetoothProfile = bluetoothProfile
+        self.bluetoothRegion = bluetoothRegion
     }
 
     public func validatedEffect() throws -> KeyboardEffect {
         guard version == 1, ["usb", "bluetooth"].contains(connection), !identity.isEmpty else {
+            throw LightingLabError.unsupportedOriginal
+        }
+        if let profile = bluetoothProfile {
+            guard connection == "bluetooth", profile <= 1 else { throw LightingLabError.unsupportedOriginal }
+        }
+        if bluetoothRegion != nil, connection != "bluetooth" || bluetoothProfile != 0 {
             throw LightingLabError.unsupportedOriginal
         }
         let value = try KeyboardEffect(payload: effect)

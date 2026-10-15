@@ -79,14 +79,15 @@ enum LightingLabRunner {
         setbuf(stdout, nil)
         if args == ["list"] {
             for pattern in LightingLabPattern.allCases {
-                print("\(pattern.rawValue): \(pattern.explanation) [\(pattern.requiresZones ? "experimental USB" : "Bluetooth or USB")]")
+                print("\(pattern.rawValue): \(pattern.explanation) [\(pattern.requiresZones ? "USB; Bluetooth with --experimental-frames" : "Bluetooth or USB")]")
             }
             exit(0)
         }
         // Fixed argument grammar; there is no arbitrary effect, rate or opcode.
-        guard args.count == 2 || args.count == 6,
+        guard [2, 6, 7].contains(args.count),
               ["run", "restore"].contains(args[0]), ["bluetooth", "usb"].contains(args[1]),
-              (args[0] == "restore" ? args.count == 2 : args.count == 6) else { usage() }
+              (args[0] == "restore" ? args.count == 2 : args.count >= 6),
+              args.count != 7 || args[6] == "--experimental-frames" else { usage() }
         let restore = args[0] == "restore"
         var pattern = LightingLabPattern.presets
         var duration = 6.0
@@ -95,8 +96,8 @@ enum LightingLabRunner {
                   args[4] == "--seconds", let seconds = Double(args[5]), seconds.isFinite,
                   (2...30).contains(seconds) else { usage() }
             pattern = selected; duration = seconds
-            if args[1] == "bluetooth" && pattern.requiresZones {
-                print("Zone patterns need USB. Bluetooth supports only the preset comparison."); exit(2)
+            if args[1] == "bluetooth" && pattern.requiresZones && args.count != 7 {
+                print("Bluetooth zone tests require --experimental-frames to opt into the research path."); exit(2)
             }
         }
         let otherApp = NSRunningApplication.runningApplications(withBundleIdentifier: "dev.local.ergocontrol.app")
@@ -126,7 +127,7 @@ enum LightingLabRunner {
             if args[1] == "usb" {
                 try runUSB(session, pattern: pattern, duration: duration, recovery: loaded)
             } else {
-                try runBluetooth(session, duration: duration, recovery: loaded)
+                try runBluetooth(session, pattern: pattern, duration: duration, recovery: loaded)
             }
             exit(session.stopped ? 130 : 0)
         } catch {
@@ -138,7 +139,7 @@ enum LightingLabRunner {
 
     private static func usage() -> Never {
         print("Usage: --lighting-lab list")
-        print("       --lighting-lab run bluetooth|usb --pattern NAME --seconds 2…30")
+        print("       --lighting-lab run bluetooth|usb --pattern NAME --seconds 2…30 [--experimental-frames]")
         print("       --lighting-lab restore bluetooth|usb")
         exit(2)
     }
@@ -166,7 +167,7 @@ enum LightingLabRunner {
                     session.wait(duration)
                 }
             } else {
-                print("Testing: \(pattern.explanation). USB frame support is not yet hardware-confirmed.")
+                print("Testing: \(pattern.explanation). This temporarily replaces the keyboard backlight.")
                 _ = try usb.exchange(.customEffect)
                 let selector = Array(try usb.exchange(.readEffect))
                 guard selector.count >= 6, Array(selector.prefix(3)) == [0, 0, 8] else {
@@ -195,7 +196,8 @@ enum LightingLabRunner {
         if let failure { throw failure }
     }
 
-    private static func runBluetooth(_ session: Session, duration: Double, recovery: LightingLabSnapshot?) throws {
+    private static func runBluetooth(_ session: Session, pattern: LightingLabPattern, duration: Double,
+                                     recovery: LightingLabSnapshot?) throws {
         let controller = BluetoothController()
         controller.connect()
         try session.until({ controller.ready && !controller.busy }, seconds: 25)
@@ -205,7 +207,27 @@ enum LightingLabRunner {
         if let recovery, recovery.identity != identity {
             throw LightingLabError.message("Recovery belongs to another keyboard.")
         }
+        let profileZero = recovery.map { $0.bluetoothProfile == 0 } ?? pattern.requiresZones
+        var selectedRegion: UInt8 = recovery?.bluetoothRegion ?? 0
+        func command(_ operation: BluetoothLightingLabCommand) throws -> Data {
+            try session.until({ !controller.busy }, seconds: 6, interruptible: false)
+            var result: Result<Data, Error>?
+            controller.runLightingLabCommand(operation, region: selectedRegion) { result = $0 }
+            try session.until({ result != nil }, seconds: 7, interruptible: false)
+            return try result!.get()
+        }
+        if profileZero && recovery == nil {
+            let regions = Array(try command(.readRegions))
+            guard !regions.isEmpty, regions.count <= 32, Set(regions).count == regions.count else {
+                throw LightingLabError.message("The keyboard returned an invalid lighting-region list.")
+            }
+            // Use a hardware-reported region, never scan guessed target IDs.
+            selectedRegion = regions.first(where: { $0 != 0 }) ?? regions[0]
+            print("Reported Bluetooth lighting regions: \(regions); testing region \(selectedRegion).")
+            session.log("regions_reported", ["regions": regions, "selected": selectedRegion])
+        }
         func read() throws -> KeyboardEffect {
+            if profileZero { return try KeyboardEffect(payload: command(.readEffect)) }
             controller.refreshKeyboardLighting()
             try session.until({ !controller.keyboardEffectBusy }, seconds: 15, interruptible: false)
             guard controller.keyboardEffectRequestSucceeded, let effect = controller.currentKeyboardEffect else {
@@ -214,6 +236,11 @@ enum LightingLabRunner {
             return effect
         }
         func apply(_ effect: KeyboardEffect) throws {
+            if profileZero {
+                _ = try command(.restore(effect))
+                guard try read() == effect else { throw LightingLabError.message("Bluetooth restoration readback differs.") }
+                return
+            }
             guard controller.ready, controller.canEditKeyboardLighting else {
                 throw LightingLabError.message("Bluetooth disconnected; restoration must be retried.")
             }
@@ -228,17 +255,35 @@ enum LightingLabRunner {
             try session.recovery.restore(connection: "bluetooth", identity: identity, apply: apply, read: read)
             session.log("restored"); print("Previous effect restored and verified."); return
         }
-        try session.recovery.save(LightingLabSnapshot(connection: "bluetooth", identity: identity, effect: initial))
+        try session.recovery.save(LightingLabSnapshot(connection: "bluetooth", identity: identity, effect: initial,
+                                                      bluetoothProfile: profileZero ? 0 : nil,
+                                                      bluetoothRegion: profileZero ? selectedRegion : nil))
         print("Original effect saved. Brightness is unchanged; use a nonzero brightness to see the test.")
-        session.log("start", ["connection": "bluetooth", "pattern": "presets", "seconds": duration])
+        session.log("start", ["connection": "bluetooth", "pattern": pattern.rawValue, "seconds": duration])
         var failure: Error?
         do {
-            for (name, effect) in LightingLabPattern.presetSteps {
-                if session.stopped { break }
-                print("Showing: \(name)")
-                try apply(effect)
-                session.log("effect_verified", ["name": name, "payload": Array(effect.payload)])
-                session.wait(duration)
+            if pattern == .presets {
+                for (name, effect) in LightingLabPattern.presetSteps {
+                    if session.stopped { break }
+                    print("Showing: \(name)")
+                    try apply(effect)
+                    session.log("effect_verified", ["name": name, "payload": Array(effect.payload)])
+                    session.wait(duration)
+                }
+            } else {
+                print("Experimental Bluetooth test: \(pattern.explanation)")
+                _ = try command(.selectCustom)
+                guard try read().id == 8 else { throw LightingLabError.message("Bluetooth custom-frame selection was not confirmed.") }
+                session.log("custom_effect_verified")
+                let started = ProcessInfo.processInfo.systemUptime
+                var frames = 0
+                while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
+                    _ = try command(.frame(pattern.frame(at: ProcessInfo.processInfo.systemUptime - started)))
+                    frames += 1
+                    session.wait(0.25) // At most four frames/sec; commands remain serialized.
+                }
+                session.log("frames_acknowledged", ["count": frames])
+                print("Sent \(frames) acknowledged Bluetooth frames; watch the physical lighting.")
             }
         } catch { failure = error; session.log("test_error", ["message": error.localizedDescription]) }
         print("Restoring previous effect…")

@@ -29,18 +29,19 @@ def interactive():
     print("3. USB — experiment with zone patterns")
     print("4. Restore a Bluetooth test interrupted by a disconnect/crash")
     print("5. Restore a USB test interrupted by a disconnect/crash")
-    selection = input("Choose 1–5 (or Enter to cancel): ").strip()
+    print("6. Bluetooth — experiment with zone patterns")
+    selection = input("Choose 1–6 (or Enter to cancel): ").strip()
     if not selection:
         return 0
     if selection in ("4", "5"):
         return invoke(["restore", "bluetooth" if selection == "4" else "usb"])
-    if selection not in ("1", "2", "3"):
+    if selection not in ("1", "2", "3", "6"):
         print("No test started.")
         return 2
-    connection = "bluetooth" if selection == "1" else "usb"
+    connection = "bluetooth" if selection in ("1", "6") else "usb"
     pattern = "presets"
-    if selection == "3":
-        print("\nExperimental USB patterns; M1–M5 always share one color.")
+    if selection in ("3", "6"):
+        print(f"\n{connection.title()} zone patterns; M1–M5 always share one color.")
         available = subprocess.run([str(APP), "--lighting-lab", "list"],
                                    check=True, text=True, capture_output=True).stdout.splitlines()
         options = [line for line in available if not line.startswith("presets:")]
@@ -55,7 +56,10 @@ def interactive():
         pattern = options[int(chosen) - 1].split(":", 1)[0]
     print("\nEach preset stays on for six seconds; a zone pattern runs for six seconds.")
     print("Press Control+C to stop and restore. A disconnected keyboard needs recovery after reconnecting.\n")
-    return invoke(["run", connection, "--pattern", pattern, "--seconds", "6"])
+    arguments = ["run", connection, "--pattern", pattern, "--seconds", "6"]
+    if selection == "6":
+        arguments.append("--experimental-frames")
+    return invoke(arguments)
 
 
 def main():
@@ -69,6 +73,8 @@ def main():
                      choices=("presets", "macro-solid", "macro-pulse", "macro-colors", "scan", "chase", "progress", "rainbow"))
     run.add_argument("--seconds", type=float, default=6,
                      help="2–30 seconds per preset, or total duration for a zone pattern")
+    run.add_argument("--experimental-frames", action="store_true",
+                     help="Opt into the separate Bluetooth zone-frame research path")
     restore = sub.add_parser("restore", help="Retry exact-device restoration after a disconnect/crash")
     restore.add_argument("connection", choices=("bluetooth", "usb"))
     args = parser.parse_args()
@@ -78,7 +84,10 @@ def main():
         return invoke(["list"])
     if args.command == "restore":
         return invoke(["restore", args.connection])
-    return invoke(["run", args.connection, "--pattern", args.pattern, "--seconds", str(args.seconds)])
+    arguments = ["run", args.connection, "--pattern", args.pattern, "--seconds", str(args.seconds)]
+    if args.experimental_frames:
+        arguments.append("--experimental-frames")
+    return invoke(arguments)
 
 
 if __name__ == "__main__":

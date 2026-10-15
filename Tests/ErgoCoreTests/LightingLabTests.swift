@@ -4,6 +4,47 @@ import XCTest
 final class LightingLabTests: XCTestCase {
     private let black = DialColor(red: 0, green: 0, blue: 0)
 
+    func testExperimentalBluetoothFramesUseProfileZeroAndRecoveredTypeFourBounds() throws {
+        let colors = try LightingLabPattern.macroSolid.frame(at: 0)
+        let command = try BluetoothLightingLabCommand.frame(colors).request(transaction: 3)
+        XCTAssertEqual(command.header, Data([3,62,0,0,16,4,0,0]))
+        XCTAssertEqual(Array(command.payload.prefix(8)), [4,0,0,0,18,0,180,255])
+        XCTAssertTrue(command.payload.dropFirst(8).allSatisfy { $0 == 0 })
+        XCTAssertEqual(command.writeChunks.map(\.count), [8,20,20,20,2])
+        XCTAssertThrowsError(try BluetoothLightingLabCommand.frame(Array(colors.dropLast())).request(transaction: 1))
+        let select = try BluetoothLightingLabCommand.selectCustom.request(transaction: 2)
+        XCTAssertEqual(select.header, Data([2,4,0,0,16,3,0,0]))
+        XCTAssertEqual(select.payload, Data([8,0,0,0]))
+        let read = try BluetoothLightingLabCommand.readEffect.request(transaction: 1)
+        XCTAssertEqual(read.header, Data([1,0,0,0,16,0x83,0,0]))
+        let reported = try BluetoothLightingLabCommand.readRegions.request(transaction: 1)
+        XCTAssertEqual(reported.header, Data([1,0,0,0,16,0x80,0,1]))
+        let frameRegion = try BluetoothLightingLabCommand.frame(colors).request(transaction: 3, region: 1)
+        XCTAssertEqual(frameRegion.header, Data([3,62,0,0,16,4,0,1]))
+        let effect = try KeyboardEffect(kind: .wave, direction: 1)
+        let restore = try BluetoothLightingLabCommand.restore(effect).request(transaction: 1)
+        XCTAssertEqual(restore.header[6], 0)
+        XCTAssertEqual(restore.payload, effect.payload)
+        XCTAssertThrowsError(try BluetoothLightingLabCommand.restore(KeyboardEffect(payload: Data([8,0,0,0]))).request(transaction: 1))
+    }
+
+    func testBluetoothRecoveryKeepsTheSnapshotProfileAndAcceptsLegacyRecords() throws {
+        let effect = try KeyboardEffect(kind: .spectrum)
+        let saved = LightingLabSnapshot(connection: "bluetooth", identity: "paired-device", effect: effect,
+                                         bluetoothProfile: 0, bluetoothRegion: 1)
+        let decoded = try JSONDecoder().decode(LightingLabSnapshot.self, from: JSONEncoder().encode(saved))
+        XCTAssertEqual(decoded.bluetoothProfile, 0)
+        XCTAssertEqual(decoded.bluetoothRegion, 1)
+        XCTAssertEqual(try decoded.validatedEffect(), effect)
+        let legacy = Data(#"{"version":1,"connection":"bluetooth","identity":"paired-device","effect":"AwAAAA=="}"#.utf8)
+        let old = try JSONDecoder().decode(LightingLabSnapshot.self, from: legacy)
+        XCTAssertNil(old.bluetoothProfile)
+        XCTAssertEqual(try old.validatedEffect(), effect)
+        XCTAssertThrowsError(try LightingLabSnapshot(connection: "usb", identity: "one", effect: effect, bluetoothProfile: 0).validatedEffect())
+        XCTAssertThrowsError(try LightingLabSnapshot(connection: "bluetooth", identity: "one", effect: effect, bluetoothProfile: 2).validatedEffect())
+        XCTAssertThrowsError(try LightingLabSnapshot(connection: "bluetooth", identity: "one", effect: effect, bluetoothRegion: 1).validatedEffect())
+    }
+
     func testUSBIdentityGetterUsesReadOnlyVendorTemplateAndRejectsMissingIdentity() throws {
         let request = try USBLightingCommand.readSerial.request(transaction: 1)
         XCTAssertEqual(Array(request.prefix(8)), [0,1,0,0,0,22,0,130])

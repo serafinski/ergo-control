@@ -2,6 +2,12 @@
 
 This is a concise reference for the protocol recovered during this project's hardware investigation. The [research history](research/INVESTIGATION.md) records provenance and individual tests. Codecs live in `Sources/ErgoCore`; encoding a command there performs no I/O.
 
+## Custom Bluetooth zone frames (research lab)
+
+The optional [Lighting Lab](LIGHTING_LAB.md) has a hardware-confirmed Bluetooth path for custom macro-column lighting, separate from the regular app's firmware-effect picker. Read regions with class `10` / ID `80`, arguments `0/1`; the tested keyboard reports `[5]` (Backlight). At profile 0 / region 5, save the original effect (`10/83`), select effect 8 (`10/03`, payload `[8,0,0,0]`), then send rectangular RGB frames (`10/04`, payload `[4,0,0,0,18]` plus 57 RGB bytes for one row of 19 zones). AllRegion 0 accepts the selector but rejects frame data with status 7. Do not infer that rejection or Razer's no-Studio flag means Bluetooth custom lighting is impossible.
+
+The user confirmed only M1–M5 pulse while other keys are dark, over Bluetooth only and over USB. M1–M5 map to the shared first zone; this does not establish independent per-key colors or resolve the separate small dial indicator. The lab saves the exact peripheral/profile/region in its recovery record and verifies restoration at the same target before clearing it. Normal mapping sessions do not call this path. Live Bluetooth throughput was 20 acknowledged frames in a ten-second test, below the lab's four-frames/sec scheduling cap. See the lab documentation for USB's distinct class-15 format, interruption limits, and source provenance.
+
 ## Target and configuration channel
 
 Match vendor `0x068e`, product `0x02c3`, and transport **Bluetooth Low Energy**. The paired CoreBluetooth peripheral is resolved from the matched HID device's physical unique ID at runtime. No fixed peripheral identifier is shipped.
