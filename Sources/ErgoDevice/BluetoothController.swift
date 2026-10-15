@@ -76,6 +76,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     @Published public private(set) var currentKeyboardEffect: KeyboardEffect?
     @Published public private(set) var keyboardEffectStatus = "Read the keyboard to choose a lighting effect."
     @Published public private(set) var keyboardEffectBusy = false
+    private var effectRequests = KeyboardLightingRequests()
     private var brightnessSteps = BrightnessSteps()
     private var lightingRegion: UInt8?
     private var lightingTimer: Timer?
@@ -227,6 +228,8 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         ready = false
         driverModeVerified = false
         writeCharacteristic = nil
+        cancelQueuedKeyboardEffect()
+        lightingTimer?.invalidate(); lightingTimer = nil
         log("disconnected", ["error": error?.localizedDescription ?? "none"])
         if pending != nil { complete(.failure(BluetoothFailure.message("Keyboard configuration connection ended"))) }
         status = restoreOwed ? "Waiting for PT Ergo to reconnect so its original mode can be restored…" : "Configuration connection ended"
@@ -370,10 +373,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
     }
 
-    public var canTryDriverMode: Bool { ready && !busy && !restoreOwed && currentMode?.0 == 0 }
+    public var canTryDriverMode: Bool { ready && !busy && !keyboardEffectBusy && !restoreOwed && currentMode?.0 == 0 }
 
     public var canEditKeyboardLighting: Bool {
-        ready && !busy && !keyboardEffectBusy && !lightingOperation && !closing && !restoreRequested
+        ready && !keyboardEffectBusy && !closing && !restoreRequested
             && !restorationChain && (!restoreOwed || driverModeVerified)
     }
 
@@ -381,7 +384,11 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         guard canEditKeyboardLighting else { return }
         keyboardEffectBusy = true
         keyboardEffectStatus = "Reading keyboard lighting…"
-        keyboardEffectIDs = []
+        effectRequests.enqueue(.read)
+        startLightingTimer(); pumpLighting()
+    }
+
+    private func beginKeyboardEffectRead() {
         effectCommand(try! .readKeyboardEffectIDs(transaction: transactions.next())) { [weak self] response in
             guard let self else { return }
             let ids = Array(response.payload)
@@ -395,12 +402,16 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     public func applyKeyboardEffect(_ effect: KeyboardEffect) {
-        guard canEditKeyboardLighting, keyboardEffectIDs.contains(effect.id) else { return }
+        guard canEditKeyboardLighting, !keyboardEffectIDs.isEmpty else { return }
         do {
-            let request = try Protocol30Request.keyboardEffect(transaction: transactions.next(), effect: effect)
+            // Only the five recovered firmware effects can be written. The
+            // advertised list omits effects also seen in native state / Synapse;
+            // an explicit user selection can try one, followed by readback.
+            _ = try Protocol30Request.keyboardEffect(transaction: 1, effect: effect)
             keyboardEffectBusy = true
             keyboardEffectStatus = "Applying keyboard lighting…"
-            effectCommand(request) { [weak self] _ in self?.readCurrentKeyboardEffect(expected: effect) }
+            effectRequests.enqueue(.apply(effect))
+            startLightingTimer(); pumpLighting()
         } catch { keyboardEffectStatus = error.localizedDescription }
     }
 
@@ -443,6 +454,12 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private func finishKeyboardEffect(_ message: String) {
         keyboardEffectBusy = false
         keyboardEffectStatus = message
+    }
+
+    private func cancelQueuedKeyboardEffect() {
+        guard !effectRequests.isEmpty else { return }
+        effectRequests.cancel()
+        finishKeyboardEffect("Lighting update interrupted. Read the keyboard and try again.")
     }
 
     public func readBattery() {
@@ -571,6 +588,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     public func restore() {
+        cancelQueuedKeyboardEffect()
         lightingTimer?.invalidate(); lightingTimer = nil
         indicatorBacklight.cancel()
         brightnessSteps.clear(); requestedDialColor = nil; dialDeadline = nil
@@ -624,7 +642,24 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     private func pumpLighting() {
-        guard driverModeVerified, ready, !busy, !lightingOperation, !keyboardEffectBusy, !restoreRequested, !closing else { return }
+        guard ready, !restoreRequested, !closing, !restorationChain else { return }
+        if let request = effectRequests.takeIfIdle(commandBusy: busy, dialLightingBusy: lightingOperation) {
+            switch request {
+            case .read: beginKeyboardEffectRead()
+            case .apply(let effect):
+                do {
+                    let command = try Protocol30Request.keyboardEffect(transaction: transactions.next(), effect: effect)
+                    effectCommand(command) { [weak self] _ in self?.readCurrentKeyboardEffect(expected: effect) }
+                } catch { finishKeyboardEffect(error.localizedDescription) }
+            }
+            return
+        }
+        guard !keyboardEffectBusy else { return }
+        guard driverModeVerified else {
+            lightingTimer?.invalidate(); lightingTimer = nil
+            return
+        }
+        guard !busy, !lightingOperation else { return }
         // Retire the previous flash before processing brightness. A newer mode
         // selection supersedes its timeout and is coalesced to the latest color.
         if requestedDialColor != nil, !indicatorUnavailable {

@@ -13,9 +13,34 @@ public enum KeyboardEffectKind: UInt8, CaseIterable, Identifiable {
         case .wave: return "Wave"
         }
     }
-    public static func supported(by ids: [UInt8]) -> [Self] {
+    public static func advertised(by ids: [UInt8]) -> [Self] {
         allCases.filter { ids.contains($0.rawValue) }
     }
+}
+
+public enum KeyboardLightingRequest: Equatable {
+    case read
+    case apply(KeyboardEffect)
+}
+
+/// A user click waits for the shared configuration channel instead of being
+/// dropped or disabling the UI every time a background check starts.
+public struct KeyboardLightingRequests {
+    private var pending: KeyboardLightingRequest?
+    public init() {}
+    public var isEmpty: Bool { pending == nil }
+    @discardableResult public mutating func enqueue(_ request: KeyboardLightingRequest) -> Bool {
+        guard pending == nil else { return false }
+        pending = request
+        return true
+    }
+    public mutating func takeIfIdle(commandBusy: Bool, dialLightingBusy: Bool) -> KeyboardLightingRequest? {
+        guard !commandBusy, !dialLightingBusy else { return nil }
+        let request = pending
+        pending = nil
+        return request
+    }
+    public mutating func cancel() { pending = nil }
 }
 
 public struct KeyboardEffect: Equatable {

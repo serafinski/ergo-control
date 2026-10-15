@@ -37,9 +37,30 @@ final class KeyboardEffectTests: XCTestCase {
             XCTAssertThrowsError(try KeyboardEffect(payload: Data(bytes)))
         }
     }
-    func testPickerOffersOnlyImplementedAndAdvertisedEffects() {
-        XCTAssertEqual(KeyboardEffectKind.supported(by: [1,2,8,99]), [.static, .breathing])
-        XCTAssertEqual(KeyboardEffectKind.supported(by: []), [])
-        XCTAssertEqual(KeyboardEffectKind.supported(by: [4,2,0,3,1]), KeyboardEffectKind.allCases)
+    func testAdvertisedMetadataRecognizesOnlyImplementedEffects() {
+        XCTAssertEqual(KeyboardEffectKind.advertised(by: [1,2,8,99]), [.static, .breathing])
+        XCTAssertEqual(KeyboardEffectKind.advertised(by: []), [])
+        XCTAssertEqual(KeyboardEffectKind.advertised(by: [4,2,0,3,1]), KeyboardEffectKind.allCases)
+    }
+    func testLightingClickWaitsAcrossBackgroundChecksAndRunsOnlyOnce() throws {
+        var requests = KeyboardLightingRequests()
+        let apply = KeyboardLightingRequest.apply(try KeyboardEffect(kind: .breathing))
+        XCTAssertTrue(requests.enqueue(apply))
+        XCTAssertFalse(requests.enqueue(.read))
+        XCTAssertNil(requests.takeIfIdle(commandBusy: true, dialLightingBusy: false))
+        XCTAssertNil(requests.takeIfIdle(commandBusy: false, dialLightingBusy: true))
+        XCTAssertFalse(requests.isEmpty)
+        XCTAssertEqual(requests.takeIfIdle(commandBusy: false, dialLightingBusy: false), apply)
+        XCTAssertNil(requests.takeIfIdle(commandBusy: false, dialLightingBusy: false))
+        XCTAssertTrue(requests.isEmpty)
+    }
+    func testRestorationCancelsAQueuedLightingReadOrWrite() throws {
+        for request in [KeyboardLightingRequest.read, .apply(try KeyboardEffect(kind: .wave))] {
+            var requests = KeyboardLightingRequests()
+            XCTAssertTrue(requests.enqueue(request))
+            requests.cancel()
+            XCTAssertTrue(requests.isEmpty)
+            XCTAssertNil(requests.takeIfIdle(commandBusy: false, dialLightingBusy: false))
+        }
     }
 }

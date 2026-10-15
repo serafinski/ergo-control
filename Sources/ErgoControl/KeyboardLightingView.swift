@@ -12,7 +12,7 @@ struct KeyboardLightingView: View {
     @State private var direction: UInt8 = 1
 
     private var device: BluetoothController { model.bluetooth }
-    private var effects: [KeyboardEffectKind] { KeyboardEffectKind.supported(by: device.keyboardEffectIDs) }
+    private let effects = KeyboardEffectKind.allCases
     private var available: Bool { device.canEditKeyboardLighting && !model.preparing }
 
     var body: some View {
@@ -23,17 +23,14 @@ struct KeyboardLightingView: View {
                     Spacer()
                     Button(device.ready ? "Read keyboard" : "Connect keyboard") {
                         if device.ready { device.refreshKeyboardLighting() } else { device.connect() }
-                    }.disabled(model.preparing || device.busy || device.keyboardEffectBusy || (device.ready && !available))
+                    }.disabled(model.preparing || (device.ready ? !available : device.busy || device.keyboardEffectBusy))
                 }
-                if !effects.isEmpty {
+                if !device.keyboardEffectIDs.isEmpty {
                     Picker("Effect", selection: $kind) {
                         ForEach(effects) { effect in Text(effect.name).tag(effect) }
-                        if let current = device.currentKeyboardEffect?.kind, !effects.contains(current) {
-                            Text("\(current.name) (current)").tag(current).disabled(true)
-                        }
                     }
-                    if !effects.contains(kind) {
-                        Text("The current effect isn’t in the keyboard’s available choices. Choose another effect to change it.")
+                    if !KeyboardEffectKind.advertised(by: device.keyboardEffectIDs).contains(kind) {
+                        Text("This effect wasn’t listed by the keyboard. Apply lighting will check whether it is accepted.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     if kind == .breathing {
@@ -58,7 +55,7 @@ struct KeyboardLightingView: View {
                         }
                     }
                     Button("Apply lighting") { apply() }
-                        .disabled(!available || !effects.contains(kind))
+                        .disabled(!available)
                 }
                 Text(device.keyboardEffectStatus).font(.callout).textSelection(.enabled)
                 Text("Works with mappings on or off. Lighting applies to every profile. Keep keyboard brightness above 0% to see the effect.")
@@ -75,9 +72,6 @@ struct KeyboardLightingView: View {
             if effect.colors.count > 1 { secondColor = swiftColor(effect.colors[1]) }
             if effect.kind == .breathing { breathingColors = min(2, effect.colors.count) }
             if effect.kind == .wave, effect.flags == 1 || effect.flags == 2 { direction = effect.flags }
-        }
-        .onChange(of: device.keyboardEffectIDs) { _, _ in
-            if !effects.contains(kind), let first = effects.first { kind = first }
         }
     }
 
