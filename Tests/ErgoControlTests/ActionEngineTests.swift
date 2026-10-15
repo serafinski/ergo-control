@@ -4,6 +4,27 @@ import ErgoCore
 
 /// Exercise the real engine with an output sink; never post input to the Mac.
 final class ActionEngineTests: XCTestCase {
+    func testRepeatedPlayPauseWithoutNeutralReportsProducesBalancedEvents() {
+        var output: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { usage, pressed in output.append(ConsumerKeyEvent(usage, pressed: pressed)) })
+        var state = ConsumerKeyState()
+        let press = Data([3,0xcd] + Array(repeating: 0, count: 10))
+        for time in [0.0, 1, 2] {
+            for event in state.decode(press, at: time)! { XCTAssertTrue(engine.media(event.usage, pressed: event.pressed)) }
+            for event in state.releaseExpired(at: time + 0.31) { XCTAssertTrue(engine.media(event.usage, pressed: event.pressed)) }
+        }
+        XCTAssertEqual(output, (0..<3).flatMap { _ in [ConsumerKeyEvent(0xcd, pressed: true), ConsumerKeyEvent(0xcd, pressed: false)] })
+        engine.stop()
+        XCTAssertEqual(output.count, 6)
+    }
+    func testStopReleasesHeldMediaAndRejectsUnknownOutput() {
+        var output: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { usage, pressed in output.append(ConsumerKeyEvent(usage, pressed: pressed)) })
+        XCTAssertFalse(engine.media(0xffff, pressed: true))
+        XCTAssertTrue(engine.media(0xcd, pressed: true))
+        engine.stop()
+        XCTAssertEqual(output, [ConsumerKeyEvent(0xcd, pressed: true), ConsumerKeyEvent(0xcd, pressed: false)])
+    }
     func testKeyboardBrightnessUsesDeviceCallbackInsteadOfMacKeyEvents() {
         var output: [KeyboardOutput] = []
         var turns: [Int] = []

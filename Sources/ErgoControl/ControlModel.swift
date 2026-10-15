@@ -38,7 +38,8 @@ final class ControlModel: ObservableObject {
     private var keyActions: [UInt8: MappingAction] = [:]
     private var extraActions: [UInt8: MappingAction] = [:]
     private var mediaActions: [UInt16: MappingAction] = [:]
-    private var consumer: UInt16 = 0
+    private var consumer = ConsumerKeyState()
+    private var mediaReleaseTimer: Timer?
     private var extraDecoder = ExtraKeyDecoder()
     private var layerKeys: Set<String> = []
     private struct IndicatorSelection: Equatable { let profile: UUID; let mode: UUID; let color: DialColor }
@@ -251,7 +252,7 @@ final class ControlModel: ObservableObject {
         if dirty { save(); if error != nil { return } }
         preparing = true; stageStarted = Date(); activationStarted = false; batteryRequested = false
         sessionDeadline = testSeconds.map { Date().addingTimeInterval($0) }
-        extraDecoder = ExtraKeyDecoder(); ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll(); consumer = 0
+        extraDecoder = ExtraKeyDecoder(); ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll(); consumer = ConsumerKeyState()
         status = "Connecting to PT Ergo…"; bluetooth.connect()
         timer?.invalidate()
         timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.advance() }
@@ -287,6 +288,7 @@ final class ControlModel: ObservableObject {
         preparing = false; running = false; timer?.invalidate(); timer = nil
         sessionDeadline = nil
         relay.stop(); relayOpened = false; engine.stop()
+        mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = ConsumerKeyState()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()
         bluetooth.restore(); status = message
     }
@@ -369,25 +371,42 @@ final class ControlModel: ObservableObject {
             lastControl = ControlCatalog.label(control)
             for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control), fromDial: true) }
         } else if id == 3 {
-            guard bytes.count == 12, bytes.dropFirst(3).allSatisfy({ $0 == 0 }) else { stop("Unexpected media packet; mappings stopped."); return }
-            let usage = UInt16(bytes[1]) | UInt16(bytes[2]) << 8
-            guard usage != consumer else { return }
-            let controls: [UInt16: String] = [0xe9:"rightCW",0xea:"rightCCW",0xe2:"rightClick",0xcd:"mediaSingle",0xb5:"mediaDouble",0xb6:"mediaTriple"]
-            if consumer != 0 {
-                let mapping = mediaActions.removeValue(forKey: consumer) ?? MappingAction()
-                if mapping.kind == .standard { _ = engine.media(consumer, pressed: false) }
-                else { execute(mapping, control: controls[consumer] ?? "media:\(consumer)", pressed: false) }
+            guard let events = consumer.decode(data, at: ProcessInfo.processInfo.systemUptime) else {
+                stop("Unexpected media packet; mappings stopped."); return
             }
-            if usage != 0 {
-                let control = controls[usage] ?? "media:\(usage)"
-                let mapping = running ? action(for: control) : MappingAction()
-                mediaActions[usage] = mapping; lastControl = ControlCatalog.label(control)
-                if mapping.kind == .standard {
-                    guard engine.media(usage, pressed: true) else { stop("This media key needs support (\(usage)); mappings stopped."); return }
-                } else { execute(mapping, control: control, pressed: true) }
-            }
-            consumer = usage
+            forwardMedia(events)
+            scheduleMediaRelease()
         } else if id == 6 { return } // device notifications, not keyboard actions
         else { stop("This input report needs support (\(id)); mappings stopped.") }
+    }
+
+    private func forwardMedia(_ events: [ConsumerKeyEvent]) {
+        let controls: [UInt16: String] = [0xe9:"rightCW",0xea:"rightCCW",0xe2:"rightClick",0xcd:"mediaSingle",0xb5:"mediaDouble",0xb6:"mediaTriple"]
+        for event in events {
+            guard relayOpened else { return }
+            let control = controls[event.usage] ?? "media:\(event.usage)"
+            let mapping: MappingAction
+            if event.pressed {
+                mapping = running ? action(for: control) : MappingAction()
+                mediaActions[event.usage] = mapping; lastControl = ControlCatalog.label(control)
+            } else { mapping = mediaActions.removeValue(forKey: event.usage) ?? MappingAction() }
+            if mapping.kind == .standard {
+                guard engine.media(event.usage, pressed: event.pressed) else {
+                    stop("This media key needs support (\(event.usage)); mappings stopped."); return
+                }
+            } else { execute(mapping, control: control, pressed: event.pressed) }
+        }
+    }
+
+    private func scheduleMediaRelease() {
+        mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil
+        guard relayOpened, let deadline = consumer.releaseDeadline else { return }
+        let timer = Timer(timeInterval: max(0.001, deadline - ProcessInfo.processInfo.systemUptime), repeats: false) { [weak self] _ in
+            guard let self, self.relayOpened else { return }
+            self.forwardMedia(self.consumer.releaseExpired(at: ProcessInfo.processInfo.systemUptime))
+            self.scheduleMediaRelease()
+        }
+        mediaReleaseTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 }

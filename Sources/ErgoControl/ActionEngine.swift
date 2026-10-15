@@ -48,9 +48,12 @@ final class ActionEngine {
     private var appSwitcher = DialAppSwitcher()
     private var switcherTimer: Timer?
     private let keyOutput: ((KeyboardOutput, Bool) -> Void)?
+    private let mediaOutput: ((UInt16, Bool) -> Void)?
     private let applicationToggle = ApplicationToggle()
 
-    init(keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) { self.keyOutput = keyOutput }
+    init(mediaOutput: ((UInt16, Bool) -> Void)? = nil, keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) {
+        self.keyOutput = keyOutput; self.mediaOutput = mediaOutput
+    }
 
     func key(_ usage: UInt8, pressed: Bool, repeated: Bool = false, modifiers: UInt8? = nil, tracked: Bool = true) {
         guard let code = MacKeys.codes[usage] else { onError?("This keyboard key needs support (\(usage)); mappings were stopped"); return }
@@ -94,10 +97,14 @@ final class ActionEngine {
         endAppSwitcher()
         let codes: [UInt16: Int] = [0xe9:0,0xea:1,0x6f:2,0x70:3,0xe2:7,0xcd:16,0xb5:17,0xb6:18,0xb3:19,0xb4:20]
         guard let code = codes[usage] else { return false }
-        if pressed { heldMedia.insert(usage) } else { heldMedia.remove(usage) }
         let data = (code << 16) | ((pressed ? 0xa : 0xb) << 8)
-        NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [], timestamp: 0,
-                          windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent?.post(tap: .cghidEventTap)
+        if let mediaOutput { mediaOutput(usage, pressed) }
+        else {
+            guard let event = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent else { return false }
+            event.post(tap: .cghidEventTap)
+        }
+        if pressed { heldMedia.insert(usage) } else { heldMedia.remove(usage) }
         return true
     }
 

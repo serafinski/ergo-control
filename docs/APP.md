@@ -4,7 +4,7 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.2.7**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The local preview path is a development convention. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.2.8**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The local preview path is a development convention. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
 
 ## Current verification boundary
 
@@ -15,6 +15,12 @@ Earlier hardware tests confirmed M1 text output and an M2 macro combining text, 
 Version **0.2.3** corrects two reported full-control issues: Command+Tab dial turns previously released Command immediately, and the separate right-space input had no default output. The suite now passes 39 tests (35 core and four action-engine tests with an output sink that does not post input). New split-key output, the visible native app switcher, and application minimize/restore still need user-directed hardware/UI verification. The signed preview is built with the same installed 0.2.2 helper, whose code hash is unchanged; this GUI update does not require another helper installation.
 
 Per-zone/custom Chroma animations, firmware updates, onboard macro storage, and Fn-row primary-mode writes are not implemented. Keyboard brightness and the transient dial light are described below. Profiles and macros run on the Mac while the app is enabled. The alternate layer uses an explicitly assigned hold button; it does not assume the firmware exposes a separate Hypershift/Fn key.
+
+## Media-button release recovery (0.2.8)
+
+Play/pause, next-track, and previous-track gestures now have a 300 ms release fallback. Normal press/neutral reports still release immediately. If the neutral report is missed, the app releases the synthesized media key and rearms that gesture so another click does not depend on first using volume or mute. Volume, mute, brightness, and held fast-forward/rewind keep their existing press/release behavior. A new media gesture releases any prior one before pressing the next; changing profiles while held still uses the action captured at press time.
+
+The user reported an intermittent failure that seemed associated with Ergo Control but did not have a repeatable comparison with mappings off. The missed-release case is reproduced in automated tests; it is a plausible explanation, not a confirmed capture of the reported hardware failure. Tests also cover late neutral reports, duplicate packets, seek/volume holds, malformed input, and balanced media output through the real action engine with output suppressed. This GUI update reuses the unchanged input helper. No new permission or helper installation is required.
 
 ## Keyboard lighting effects (0.2.7)
 
@@ -38,7 +44,7 @@ Tests with positive backlight still reject the recovered RGB target (class 1 / I
 
 Earlier experimental builds saved prior light state durably before writes. Their recovery journals remain supported: stopping restores normal keyboard input mode before any owed indicator recovery. Recovery information survives disconnect/restart until restoration is verified. The current diagnostic build makes no new indicator changes to restore.
 
-Unsupported optional commands display an error without disconnecting working mappings. Rejected indicator APIs stay disabled until restarting the app, avoiding repeated probes during ordinary use. Transport timeouts or malformed exchanges still reset the channel. The input helper is unchanged and requires no reinstall. All 64 automated tests pass; hardware-confirmed brightness and its percentage popup remain separate from unresolved physical colors. See [PROTOCOL.md](PROTOCOL.md) for evidence and [ROADMAP.md](ROADMAP.md) for deferred work.
+Unsupported optional commands display an error without disconnecting working mappings. Rejected indicator APIs stay disabled until restarting the app, avoiding repeated probes during ordinary use. Transport timeouts or malformed exchanges still reset the channel. The input helper is unchanged and requires no reinstall. All 70 automated tests pass; hardware-confirmed brightness and its percentage popup remain separate from unresolved physical colors. See [PROTOCOL.md](PROTOCOL.md) for evidence and [ROADMAP.md](ROADMAP.md) for deferred work.
 
 ## First setup
 
