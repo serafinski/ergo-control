@@ -107,3 +107,17 @@ The vendor product's static default table maps extra identifiers 251, 252, and 2
 ## Evidence boundary
 
 The application uses its own source and macOS frameworks. Vendor JavaScript/libraries were inspected statically and are not linked, executed, or distributed. The initial installer/evidence hashes are archived under `research/initial-handoff/`. Raw captures and device identifiers remain local. USB/receiver transport, undocumented writes, and other Razer models must not be inferred from this Bluetooth result.
+
+## Built-in keyboard backlight effects (0.2.7)
+
+Recovered independently from the product’s protocol-3.0 device module and shared LightingHelper. These use **New Chroma IDs**, not the legacy LED-matrix IDs (legacy Breathing=3/Static=6 must not be used here).
+
+| Operation | Class / ID (hex) | Arguments / payload |
+| --- | --- | --- |
+| Advertised effect IDs | `10 / 82` | `0/0`, no payload; returned bytes are effect IDs |
+| Current effect | `10 / 83` | `1/0` (live profile / AllRegion), no payload |
+| Apply effect | `10 / 03` | `1/0`; effect, flags, rate, color count, then RGB triples |
+
+Implemented IDs: Off=0, Static=1, Breathing=2, Spectrum=3, Wave=4. Static uses flags/rate=0 and one color. Breathing uses flags=color count (0=random, 1=one, 2=two), rate=0. Wave uses flags 1=left or 2=right, rate=40, no colors. Off and Spectrum use zeros and no colors. The setter sends exactly 4+3×color-count bytes. Getter parsing checks the minimum header, bounded color count, and complete triples, accepting trailing padding. Unknown received effects can be displayed but cannot be sent by the writer. Only implemented IDs also advertised by the keyboard are offered.
+
+Evidence: `rzDevice30` exports `newChroma_getChromaEffectIDList`, `getChromaEffect`, and `setChromaEffectCommon`; shared module 70953 defines effect flags/rate/color conversion, and shared hardware-event handling reads live profile 1 / region 0. Source hashes are listed above. The [official master guide](https://dl.razerzone.com/master-guides/RazerSynapse4/PROTYPEERGO-00000708-en.pdf), page 11, independently lists the same five built-in effects. This is whole-keyboard firmware lighting, not the physical dial mode LED and not a Chroma SDK integration.

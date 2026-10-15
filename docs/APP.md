@@ -4,7 +4,7 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.2.6**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The local preview path is a development convention. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.2.7**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The local preview path is a development convention. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
 
 ## Current verification boundary
 
@@ -14,7 +14,17 @@ Earlier hardware tests confirmed M1 text output and an M2 macro combining text, 
 
 Version **0.2.3** corrects two reported full-control issues: Command+Tab dial turns previously released Command immediately, and the separate right-space input had no default output. The suite now passes 39 tests (35 core and four action-engine tests with an output sink that does not post input). New split-key output, the visible native app switcher, and application minimize/restore still need user-directed hardware/UI verification. The signed preview is built with the same installed 0.2.2 helper, whose code hash is unchanged; this GUI update does not require another helper installation.
 
-General RGB/Chroma effects, firmware updates, onboard macro storage, and Fn-row primary-mode writes are not implemented. Keyboard brightness and the transient dial light are described below. Profiles and macros run on the Mac while the app is enabled. The alternate layer uses an explicitly assigned hold button; it does not assume the firmware exposes a separate Hypershift/Fn key.
+Per-zone/custom Chroma animations, firmware updates, onboard macro storage, and Fn-row primary-mode writes are not implemented. Keyboard brightness and the transient dial light are described below. Profiles and macros run on the Mac while the app is enabled. The alternate layer uses an explicitly assigned hold button; it does not assume the firmware exposes a separate Hypershift/Fn key.
+
+## Keyboard lighting effects (0.2.7)
+
+Open **Keyboard lighting** and click **Read keyboard**. If disconnected, use **Connect keyboard** first. The panel offers the implemented effects advertised by this keyboard: Off, Static, Breathing, Spectrum cycling, and Wave. Static has one color; Breathing offers random, one, or two colors; Wave offers left/right direction. Click **Apply lighting** to write the setting and read it back. **Save changes** applies to mapping profiles, independently of this device setting.
+
+Lighting controls work with mappings off or on. The effect runs in keyboard firmware, using the existing Bluetooth connection; no new driver, helper installation, cloud account, or host animation loop is involved. Effects are global rather than tied to the selected mapping profile. Changing effects preserves backlight brightness; keep it above 0% to see the result. Stopping mappings does not undo an explicitly applied lighting setting. Persistence across a keyboard power cycle is not claimed.
+
+Supported-effect discovery, current-effect reads, and writes share the serial configuration channel. Each write is followed by a readback; the panel reports mismatches or rejection rather than claiming success. Restoration takes priority over the next step in an effect operation. Optional command rejection does not stop working mappings. Protocol packet/parser/validation tests pass; live results are recorded separately in the investigation notes. The physical dial indicator remains a separate unresolved control.
+
+A developer-only read diagnostic is available as `ErgoControl --lighting-read`; quit other configuration apps and stop mappings first. It performs no lighting writes and refuses to run with a pending restoration journal.
 
 ## Keyboard brightness and dial colors (0.2.6)
 
@@ -28,7 +38,7 @@ Tests with positive backlight still reject the recovered RGB target (class 1 / I
 
 Earlier experimental builds saved prior light state durably before writes. Their recovery journals remain supported: stopping restores normal keyboard input mode before any owed indicator recovery. Recovery information survives disconnect/restart until restoration is verified. The current diagnostic build makes no new indicator changes to restore.
 
-Unsupported optional commands display an error without disconnecting working mappings. Rejected indicator APIs stay disabled until restarting the app, avoiding repeated probes during ordinary use. Transport timeouts or malformed exchanges still reset the channel. The input helper is unchanged and requires no reinstall. All 58 automated tests pass; hardware-confirmed brightness and its percentage popup remain separate from unresolved physical colors. See [PROTOCOL.md](PROTOCOL.md) for evidence and [ROADMAP.md](ROADMAP.md) for deferred work.
+Unsupported optional commands display an error without disconnecting working mappings. Rejected indicator APIs stay disabled until restarting the app, avoiding repeated probes during ordinary use. Transport timeouts or malformed exchanges still reset the channel. The input helper is unchanged and requires no reinstall. All 62 automated tests pass; hardware-confirmed brightness and its percentage popup remain separate from unresolved physical colors. See [PROTOCOL.md](PROTOCOL.md) for evidence and [ROADMAP.md](ROADMAP.md) for deferred work.
 
 ## First setup
 

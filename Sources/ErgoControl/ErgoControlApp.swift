@@ -16,6 +16,9 @@ struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
     @StateObject private var model = ControlModel()
     init() {
+        if CommandLine.arguments.dropFirst().first == "--lighting-read" {
+            NativeDialInspection.readLightingCommandLine()
+        }
         if CommandLine.arguments.dropFirst().first == "--native-dial-read" {
             NativeDialInspection.runCommandLine()
         }
@@ -169,6 +172,7 @@ struct ControlSettingsView: View {
                             if model.preparing || model.running || model.bluetooth.restoreOwed { Text(model.bluetooth.status).font(.caption).foregroundStyle(.secondary) }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(6)
                     }
+                    KeyboardLightingView(model: model)
                     GroupBox("Try your mappings") {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Click below to test ordinary typing, shortcuts, and macros. This text is not saved.")

@@ -72,6 +72,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     @Published public private(set) var lightingStatus = ""
     @Published public private(set) var keyboardBrightnessPercent: Int?
+    @Published public private(set) var keyboardEffectIDs: [UInt8] = []
+    @Published public private(set) var currentKeyboardEffect: KeyboardEffect?
+    @Published public private(set) var keyboardEffectStatus = "Read the keyboard to choose a lighting effect."
+    @Published public private(set) var keyboardEffectBusy = false
     private var brightnessSteps = BrightnessSteps()
     private var lightingRegion: UInt8?
     private var lightingTimer: Timer?
@@ -368,6 +372,79 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public var canTryDriverMode: Bool { ready && !busy && !restoreOwed && currentMode?.0 == 0 }
 
+    public var canEditKeyboardLighting: Bool {
+        ready && !busy && !keyboardEffectBusy && !lightingOperation && !closing && !restoreRequested
+            && !restorationChain && (!restoreOwed || driverModeVerified)
+    }
+
+    public func refreshKeyboardLighting() {
+        guard canEditKeyboardLighting else { return }
+        keyboardEffectBusy = true
+        keyboardEffectStatus = "Reading keyboard lighting…"
+        keyboardEffectIDs = []
+        effectCommand(try! .readKeyboardEffectIDs(transaction: transactions.next())) { [weak self] response in
+            guard let self else { return }
+            let ids = Array(response.payload)
+            guard !ids.isEmpty, ids.count <= 64, Set(ids).count == ids.count else {
+                self.finishKeyboardEffect("The keyboard returned an unexpected effect list."); return
+            }
+            self.keyboardEffectIDs = ids
+            self.log("keyboard_effect_ids", ["ids": ids])
+            self.readCurrentKeyboardEffect()
+        }
+    }
+
+    public func applyKeyboardEffect(_ effect: KeyboardEffect) {
+        guard canEditKeyboardLighting, keyboardEffectIDs.contains(effect.id) else { return }
+        do {
+            let request = try Protocol30Request.keyboardEffect(transaction: transactions.next(), effect: effect)
+            keyboardEffectBusy = true
+            keyboardEffectStatus = "Applying keyboard lighting…"
+            effectCommand(request) { [weak self] _ in self?.readCurrentKeyboardEffect(expected: effect) }
+        } catch { keyboardEffectStatus = error.localizedDescription }
+    }
+
+    private func readCurrentKeyboardEffect(expected: KeyboardEffect? = nil) {
+        effectCommand(try! .readKeyboardEffect(transaction: transactions.next())) { [weak self] response in
+            guard let self else { return }
+            do {
+                let effect = try KeyboardEffect(payload: response.payload)
+                self.currentKeyboardEffect = effect
+                self.log("keyboard_effect_read", ["id": effect.id, "flags": effect.flags, "rate": effect.rate,
+                                                   "colors": effect.colors.map { Array($0.bytes) }])
+                if let expected, effect != expected {
+                    self.finishKeyboardEffect("The keyboard reported different settings. Press Read keyboard to refresh.")
+                } else {
+                    self.finishKeyboardEffect("Current effect: \(effect.kind?.name ?? "Other effect")")
+                }
+            } catch { self.finishKeyboardEffect(error.localizedDescription) }
+        }
+    }
+
+    // Explicit lighting settings work in normal mode as well as driver mode.
+    // Restoration takes priority over every next step in this serial chain.
+    private func effectCommand(_ request: Protocol30Request, completion: @escaping (Protocol30Response) -> Void) {
+        guard ready, !closing, !restoreRequested, !restorationChain, !restoreOwed || driverModeVerified else {
+            finishKeyboardEffect("Lighting update interrupted. Read the keyboard and try again."); return
+        }
+        send(request) { [weak self] result in
+            guard let self else { return }
+            guard !self.closing, !self.restoreRequested, !self.restorationChain,
+                  !self.restoreOwed || self.driverModeVerified else {
+                self.finishKeyboardEffect("Lighting update interrupted. Read the keyboard and try again."); return
+            }
+            switch result {
+            case .success(let response): completion(response)
+            case .failure(let error): self.finishKeyboardEffect("Lighting unavailable: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func finishKeyboardEffect(_ message: String) {
+        keyboardEffectBusy = false
+        keyboardEffectStatus = message
+    }
+
     public func readBattery() {
         guard ready, !busy, !restoreOwed || driverModeVerified else { return }
         batteryText = "Reading battery status…"
@@ -547,7 +624,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     private func pumpLighting() {
-        guard driverModeVerified, ready, !busy, !lightingOperation, !restoreRequested, !closing else { return }
+        guard driverModeVerified, ready, !busy, !lightingOperation, !keyboardEffectBusy, !restoreRequested, !closing else { return }
         // Retire the previous flash before processing brightness. A newer mode
         // selection supersedes its timeout and is coalesced to the latest color.
         if requestedDialColor != nil, !indicatorUnavailable {
