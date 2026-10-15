@@ -96,10 +96,14 @@ public enum LightingLabError: LocalizedError {
 /// USB protocol 2.5, recovered from this model's middleware. Bluetooth uses a
 /// different command family. No generic command/address or onboard storage API.
 public struct USBLightingCommand {
+    public let commandClass: UInt8
     public let commandID: UInt8
     private let payload: Data
-    private init(_ id: UInt8, _ payload: Data) { commandID = id; self.payload = payload }
+    private init(_ id: UInt8, _ payload: Data, commandClass: UInt8 = 15) {
+        self.commandClass = commandClass; commandID = id; self.payload = payload
+    }
 
+    public static var readSerial: Self { Self(0x82, Data(repeating: 0, count: 22), commandClass: 0) }
     public static var readEffect: Self { Self(0x82, Data(repeating: 0, count: 80)) }
     public static var customEffect: Self { Self(2, Data([0, 0, 8, 0, 0, 0])) }
     public static func effect(_ effect: KeyboardEffect) throws -> Self {
@@ -114,14 +118,14 @@ public struct USBLightingCommand {
         guard (1...31).contains(transaction) else { throw LightingLabError.invalidPacket }
         var bytes = [UInt8](repeating: 0, count: 90)
         bytes[1] = transaction; bytes[5] = UInt8(payload.count)
-        bytes[6] = 15; bytes[7] = commandID
+        bytes[6] = commandClass; bytes[7] = commandID
         bytes.replaceSubrange(8..<(8 + payload.count), with: payload)
         bytes[88] = bytes[2..<88].reduce(0, ^)
         return Data(bytes)
     }
     public func response(_ data: Data, transaction: UInt8) throws -> (status: UInt8, payload: Data) {
         let b = Array(data)
-        guard b.count == 90, b[1] == transaction, b[6] == 15, b[7] == commandID,
+        guard b.count == 90, b[1] == transaction, b[6] == commandClass, b[7] == commandID,
               b[5] <= 80, b[88] == b[2..<88].reduce(0, ^) else { throw LightingLabError.invalidPacket }
         return (b[0], b[0] == 2 ? Data(b[8..<(8 + Int(b[5]))]) : Data())
     }
@@ -132,5 +136,16 @@ public struct USBLightingCommand {
         // Custom frames cannot be reconstructed from an effect selector alone.
         guard (try? Self.effect(effect)) != nil else { throw LightingLabError.unsupportedOriginal }
         return effect
+    }
+
+    public static func decodeSerial(_ payload: Data) throws -> String {
+        guard payload.count == 22 else { throw LightingLabError.invalidPacket }
+        let bytes = Array(payload.prefix { $0 != 0 })
+        guard bytes.count >= 8, Set(bytes).count > 1,
+              bytes.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 }),
+              let serial = String(bytes: bytes, encoding: .ascii), !serial.uppercased().hasPrefix("UNKNOWN") else {
+            throw LightingLabError.message("Keyboard did not provide a usable recovery identity; no lighting writes were made.")
+        }
+        return serial
     }
 }

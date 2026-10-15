@@ -40,7 +40,7 @@ The zone index order comes from Razer's one-row matrix and should be checked vis
 
 ## Recovery and evidence
 
-Before the first write, the lab saves the current built-in effect, exact connection, and a device identity in a private recovery journal. USB stores a hash of a stable device identifier and refuses writes if no identifier is available. Bluetooth uses the paired peripheral identity. The journal is removed only after the saved effect is restored and readback matches. Tests refuse an unfamiliar/noncanonical starting effect or an existing custom frame, since an effect selector alone cannot reconstruct custom pixel data. Select a normal built-in effect before testing in that case.
+Before the first write, the lab saves the current built-in effect, exact connection, and a device identity in a private recovery journal. USB stores a hash of a stable device identifier and refuses writes if no identifier is available. This keyboard exposes no standard USB serial (`iSerialNumber=0`), so the lab can obtain it through the read-only vendor serial getter instead; raw serials are never printed or logged. Bluetooth uses the paired peripheral identity. The journal is removed only after the saved effect is restored and readback matches. Tests refuse an unfamiliar/noncanonical starting effect or an existing custom frame, since an effect selector alone cannot reconstruct custom pixel data. Select a normal built-in effect before testing in that case.
 
 Normal completion, Control+C, terminal hangup, termination, and command rejection attempt restoration. Unplugging, loss of Bluetooth, a crash, force kill, power loss, or closing the computer can prevent immediate restoration; reconnect the **same keyboard over the same connection** and use menu option 4/5 or:
 
@@ -60,10 +60,11 @@ Bluetooth preset tests reuse the app's established protocol-3.0 effect writer an
 USB templates were recovered by static inspection of this model's `rzDevice25.72e2cedb9d2be4eb79fd.js` (hash/provenance in [PROTOCOL.md](PROTOCOL.md)), independently implemented in Swift:
 
 - Read effect: class `0f`, ID `82`, 80-byte request template, profile 0 / region 0.
+- Read serial (identity fallback only): class `00`, ID `82`, 22-byte zero template; validated ASCII serial is hashed locally.
 - Set effect: class `0f`, ID `02`, `[profile=0, region=0, effect, flags, rate, count, RGB…]`.
 - Select custom frames: the same setter with effect 8, flags/rate/count 0.
 - Frame: class `0f`, ID `03`, `[profile=0, region=0, row=0, start=0, end=18, 57 RGB bytes]`.
 
 The report is 90 bytes, using the same feature-report envelope/checksum as the read-only USB inspector. The lab validates transaction/opcode/checksum/status, serializes commands, checks custom-mode selection, and limits animation updates to at most five frames per second. It currently requires each frame's acknowledgement; the vendor streamer sometimes skips those reads, so unsupported frame acknowledgements could stop a test even if writes are supported. No unbounded retries or blind alternate opcodes are attempted. Unknown starting effects abort before any write.
 
-**USB zone output and restoration remain hardware-unverified until a real test succeeds.** The existing `ErgoUSBInspector` remains read-only. Receiver transport, direct indicator RGB control, per-key LEDs, and Codex integration are not added by this tool.
+On 15 October 2026, live USB tests entered custom-frame mode and completed eight-second `chase` and `macro-pulse` runs, each with 35 acknowledged frames. The original effect was restored and independently read back after each run; no recovery remained pending. **The user confirmed a cyan line moving across the keyboard and a visible pulsing pattern.** They did not check whether the other keys stayed dark during the macro pulse, so isolation of that column is not yet visually confirmed. Other USB patterns have not been tested on hardware. The existing `ErgoUSBInspector` remains read-only. Receiver transport, direct indicator RGB control, per-key LEDs, and Codex integration are not added by this tool.

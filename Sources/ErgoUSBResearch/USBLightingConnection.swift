@@ -9,7 +9,7 @@ public final class USBLightingConnection {
     private let manager: IOHIDManager
     private let device: IOHIDDevice
     private var transaction: UInt8 = 0
-    public let identity: String
+    public private(set) var identity = ""
 
     public init() throws {
         manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
@@ -28,14 +28,19 @@ public final class USBLightingConnection {
         // Hash a stable device identifier; never print it or a serial number.
         let serial = IOHIDDeviceGetProperty(found, kIOHIDSerialNumberKey as CFString) as? String
         let physical = IOHIDDeviceGetProperty(found, "PhysicalDeviceUniqueID" as CFString) as? String
-        guard let unique = [serial, physical].compactMap({ $0 }).first(where: { !$0.isEmpty }) else {
-            throw LightingLabError.message("USB device has no stable identity for recovery; no lighting writes were made.")
-        }
-        identity = SHA256.hash(data: Data(("1532:02c4:" + unique).utf8)).map { String(format: "%02x", $0) }.joined()
         let result = IOHIDDeviceOpen(found, 0)
         guard result == kIOReturnSuccess else {
             throw LightingLabError.message("Cannot open PT Ergo USB configuration interface (\(result)).")
         }
+        // This keyboard declares iSerialNumber=0 on USB. Its vendor getter
+        // supplies the same recovery identity without changing configuration.
+        let unique: String
+        if let property = [serial, physical].compactMap({ $0 }).first(where: { !$0.isEmpty }) {
+            unique = property
+        } else {
+            unique = try USBLightingCommand.decodeSerial(exchange(.readSerial))
+        }
+        identity = SHA256.hash(data: Data(("1532:02c4:" + unique).utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     deinit { IOHIDDeviceClose(device, 0) }

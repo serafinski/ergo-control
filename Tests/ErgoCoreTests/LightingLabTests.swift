@@ -4,6 +4,19 @@ import XCTest
 final class LightingLabTests: XCTestCase {
     private let black = DialColor(red: 0, green: 0, blue: 0)
 
+    func testUSBIdentityGetterUsesReadOnlyVendorTemplateAndRejectsMissingIdentity() throws {
+        let request = try USBLightingCommand.readSerial.request(transaction: 1)
+        XCTAssertEqual(Array(request.prefix(8)), [0,1,0,0,0,22,0,130])
+        XCTAssertEqual(request[88], request[2..<88].reduce(0, ^))
+        let serial = Data("ERGO12345678".utf8) + Data(repeating: 0, count: 10)
+        XCTAssertEqual(try USBLightingCommand.decodeSerial(serial), "ERGO12345678")
+        XCTAssertThrowsError(try USBLightingCommand.decodeSerial(Data(repeating: 0, count: 22)))
+        XCTAssertThrowsError(try USBLightingCommand.decodeSerial(Data(repeating: 48, count: 22)))
+        XCTAssertThrowsError(try USBLightingCommand.decodeSerial(Data(repeating: 255, count: 22)))
+        XCTAssertThrowsError(try USBLightingCommand.decodeSerial(Data("UNKNOWN00000".utf8) + Data(repeating: 0, count: 10)))
+        XCTAssertThrowsError(try USBLightingCommand.decodeSerial(Data(serial.dropLast())))
+    }
+
     func testMacroPatternsOnlyAddressTheSharedColumn() throws {
         for pattern in [LightingLabPattern.macroSolid, .macroPulse, .macroColors] {
             for time in stride(from: 0.0, through: 10, by: 0.1) {
