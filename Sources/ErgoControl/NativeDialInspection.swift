@@ -2,6 +2,22 @@ import Foundation
 import ErgoDevice
 
 enum NativeDialInspection {
+    /// Use the same exact-device journal recovery as app startup. This cannot
+    /// select an arbitrary mode or discard an unverified restoration record.
+    static func restoreKeyboardCommandLine() -> Never {
+        let controller = BluetoothController()
+        guard controller.restoreOwed else { print("No pending keyboard restoration."); exit(0) }
+        controller.connect()
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            if !controller.restoreOwed {
+                print(controller.status); exit(0)
+            }
+        }
+        print("Restoration remains pending: \(controller.status)"); exit(1)
+    }
+
     static func readLightingCommandLine() -> Never {
         let journal = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/ErgoControl/Bluetooth/pending-restoration.json")

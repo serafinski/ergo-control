@@ -28,6 +28,13 @@ struct KeyboardLightingView: View {
                 if !effects.isEmpty {
                     Picker("Effect", selection: $kind) {
                         ForEach(effects) { effect in Text(effect.name).tag(effect) }
+                        if let current = device.currentKeyboardEffect?.kind, !effects.contains(current) {
+                            Text("\(current.name) (current)").tag(current).disabled(true)
+                        }
+                    }
+                    if !effects.contains(kind) {
+                        Text("The current effect isn’t in the keyboard’s available choices. Choose another effect to change it.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     if kind == .breathing {
                         Picker("Colors", selection: $breathingColors) {
@@ -62,7 +69,7 @@ struct KeyboardLightingView: View {
             guard let effect else { return }
             // Readback replaces the draft only on a read/apply result, never on
             // unrelated battery or mapping updates.
-            if let readKind = effect.kind, effects.contains(readKind) { kind = readKind }
+            if let readKind = effect.kind { kind = readKind }
             else if let first = effects.first { kind = first }
             if let color = effect.colors.first { firstColor = swiftColor(color) }
             if effect.colors.count > 1 { secondColor = swiftColor(effect.colors[1]) }

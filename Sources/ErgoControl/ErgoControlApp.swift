@@ -16,6 +16,9 @@ struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
     @StateObject private var model = ControlModel()
     init() {
+        if CommandLine.arguments.dropFirst().first == "--restore-keyboard" {
+            NativeDialInspection.restoreKeyboardCommandLine()
+        }
         if CommandLine.arguments.dropFirst().first == "--lighting-read" {
             NativeDialInspection.readLightingCommandLine()
         }
