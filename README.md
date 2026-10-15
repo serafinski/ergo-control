@@ -63,6 +63,7 @@ Settings live under `~/Library/Application Support/ErgoControl/Settings/`. The m
 - [App setup, mappings, and validation](docs/APP.md)
 - [Helper architecture, signing, and installation](docs/INPUT_HELPER.md)
 - [Recovered Bluetooth and input protocol](docs/PROTOCOL.md)
+- [Macro-key lighting capabilities and Chroma research](docs/MACRO_LIGHTING.md)
 - [Optional diagnostic apps and tools](docs/DIAGNOSTICS.md)
 - [Research and hardware-test history](docs/research/INVESTIGATION.md)
 - [Contributing](CONTRIBUTING.md)
@@ -73,4 +74,4 @@ The research archive preserves provenance and the distinction between static fin
 
 [MIT](LICENSE), copyright © 2026 serafinski. Razer product names and trademarks belong to their respective owners. The license applies to this project’s source and documentation, not to separately obtained vendor artifacts.
 
-Future Chroma research and Codex-status lighting for macro buttons are recorded in [the roadmap](docs/ROADMAP.md).
+Razer's lighting map groups M1–M5 into one shared zone; separate macro-key colors are not exposed. Custom zone control is not implemented. See [the findings](docs/MACRO_LIGHTING.md) and [roadmap](docs/ROADMAP.md) for possible whole-column status lighting.
