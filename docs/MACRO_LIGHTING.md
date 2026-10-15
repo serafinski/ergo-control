@@ -32,7 +32,7 @@ The Bluetooth configuration uses `rzDevice30`. Its map still describes the share
 
 Chroma provides useful device-specific mapping/protocol evidence. It cannot provide five separate macro colors through a map that exposes one shared target. A standalone implementation would need to recover the appropriate custom-frame transport, preserve the other 18 zones, and restore the previous effect when status lighting stops. It need not depend on the Chroma GUI if that protocol is recovered and verified independently. None of that custom-frame behavior is implemented or hardware-confirmed here, and USB/receiver mappings remain outside the app's current support.
 
-A useful next experiment would be a temporary whole-column color over USB, with an exact restoration plan, before adding a user-facing setting or Codex integration. No Codex status source has been selected. Individual M1–M5 status lights should not be promised on this device based on the supported map.
+The optional [Lighting Lab](LIGHTING_LAB.md) now provides temporary whole-column and 19-zone pattern experiments over USB, with exact-device restoration records and verified effect recovery. Its custom-frame output remains hardware-unverified. No Codex status source has been selected. Individual M1–M5 status lights should not be promised on this device based on the supported map.
 
 ## Reproducibility and provenance
 

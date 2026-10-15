@@ -4,7 +4,7 @@
 
 The requested Chroma investigation now has a device-specific result: **M1–M5 share one lighting zone** in Razer's Mac manifests and diagram. Separate colors for each macro button are not exposed. See [macro lighting findings and provenance](MACRO_LIGHTING.md).
 
-One status color for the whole macro column is a potential next step. Razer marks Bluetooth as hardware-effects-only, with Chroma Studio supported for USB/receiver. Recover and hardware-test custom zone frames and restoration before adding a setting; no custom zone writes have been performed. Define how Codex status is obtained only when that integration is requested. No Chroma software or Razer driver has been installed for this work.
+One status color for the whole macro column is a potential next step. Razer marks Bluetooth as hardware-effects-only, with Chroma Studio supported for USB/receiver. The optional [Lighting Lab](LIGHTING_LAB.md) implements preset comparisons and bounded USB zone-pattern experiments using recovered templates; custom zone output still needs a hardware test before adding an app setting. Define how Codex status is obtained only when that integration is requested. No Chroma software or Razer driver has been installed for this work.
 
 ## Remaining hardware validation
 

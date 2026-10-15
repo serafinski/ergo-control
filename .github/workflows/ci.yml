@@ -21,7 +21,7 @@ jobs:
           swift build -c release --product ErgoInputHelper
       - name: Check build scripts and Python syntax
         run: |
-          for script in tools/*.sh; do zsh -n "$script"; done
+          for script in tools/*.sh tools/*.command; do zsh -n "$script"; done
           python3 - <<'PY'
           import ast
           from pathlib import Path

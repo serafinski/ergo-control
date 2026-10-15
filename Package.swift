@@ -21,7 +21,7 @@ let package = Package(
                           linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreBluetooth")]),
         .target(name: "ErgoDevice", dependencies: ["ErgoCore"],
                 linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreBluetooth")]),
-        .executableTarget(name: "ErgoControl", dependencies: ["ErgoCore", "ErgoDevice", "ErgoIPC"],
+        .executableTarget(name: "ErgoControl", dependencies: ["ErgoCore", "ErgoDevice", "ErgoIPC", "ErgoUSBResearch"],
                           linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreBluetooth"), .linkedFramework("ApplicationServices"), .linkedFramework("ServiceManagement")]),
         .executableTarget(name: "ErgoBluetooth", dependencies: ["ErgoCore", "ErgoDevice"],
                           linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreBluetooth")]),

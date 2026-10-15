@@ -76,6 +76,8 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     @Published public private(set) var currentKeyboardEffect: KeyboardEffect?
     @Published public private(set) var keyboardEffectStatus = "Read the keyboard to choose a lighting effect."
     @Published public private(set) var keyboardEffectBusy = false
+    public private(set) var keyboardEffectRequestSucceeded = false
+    public var connectedDeviceIdentity: String? { targetID?.uuidString }
     private var effectRequests = KeyboardLightingRequests()
     private var brightnessSteps = BrightnessSteps()
     private var lightingRegion: UInt8?
@@ -382,6 +384,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public func refreshKeyboardLighting() {
         guard canEditKeyboardLighting else { return }
+        keyboardEffectRequestSucceeded = false
         keyboardEffectBusy = true
         keyboardEffectStatus = "Reading keyboard lighting…"
         effectRequests.enqueue(.read)
@@ -403,6 +406,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public func applyKeyboardEffect(_ effect: KeyboardEffect) {
         guard canEditKeyboardLighting, !keyboardEffectIDs.isEmpty else { return }
+        keyboardEffectRequestSucceeded = false
         do {
             // Only the five recovered firmware effects can be written. The
             // advertised list omits effects also seen in native state / Synapse;
@@ -426,7 +430,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
                 if let expected, effect != expected {
                     self.finishKeyboardEffect("The keyboard reported different settings. Press Read keyboard to refresh.")
                 } else {
-                    self.finishKeyboardEffect("Current effect: \(effect.kind?.name ?? "Other effect")")
+                    self.finishKeyboardEffect("Current effect: \(effect.kind?.name ?? "Other effect")", succeeded: true)
                 }
             } catch { self.finishKeyboardEffect(error.localizedDescription) }
         }
@@ -451,7 +455,8 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
     }
 
-    private func finishKeyboardEffect(_ message: String) {
+    private func finishKeyboardEffect(_ message: String, succeeded: Bool = false) {
+        keyboardEffectRequestSucceeded = succeeded
         keyboardEffectBusy = false
         keyboardEffectStatus = message
     }
