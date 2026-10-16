@@ -36,6 +36,11 @@ Reuse this checkout's isolated certificate to preserve the existing signer. Run 
 python3 tools/export_signing_identity.py
 ```
 
+There are two different local passwords during export:
+
+- **P12 export password:** choose this yourself when the script prompts. This is the value for GitHub's `SIGNING_CERTIFICATE_PASSWORD` secret.
+- **ErgoDevelopment keychain password:** the first local build generated this automatically for its separate signing keychain. It is not your Mac/login password or the P12 password. If macOS asks for the ErgoDevelopment keychain password, copy it locally in another Terminal tab with `pbcopy < build/local-signing/keychain-password`, then paste into that macOS prompt. Do not send the keychain password to GitHub or paste it into chat.
+
 It creates ignored `build/release-signing.p12`. Add the secrets with GitHub CLI:
 
 ```sh
@@ -58,7 +63,7 @@ git push origin v0.7.5
 
 `.github/workflows/release.yml` tests, builds Apple Silicon + Intel app/hook/helper binaries, signs them, verifies the helper's accepted-client requirement, packages/verifies the DMG and writes a SHA-256 checksum. It creates a **draft** release with the DMG and checksum. You can also run it manually against an existing matching tag. It refuses a tag that disagrees with `VERSION` and never overwrites an existing release. Remove an unsuccessful draft deliberately before rerunning final release creation.
 
-Review/download the draft and test installation, permission grants, optional helper installation, mappings, Codex hooks and login behavior before publishing. Compilation does not establish physical validation on Intel. The GitHub signing workflow has not yet been run with repository secrets. Ordinary local builds do not create tags or releases.
+Review/download the draft and test installation, permission grants, optional helper installation, mappings, Codex hooks and login behavior before publishing. Compilation does not establish physical validation on Intel. The v0.7.5 workflow completed with the persistent certificate and created a draft universal DMG. Its downloaded checksum, image integrity, signature, expected signing identity and arm64/x86_64 app/hook/helper architectures were verified locally. Intel hardware validation remains pending. Ordinary local builds do not create tags or releases.
 
 To check a universal build locally without replacing the daily app/helper:
 
