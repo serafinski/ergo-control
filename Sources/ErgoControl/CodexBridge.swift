@@ -166,7 +166,7 @@ final class CodexBridge: ObservableObject {
             try data.write(to: hooksURL, options: .atomic)
             try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: hooksURL.path)
             message = remove ? "Ergo Control hooks removed; other hooks were preserved."
-                : "Hooks installed. Use /hooks in the Codex CLI to review and trust the Ergo Control command. Start a new desktop turn to receive status."
+                : "Hooks installed. Review and trust ErgoCodexHook if ChatGPT asks, then start a desktop turn. If already accepted, no further review is needed."
         } catch { message = error.localizedDescription }
     }
 }

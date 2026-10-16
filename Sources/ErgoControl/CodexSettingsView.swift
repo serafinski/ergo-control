@@ -16,7 +16,7 @@ struct CodexSettingsView: View {
                         Button("Review hooks file") { NSWorkspace.shared.open(model.codex.hooksURL) }
                         Button("Remove status hooks") { model.codex.installHooks(remove: true) }
                     }
-                    Text("After installing, review and trust the command with /hooks in the Codex CLI. Events report working, approval requested, and turn ended; they do not report unread messages or every question.")
+                    Text("Review and trust ErgoCodexHook if ChatGPT asks. Once accepted, keep using the desktop app normally. Events report working, approval requested, and turn ended; they do not report unread messages or every question.")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(model.codex.settings.slots) { slot in
                         CodexSlotEditor(slot: slot, activity: model.codex.activity(slot)) { name, link in
