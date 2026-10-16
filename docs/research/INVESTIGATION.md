@@ -455,3 +455,8 @@ Moved all Codex controls into a dedicated sidebar section, with hooks/profile se
 ## 16 October 2026 — integrated status-color test confirmed
 
 The user reported All test colors work for the 0.5.1 production-path test, which includes blue, amber, green, white, and the previous-effect stage during active mappings. Read-only follow-up found the connection enabled, Recent selection, status lighting enabled, a live hook receiver, an active mapping recovery journal with a macro-lighting snapshot, and a genuine PreToolUse event for this conversation. The configuration log contains acknowledged status frames for the visual sequence and a subsequent blue macro-zone frame (RGB 0,90,255) with every other zone white (160,160,160), successful response status 2. No synthetic hook event, additional input injection, or competing Bluetooth client was used. Visual confirmation of the real working-blue to turn-ended-green transition remains pending; this record does not infer it from the preview test.
+
+
+## 16 October 2026 — live Codex working-to-ended lighting confirmed
+
+The user explicitly confirmed “Blue while working, then green” after the follow-up desktop turn with Recent selection, mappings, and status lighting enabled. Together with the genuine hook event and acknowledged blue frame recorded above, this confirms the real working-to-ended status transition, beyond the synthetic visual preview. The visual test also confirmed amber and white plus its restoration stage; a genuine approval-to-amber event, multiple assigned-chat priority, and abnormal recovery are not implied by this result. Documentation updated; no executable or helper change was needed.
