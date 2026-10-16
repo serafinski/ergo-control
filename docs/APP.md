@@ -153,3 +153,24 @@ Read-only timings from recent actual Bluetooth frames show about 482 ms median r
 Default physical F1/F2 now send macOS screen-brightness down/up while the full keyboard relay is active, matching the user's requested primary behavior. Press/release, repeat timing, and stop-time release use the existing input engine. Explicit Shortcut or Macro actions containing f1/f2 still send ordinary function keys; other function keys keep their previous behavior. Screen brightness is also available in the Media action picker. This does not change firmware Fn-row primary-mode settings or establish separate physical Fn-layer support. The last-input label now identifies ordinary F1–F12 presses for troubleshooting.
 
 Status waves now settle on a steady blue M1–M5 zone after the starting sweep, keeping the existing saved effect until work ends. A delayed starting sweep also settles on blue rather than releasing the signal. Repeated hooks send no extra frames. Approval still bounces continuously; completion makes its green round trip and restores the previous effect. Disable, idle, mapping stop, and recovery retain the existing restoration behavior. All 148 tests pass; hardware confirmation of these two fixes remains pending. The helper and hooks are unchanged.
+
+
+## Mac function-row defaults (0.6.5)
+
+The user reports the 0.6.4 brightness and blue-hold changes appear to work, then requested these additional primary actions while mappings are enabled:
+
+| Key | Default action |
+| --- | --- |
+| F1 / F2 | Screen brightness down / up |
+| F3 | Mission Control |
+| F4 | Open Raycast |
+| F5 | Native Mac dictation |
+| F6 | Emoji picker |
+| F10 | Lock screen |
+| F11 / F12 | Ergo keyboard backlight up / down |
+
+F11/F12 directions follow the user's explicit preference. F7–F9 retain ordinary function-key output. Explicit mappings and the alternate layer take priority over these defaults. To send an ordinary F-key, use Add ordinary key, choose that F-key, then save a Shortcut containing its name (for example f3). Its Default editor describes the built-in action.
+
+Mission Control and Raycast use macOS application reopening by bundle identifier, without assuming a configured launcher hotkey. Raycast must already be installed. Dictation uses a balanced Fn-D sequence; Emoji uses Control-Command-Space; lock uses Control-Command-Q. These are native actions, so Dictation availability still follows macOS Keyboard settings. One-shot actions do not auto-repeat or trigger on release. Backlight adjustments use the existing device callback, ordered five-percent steps, readback, and percentage popup, including key repeat while held. Firmware Fn-row settings and the input helper are unchanged; separate physical Fn-layer behavior is not claimed.
+
+All 151 automated tests pass. Tests intercept actions and construct events without launching apps, starting dictation, locking the Mac, or posting input. Hardware confirmation of the new F3–F12 defaults remains pending. Native shortcut reference: [Apple keyboard shortcuts](https://support.apple.com/en-ie/102650).

@@ -435,8 +435,9 @@ struct ActionEditor: View {
                 }
                 Text("Opens the current Codex slot. Enable the connection in the Codex section first.").font(.caption).foregroundStyle(.secondary)
             case .standard:
-                if control == "key:58" || control == "key:59" {
-                    Text("F1/F2 adjust screen brightness by default. Choose Shortcut and enter f1 or f2 to send the function key instead.").font(.caption).foregroundStyle(.secondary)
+                if let control, control.hasPrefix("key:"), let usage = UInt8(control.dropFirst(4)),
+                   let label = NativeFunctionKeys.label(for: usage) {
+                    Text("Default: \(label). Choose Shortcut and enter \(ControlCatalog.label(control).lowercased()) to send the function key instead.").font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Use the normal action or current dial mode. With chat keys enabled, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)
                 }

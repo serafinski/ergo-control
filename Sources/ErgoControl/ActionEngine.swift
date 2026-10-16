@@ -60,6 +60,19 @@ enum MacKeys {
         if capsLock { event.flags.insert(.maskAlphaShift) }
         event.setIntegerValueField(.keyboardEventAutorepeat, value: repeated ? 1 : 0)
     }
+
+    static func dictationEvents(modifiers: UInt8, capsLock: Bool, source: CGEventSource?) -> [CGEvent]? {
+        guard let fnDown = CGEvent(keyboardEventSource: source, virtualKey: 63, keyDown: true),
+              let dDown = event(usage: 7, pressed: true, repeated: false, modifiers: modifiers, capsLock: capsLock, source: source),
+              let dUp = event(usage: 7, pressed: false, repeated: false, modifiers: modifiers, capsLock: capsLock, source: source),
+              let fnUp = CGEvent(keyboardEventSource: source, virtualKey: 63, keyDown: false) else { return nil }
+        var base = flags(modifiers)
+        if capsLock { base.insert(.maskAlphaShift) }
+        fnDown.type = .flagsChanged; fnDown.flags = base.union(.maskSecondaryFn)
+        dDown.flags.insert(.maskSecondaryFn); dUp.flags.insert(.maskSecondaryFn)
+        fnUp.type = .flagsChanged; fnUp.flags = base
+        return [fnDown, dDown, dUp, fnUp]
+    }
 }
 
 enum MacMediaKeys {
@@ -96,14 +109,17 @@ final class ActionEngine {
     private var switcherTimer: Timer?
     private let keyOutput: ((KeyboardOutput, Bool) -> Void)?
     private let mediaOutput: ((UInt16, Bool) -> Void)?
+    private let functionActionOutput: ((NativeFunctionAction) -> Void)?
     private let repeatTiming: () -> NativeKeyboardTiming
     private let applicationToggle = ApplicationToggle()
 
     init(mediaOutput: ((UInt16, Bool) -> Void)? = nil,
+         functionActionOutput: ((NativeFunctionAction) -> Void)? = nil,
          repeatTiming: @escaping () -> NativeKeyboardTiming = {
              NativeKeyboardTiming(delay: NSEvent.keyRepeatDelay, interval: NSEvent.keyRepeatInterval)
          }, keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) {
         self.keyOutput = keyOutput; self.mediaOutput = mediaOutput
+        self.functionActionOutput = functionActionOutput
         self.repeatTiming = repeatTiming
     }
 
@@ -124,6 +140,10 @@ final class ActionEngine {
         if usage == 57 && pressed { capsLock.toggle() }
         nativeKey(usage, pressed: pressed)
         guard usage < 224, usage != 57 else { return }
+        if NativeFunctionKeys.action(for: usage).map({ $0.brightnessStep == nil }) == true {
+            if pressed { repeatTimer?.invalidate(); repeatTimer = nil; repeating = nil }
+            return
+        }
         if pressed {
             repeatTimer?.invalidate(); repeating = usage
             let timing = repeatTiming()
@@ -144,7 +164,36 @@ final class ActionEngine {
     private func nativeKey(_ usage: UInt8, pressed: Bool, repeated: Bool = false) {
         if let consumer = NativeFunctionKeys.consumerUsage(for: usage) {
             _ = media(consumer, pressed: pressed, repeated: repeated)
+        } else if let action = NativeFunctionKeys.action(for: usage) {
+            guard pressed, !repeated || action.brightnessStep != nil else { return }
+            if let functionActionOutput { functionActionOutput(action) }
+            else { performFunctionAction(action) }
         } else { key(usage, pressed: pressed, repeated: repeated) }
+    }
+
+    private func performFunctionAction(_ action: NativeFunctionAction) {
+        if let step = action.brightnessStep { onBrightness?(step); return }
+        switch action {
+        case .missionControl: openFunctionApplication("com.apple.exposelauncher", name: action.label)
+        case .raycast: openFunctionApplication("com.raycast.macos", name: action.label)
+        case .dictation:
+            guard let events = MacKeys.dictationEvents(modifiers: physicalModifiers, capsLock: capsLock, source: source) else { return }
+            for event in events { event.post(tap: .cghidEventTap) }
+        case .emoji:
+            if let shortcut = try? KeyChord("ctrl+cmd+space") { chord(shortcut) }
+        case .lockScreen:
+            if let shortcut = try? KeyChord("ctrl+cmd+q") { chord(shortcut) }
+        case .keyboardBrightnessUp, .keyboardBrightnessDown: break
+        }
+    }
+
+    private func openFunctionApplication(_ bundleID: String, name: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            onError?("\(name) is not installed. Choose another mapping for this key."); return
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: .init()) { [weak self] _, error in
+            if let error { DispatchQueue.main.async { self?.onError?("Could not open \(name): \(error.localizedDescription)") } }
+        }
     }
 
     func media(_ usage: UInt16, pressed: Bool, repeated: Bool = false) -> Bool {

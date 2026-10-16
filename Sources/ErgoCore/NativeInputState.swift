@@ -11,7 +11,31 @@ public enum NativeExtraKeys {
     }
 }
 
-/// PT Ergo's printed F1/F2 actions while relaying the keyboard in driver mode.
+public enum NativeFunctionAction: Equatable {
+    case missionControl, raycast, dictation, emoji, lockScreen
+    case keyboardBrightnessUp, keyboardBrightnessDown
+
+    public var brightnessStep: Int? {
+        switch self {
+        case .keyboardBrightnessUp: return 1
+        case .keyboardBrightnessDown: return -1
+        default: return nil
+        }
+    }
+    public var label: String {
+        switch self {
+        case .missionControl: return "Mission Control"
+        case .raycast: return "Raycast"
+        case .dictation: return "Mac dictation"
+        case .emoji: return "Emoji picker"
+        case .lockScreen: return "Lock screen"
+        case .keyboardBrightnessUp: return "Keyboard brightness up"
+        case .keyboardBrightnessDown: return "Keyboard brightness down"
+        }
+    }
+}
+
+/// Primary F-row defaults while relaying PT Ergo in driver mode.
 /// Explicit shortcut/macro output bypasses this native-input default.
 public enum NativeFunctionKeys {
     public static func consumerUsage(for usage: UInt8) -> UInt16? {
@@ -20,6 +44,23 @@ public enum NativeFunctionKeys {
         case 59: return 0x6f // Display brightness up
         default: return nil
         }
+    }
+    public static func action(for usage: UInt8) -> NativeFunctionAction? {
+        switch usage {
+        case 60: return .missionControl // F3
+        case 61: return .raycast        // F4
+        case 62: return .dictation      // F5
+        case 63: return .emoji          // F6
+        case 67: return .lockScreen     // F10
+        case 68: return .keyboardBrightnessUp   // F11, user-selected direction
+        case 69: return .keyboardBrightnessDown // F12
+        default: return nil
+        }
+    }
+    public static func label(for usage: UInt8) -> String? {
+        if usage == 58 { return "Screen brightness down" }
+        if usage == 59 { return "Screen brightness up" }
+        return action(for: usage)?.label
     }
 }
 

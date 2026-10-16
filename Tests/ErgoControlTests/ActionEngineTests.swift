@@ -5,6 +5,64 @@ import ErgoCore
 
 /// Exercise the real engine with an output sink; never post input to the Mac.
 final class ActionEngineTests: XCTestCase {
+    func testRequestedFunctionActionsFireOncePerPressAndCustomShortcutsBypassThem() {
+        var actions: [NativeFunctionAction] = []
+        var keys: [KeyboardOutput] = []
+        let engine = ActionEngine(functionActionOutput: { actions.append($0) },
+                                  repeatTiming: { NativeKeyboardTiming(delay: 0.05, interval: 0.05) },
+                                  keyOutput: { keys.append($0); _ = $1 })
+        let requests: [(UInt8, NativeFunctionAction)] = [(60,.missionControl),(61,.raycast),(62,.dictation),(63,.emoji),(67,.lockScreen)]
+        for (usage, action) in requests {
+            let before = actions.count
+            engine.relay(usage, pressed: true)
+            engine.relay(usage, pressed: true) // Duplicate snapshot while held.
+            RunLoop.main.run(until: Date().addingTimeInterval(0.13))
+            engine.relay(usage, pressed: false)
+            XCTAssertEqual(Array(actions.dropFirst(before)), [action])
+        }
+        XCTAssertTrue(keys.isEmpty)
+        for usage: UInt8 in 64...66 { engine.relay(usage, pressed: true); engine.relay(usage, pressed: false) }
+        XCTAssertEqual(keys.map(\.usage), [64,64,65,65,66,66], "F7–F9 keep their existing raw-key behavior")
+        let count = actions.count
+        for f in [3,4,5,6,10,11,12] { engine.perform(MappingAction(.shortcut, "f\(f)")) }
+        XCTAssertEqual(actions.count, count, "Explicit shortcut mappings must remain raw F-keys")
+        engine.stop()
+        XCTAssertEqual(actions.count, count, "Stopping cannot re-trigger a system action")
+    }
+
+    func testF11F12UseKeyboardBacklightCallbackInRequestedDirectionsAndStopOnRelease() {
+        var steps: [Int] = []
+        var keys: [KeyboardOutput] = []
+        let engine = ActionEngine(repeatTiming: { NativeKeyboardTiming(delay: 0.1, interval: 0.2) },
+                                  keyOutput: { keys.append($0); _ = $1 })
+        engine.onBrightness = { steps.append($0) }
+        engine.relay(68, pressed: true)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+        engine.relay(68, pressed: false)
+        XCTAssertEqual(steps, [1,1], "F11 raises the Ergo backlight, including when held")
+        engine.relay(69, pressed: true); engine.relay(69, pressed: false)
+        XCTAssertEqual(steps, [1,1,-1], "F12 lowers the Ergo backlight")
+        let count = steps.count
+        RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        XCTAssertEqual(steps.count, count)
+        XCTAssertTrue(keys.isEmpty)
+        engine.stop()
+    }
+
+    func testDictationShortcutBalancesFnAndFollowingLettersStayOrdinary() throws {
+        let source = CGEventSource(stateID: .privateState)
+        let events = try XCTUnwrap(MacKeys.dictationEvents(modifiers: 0, capsLock: false, source: source))
+        XCTAssertEqual(events.map { $0.getIntegerValueField(.keyboardEventKeycode) }, [63,2,2,63])
+        XCTAssertEqual(events.map(\.type), [.flagsChanged,.keyDown,.keyUp,.flagsChanged])
+        XCTAssertTrue(events.prefix(3).allSatisfy { $0.flags == .maskSecondaryFn })
+        XCTAssertEqual(events.last?.flags, [])
+        for usage: UInt8 in [7,8,40] {
+            let event = try XCTUnwrap(MacKeys.event(usage: usage, pressed: true, repeated: false,
+                                                   modifiers: 0, capsLock: false, source: source))
+            XCTAssertEqual(event.flags, [], "Fn must never leak into D/E/Return after dictation")
+        }
+    }
+
     func testDefaultF1F2RelayBrightnessAndReleaseOnStopWhileShortcutsStayFunctionKeys() {
         var keys: [KeyboardOutput] = []
         var media: [ConsumerKeyEvent] = []
