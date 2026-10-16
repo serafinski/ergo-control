@@ -10,6 +10,8 @@ struct CodexSettingsView: View {
             Text("M1–M5 open your chats. The keyboard can show their activity.").foregroundStyle(.secondary)
             Toggle("Connect to Codex", isOn: Binding(get: { model.codex.settings.enabled }, set: model.codex.setEnabled))
                 .toggleStyle(.switch)
+            Text("Optional. Keyboard mappings work with Codex closed. Chat features reconnect when it opens.")
+                .font(.caption).foregroundStyle(.secondary)
             if !model.running { Text(model.status).font(.callout).foregroundStyle(.secondary) }
             if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             if model.codex.settings.enabled {

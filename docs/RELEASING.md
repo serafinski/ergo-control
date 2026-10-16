@@ -52,8 +52,8 @@ The workflow imports the persistent identity into an ephemeral keychain, selects
 Update `VERSION` and `docs/RELEASE_NOTES.md`, commit, then create a matching tag:
 
 ```sh
-git tag v0.7.2
-git push origin v0.7.2
+git tag v0.7.3
+git push origin v0.7.3
 ```
 
 `.github/workflows/release.yml` tests, builds Apple Silicon + Intel app/hook/helper binaries, signs them, verifies the helper's accepted-client requirement, packages/verifies the DMG and writes a SHA-256 checksum. It creates a **draft** release with the DMG and checksum. You can also run it manually against an existing matching tag. It refuses a tag that disagrees with `VERSION` and never overwrites an existing release. Remove an unsuccessful draft deliberately before rerunning final release creation.
@@ -80,4 +80,4 @@ Use the installed app's **App** sidebar section:
 - **Launch at login** registers the Applications copy using [SMAppService.mainApp](https://developer.apple.com/documentation/servicemanagement/smappservice). macOS may require approval in General → Login Items. The switch reflects actual registration status.
 - **Enable mappings automatically** is saved immediately. At the next launch it waits up to two minutes for permissions, keyboard connection, an idle configuration channel and recovery, then makes one activation attempt. Stop mappings cancels a pending start. Sleep releases input; wake resumes if this option is on and mappings were active/preparing before sleep. A normal disconnection still stops mappings and requires manual activation.
 
-Both switches default off. Codex connection/status-light options already persist and are used when mappings activate. Login launches request no settings window using the [documented login event](https://developer.apple.com/documentation/coreservices/keyaelaunchedasloginitem); manual launch still offers Settings. A full logout/login and sleep/wake need verification after installing in Applications. Closing Settings leaves the menu-bar app running; Quit restores the keyboard and exits.
+Both switches default off. Keyboard startup does not require Codex or ChatGPT to be running. The optional Codex chat reader waits while the desktop is closed and reconnects automatically when it opens; its process launch and pipe I/O run off the keyboard/UI main thread. Codex connection/status-light options already persist and are used when mappings activate. Login launches request no settings window using the [documented login event](https://developer.apple.com/documentation/coreservices/keyaelaunchedasloginitem); manual launch still offers Settings. A full logout/login and sleep/wake need verification after installing in Applications. Closing Settings leaves the menu-bar app running; Quit restores the keyboard and exits.

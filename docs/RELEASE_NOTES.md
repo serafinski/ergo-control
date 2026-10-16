@@ -6,6 +6,8 @@ Early development installations with a conflicting bundled-helper registration n
 
 Startup now connects to complete saved keyboard recovery before activating mappings; a pending recovery record no longer blocks its own connection.
 
+Keyboard mappings start independently of Codex/ChatGPT. The optional chat reader waits while Codex is closed and reconnects automatically when it opens; slow metadata process launch or communication no longer blocks the keyboard/UI main thread.
+
 App → Startup offers launch at login and automatic activation of saved mappings. Profiles and Codex choices survive app updates.
 
 Requires macOS 14 or later. Includes Apple Silicon and Intel binaries; hardware validation to date is on Apple Silicon. Mapping support is Bluetooth only. The physical dial's colored mode indicator remains unresolved. Custom Codex status waves over Bluetooth are slower than the native rainbow effect.

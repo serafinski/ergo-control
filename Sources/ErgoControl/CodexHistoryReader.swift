@@ -19,9 +19,9 @@ final class CodexHistoryReader: CodexHistorySource {
     var onPinned: (([CodexSlot]) -> Void)?
     var onProblem: ((CodexHistoryIssue) -> Void)?
     private enum Step { case initialize, recent(Int), sections, pinned(Int) }
-    private var process: Process?
-    private var input: FileHandle?
-    private var output: FileHandle?
+    private var connection: CodexHistoryConnection?
+    private let desktopApp: () -> URL?
+    private let launch: (Process) throws -> Void
     private var buffer = Data()
     private var pending: (Int, Step)?
     private var sequence = 0
@@ -32,58 +32,52 @@ final class CodexHistoryReader: CodexHistorySource {
     private var pinnedSection: String?
     private var retryAfter = Date.distantPast
 
+    init(desktopApp: @escaping () -> URL? = {
+        NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == "com.openai.codex" }?.bundleURL
+    }, launch: @escaping (Process) throws -> Void = { try $0.run() }) {
+        self.desktopApp = desktopApp
+        self.launch = launch
+    }
+
     func refresh() {
+        // Codex is optional. Do not launch its metadata service at login when
+        // the desktop is closed; the bridge retries as part of its own polling.
+        guard let app = desktopApp() else {
+            stop()
+            onProblem?(.unavailable("Codex is closed. Chat features reconnect when it opens; keyboard mappings remain available."))
+            return
+        }
         guard pending == nil, Date() >= retryAfter else { return }
-        if process == nil { start(); return }
+        if connection == nil { start(app); return }
         guard initialized else { return }
         rows = []; send(.recent(nil), step: .recent(1))
     }
-    private func start() {
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") else {
-            fail("ChatGPT desktop could not be found."); return
-        }
+    private func start(_ app: URL) {
         let executable = app.appendingPathComponent("Contents/Resources/codex-cli/bin/codex")
         guard FileManager.default.isExecutableFile(atPath: executable.path) else {
-            fail("This ChatGPT version does not expose its local history reader."); return
+            fail("This Codex version does not expose its local history reader."); return
         }
         let token = UUID(); generation = token
-        let task = Process(); let stdin = Pipe(); let stdout = Pipe()
-        task.executableURL = executable; task.arguments = ["app-server", "--stdio"]
-        task.standardInput = stdin; task.standardOutput = stdout; task.standardError = FileHandle.nullDevice
-        let fd = stdout.fileHandleForReading.fileDescriptor
-        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
-        // Read on a pipe queue, then serialize every state change on main.
-        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            // Foundation's bounded read may wait to fill the requested size;
-            // an interactive JSONL stream must consume only available bytes.
-            var bytes = [UInt8](repeating: 0, count: 65_536)
-            let count = read(fd, &bytes, bytes.count)
-            if count < 0 && [EAGAIN, EINTR].contains(errno) { return }
-            let data = count > 0 ? Data(bytes.prefix(count)) : Data()
-            if data.isEmpty { handle.readabilityHandler = nil }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.generation == token else { return }
-                if data.isEmpty { self.fail("ChatGPT history connection ended.") }
-                else { self.receive(data) }
-            }
+        let connection = CodexHistoryConnection(executable: executable, launch: launch)
+        connection.onData = { [weak self] data in
+            guard let self, self.generation == token else { return }
+            self.receive(data)
         }
-        task.terminationHandler = { [weak self] _ in
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.generation == token else { return }
-                self.fail("ChatGPT history connection ended.")
-            }
+        connection.onFailure = { [weak self] message in
+            guard let self, self.generation == token else { return }
+            self.fail(message)
         }
-        process = task; input = stdin.fileHandleForWriting; output = stdout.fileHandleForReading
-        do { try task.run(); send(.initialize, step: .initialize) }
-        catch { fail("Could not open ChatGPT history: \(error.localizedDescription)") }
+        self.connection = connection
+        connection.start()
+        send(.initialize, step: .initialize)
     }
     private func send(_ request: CodexHistoryRequest, step: Step) {
-        guard let input, pending == nil else { return }
+        guard let connection, pending == nil else { return }
         sequence += 1; pending = (sequence, step)
-        do { try input.write(contentsOf: request.data(id: sequence)) }
-        catch { fail("ChatGPT history connection is unavailable."); return }
+        do { connection.write(try request.data(id: sequence)) }
+        catch { fail("Codex history request could not be encoded."); return }
         deadline?.invalidate()
-        let timer = Timer(timeInterval: 8, repeats: false) { [weak self] _ in self?.fail("ChatGPT history request timed out. It will retry automatically.") }
+        let timer = Timer(timeInterval: 8, repeats: false) { [weak self] _ in self?.fail("Codex history request timed out. It will retry automatically.") }
         deadline = timer; RunLoop.main.add(timer, forMode: .common)
     }
     private func receive(_ data: Data) {
@@ -109,8 +103,8 @@ final class CodexHistoryReader: CodexHistorySource {
         do {
             switch step {
             case .initialize:
-                guard let input else { return }
-                try input.write(contentsOf: CodexHistoryRequest.initialized.data(id: 0))
+                guard let connection else { return }
+                connection.write(try CodexHistoryRequest.initialized.data(id: 0))
                 initialized = true; rows = []
                 send(.recent(nil), step: .recent(1))
             case .recent(let page):
@@ -147,15 +141,8 @@ final class CodexHistoryReader: CodexHistorySource {
     func stop() {
         generation = UUID(); initialized = false; pending = nil
         deadline?.invalidate(); deadline = nil
-        output?.readabilityHandler = nil
-        try? input?.close(); try? output?.close(); input = nil; output = nil
-        if let process, process.isRunning {
-            process.terminate()
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
-        }
-        process = nil; buffer = Data(); rows = []
+        connection?.stop(); connection = nil
+        buffer = Data(); rows = []
     }
     deinit { stop() }
 
