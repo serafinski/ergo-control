@@ -95,8 +95,9 @@ struct ControlMenu: View {
 
 struct ControlSettingsView: View {
     @ObservedObject var model: ControlModel
-    private enum Section { case keyboard, codex, app, logs }
+    private enum Section: Hashable { case keyboard, codex, app, logs }
     @State private var section = Section.keyboard
+    @FocusState private var focusedSection: Section?
     @State private var keyToAdd = "4"
     @State private var showAddKey = false
     @State private var testText = ""
@@ -209,7 +210,12 @@ struct ControlSettingsView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         HStack {
                             VStack(alignment: .leading, spacing: 5) {
-                                TextField("Profile name", text: profile.name).textFieldStyle(.plain).font(.largeTitle.bold())
+                                Text("Profile name").font(.caption).foregroundStyle(.secondary)
+                                TextField("Profile name", text: profile.name)
+                                    .textFieldStyle(.roundedBorder).font(.title.bold())
+                                    .frame(maxWidth: 380)
+                                    .accessibilityLabel("Profile name")
+                                    .help("Rename this profile, then choose Save changes.")
                                 Text("Make the keyboard work the way you do.").foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -381,13 +387,17 @@ struct ControlSettingsView: View {
     }
 
     private func sectionButton(_ title: String, icon: String, destination: Section) -> some View {
-        Button { section = destination } label: {
+        Button {
+            section = destination
+            focusedSection = destination
+        } label: {
             Label(title, systemImage: icon).font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                 .background(section == destination ? Color.accentColor.opacity(0.13) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
+            .focused($focusedSection, equals: destination)
     }
 
     private func dialBinding(_ original: DialMode) -> Binding<DialMode> {

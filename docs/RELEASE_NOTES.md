@@ -1,3 +1,5 @@
+Version 0.7.9 moves sidebar keyboard focus to the section being opened, so the previous Keyboard row no longer retains its focus outline after navigation. Profile names now use a visibly bordered text field with a Profile name label.
+
 Version 0.7.8 makes the entire sidebar navigation and profile rows clickable, including their padding and empty space. GitHub test and DMG workflows now run only when manually dispatched; pushing commits or tags does not start builds.
 
 Version 0.7.7 accepts valid PT Ergo pointer reports with auxiliary button/wheel/movement fields, preventing dial-mode clicks from stopping mappings. Horizontal pan remains the rotation input; auxiliary pointer fields do not generate duplicate mode changes or mouse events. A new App logs sidebar section keeps recent local status/errors, with filter, copy and clear controls.

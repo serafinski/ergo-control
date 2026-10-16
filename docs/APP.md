@@ -280,3 +280,7 @@ The v0.7.7 [release workflow](https://github.com/serafinski/ergo-control/actions
 ## Sidebar click areas and manual GitHub builds (0.7.8)
 
 Sidebar navigation and profile button labels now define a rectangular hit area after their full-width frame and padding. The blank portion of each row activates the same button as its text/icon. Both GitHub workflows use only `workflow_dispatch`: tests are started manually, and releases require manually selecting an existing matching tag. Commit pushes, pull requests and tag pushes no longer start runs. See RELEASING.md for the UI and CLI commands.
+
+## Sidebar focus and profile naming (0.7.9)
+
+Section buttons explicitly move keyboard focus to the selected destination, keeping focus and the displayed section aligned after a click while preserving keyboard navigation. The profile header uses a rounded-border text field with a visible Profile name label, an accessibility label and a rename/save hint. GitHub workflows remain manual-only.
