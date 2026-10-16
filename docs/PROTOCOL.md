@@ -89,7 +89,7 @@ Static provenance (vendor sources remain local and ignored):
 | Physical report | Format and purpose |
 | --- | --- |
 | 1 | 12-byte ordinary keyboard snapshot: report ID, modifiers, ten held HID usages |
-| 2 | 9-byte pointer report; driver-mode left rotation uses signed horizontal pan at byte 3 |
+| 2 | 9 bytes: five button bits in byte 1, constant padding in byte 2, signed horizontal pan at byte 3, signed wheel at byte 4, signed little-endian 16-bit X/Y at bytes 5–8. Driver-mode left rotation uses pan. Auxiliary fields are valid and ignored by custom dial mappings. |
 | 3 | 12-byte consumer snapshot; little-endian usage at bytes 1–2, zero on release |
 | 4 | System input; not currently relayed by the mapping app |
 | 5 | 12-byte extra-key snapshot: `[5, 4, key set…]`, ten identifier bytes |

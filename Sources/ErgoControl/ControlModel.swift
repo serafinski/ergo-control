@@ -24,6 +24,8 @@ final class ControlModel: ObservableObject {
     let fullControlHelper = FullControlHelper()
     let codex = CodexBridge()
     let startup = StartupSettings()
+    let logs = AppLog()
+    private var lastPointerNote: String?
     private var automaticStart = AutomaticMappingStart()
     private var automaticStartTimer: Timer?
     private var resumeAfterWake = false
@@ -89,14 +91,30 @@ final class ControlModel: ObservableObject {
             DispatchQueue.main.async { self?.updateProfile() }
         }.store(in: &subscriptions)
         relay.onReport = { [weak self] id, bytes in self?.receive(id, bytes) }
-        relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.") }
-        relay.onFailure = { [weak self] message in self?.stop(message) }
-        engine.onError = { [weak self] message in self?.error = message; self?.stop(message) }
+        relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.", level: .warning) }
+        relay.onFailure = { [weak self] message in self?.stop(message, level: .error) }
+        engine.onError = { [weak self] message in self?.error = message; self?.stop(message, level: .error) }
         engine.onNotice = { [weak self] message in self?.error = message }
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
         engine.onCodexSlot = { [weak self] number in self?.codex.openSlot(number) }
+        bluetooth.$lightingStatus.removeDuplicates().sink { [weak self] message in
+            guard !message.isEmpty else { return }
+            self?.logs.record(message, category: "Lighting", level: message.contains("unavailable") ? .warning : .info)
+        }.store(in: &subscriptions)
+        bluetooth.$macroStatusLightingMessage.removeDuplicates().sink { [weak self] message in
+            let value = message.lowercased()
+            if ["unavailable", "pending", "invalid", "could not"].contains(where: value.contains) {
+                self?.logs.record(message, category: "Codex lighting", level: .warning)
+            }
+        }.store(in: &subscriptions)
+        bluetooth.$restoreOwed.removeDuplicates().dropFirst().sink { [weak self] pending in
+            if !pending { self?.logs.record("Keyboard restoration completed and verified.", category: "Keyboard") }
+        }.store(in: &subscriptions)
+        codex.$settings.map(\.enabled).removeDuplicates().dropFirst().sink { [weak self] enabled in
+            self?.logs.record(enabled ? "Codex connection enabled." : "Codex connection disabled.", category: "Codex")
+        }.store(in: &subscriptions)
         bluetooth.$keyboardBrightnessPercent.dropFirst().sink { [weak self] percent in
             guard let self, self.running, let percent else { return }
             self.controlIndicator.showBrightness(percent)
@@ -137,9 +155,11 @@ final class ControlModel: ObservableObject {
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
                     : "Mappings active · PT Ergo only"
-            } else if !verified && self.running { self.stop("Keyboard mode changed. Mappings stopped safely.") }
+                self.logs.record(self.status, category: "Keyboard")
+            } else if !verified && self.running { self.stop("Keyboard mode changed. Mappings stopped safely.", level: .warning) }
         }.store(in: &subscriptions)
         updateProfile()
+        logs.record("Ergo Control \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "development") started.")
         let batteryTimer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.pollBattery() }
         self.batteryTimer = batteryTimer
         RunLoop.main.add(batteryTimer, forMode: .common)
@@ -187,7 +207,7 @@ final class ControlModel: ObservableObject {
             } else {
                 message = "Waiting for the keyboard's current operation to finish before starting mappings…"
             }
-            if status != message { status = message }
+            if status != message { status = message; logs.record(message, category: "Startup") }
         case .start: cancelAutomaticStart(); start()
         }
     }
@@ -324,6 +344,7 @@ final class ControlModel: ObservableObject {
         let backwards = engine.physicalModifiers & 0x22 != 0
         modeIndices[id] = (modeIndices[id, default: 0] + (backwards ? count - 1 : 1)) % count
         updateProfile(forceIndicator: true)
+        logs.record("Command dial: \(dialName)", category: "Keyboard")
         controlIndicator.showDial(mode: dialName, profile: activeProfileName)
     }
 
@@ -332,6 +353,11 @@ final class ControlModel: ObservableObject {
         guard !running, !preparing else { return }
         guard !fullControlHelper.checkingPermission else { status = "Wait for the helper permission check to finish."; return }
         error = nil
+        lastPointerNote = nil
+        logs.record("Mapping activation requested.", category: "Keyboard")
+        defer {
+            if !preparing && !running { logs.record(error ?? status, category: "Keyboard", level: .warning) }
+        }
         fullControlHelper.refresh()
         guard !fullControlHelper.needsStartupRepair else { status = fullControlHelper.status; return }
         guard accessibilityGranted, inputGranted else { status = "Enable Input Monitoring and Accessibility for Ergo Control, then try again."; return }
@@ -360,7 +386,7 @@ final class ControlModel: ObservableObject {
             return
         }
         guard preparing else { return }
-        if Date().timeIntervalSince(stageStarted) > 30 { stop("Could not activate mappings. " + bluetooth.status); return }
+        if Date().timeIntervalSince(stageStarted) > 30 { stop("Could not activate mappings. " + bluetooth.status, level: .error); return }
         guard bluetooth.ready, !bluetooth.busy else { return }
         if bluetooth.canTryDriverMode, !activationStarted {
             if !batteryRequested { batteryRequested = true; bluetooth.readBattery(); return }
@@ -371,12 +397,13 @@ final class ControlModel: ObservableObject {
                 guard let self, self.preparing, self.activationStarted else { return }
                 switch result {
                 case .success(let mode): self.inputAccessMode = mode; self.bluetooth.tryDriverMode()
-                case .failure(let error): self.stop(error.localizedDescription)
+                case .failure(let error): self.stop(error.localizedDescription, level: .error)
                 }
             }
         }
     }
-    func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified") {
+    func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified", level: AppLog.Level = .info) {
+        logs.record(message, category: "Keyboard", level: level)
         cancelAutomaticStart()
         bluetooth.setMacroStatusColor(nil)
         batteryPopupTicket = nil
@@ -394,6 +421,7 @@ final class ControlModel: ObservableObject {
         codex.shutdown()
         batteryTimer?.invalidate(); batteryTimer = nil
         stop()
+        logs.flush()
         return bluetooth.requestTermination()
     }
 
@@ -421,13 +449,13 @@ final class ControlModel: ObservableObject {
     private func receive(_ id: UInt32, _ data: Data) {
         guard relay.accessMode.accepts(reportID: id) else { return }
         let bytes = Array(data)
-        guard id <= 255, bytes.first == UInt8(id) else { stop("Unexpected keyboard packet; normal input has been returned."); return }
+        guard id <= 255, bytes.first == UInt8(id) else { stop("Unexpected keyboard packet; normal input has been returned.", level: .error); return }
         if id == 1 {
-            guard bytes.count == 12 else { stop("Unexpected keyboard packet size; mappings stopped."); return }
+            guard bytes.count == 12 else { stop("Unexpected keyboard packet size; mappings stopped.", level: .error); return }
             guard let snapshot = KeyboardSnapshot(data) else { return }
             let current = snapshot.held
             guard current.allSatisfy({ MacKeys.codes[$0] != nil }) else {
-                stop("This key needs support; PT Ergo has been returned to normal input."); return
+                stop("This key needs support; PT Ergo has been returned to normal input.", level: .error); return
             }
             let transitions = NativeKeyboardTransitions.changes(from: ordinary, to: current)
             if !transitions.isEmpty { engine.endAppSwitcher() }
@@ -447,7 +475,7 @@ final class ControlModel: ObservableObject {
             engine.physicalModifiers = snapshot.modifiers
             ordinary = current
         } else if id == 5 {
-            guard let events = extraDecoder.decode(reportID: id, bytes: data) else { stop("Unexpected extra-key packet; mappings stopped."); return }
+            guard let events = extraDecoder.decode(reportID: id, bytes: data) else { stop("Unexpected extra-key packet; mappings stopped.", level: .error); return }
             guard running || relayOpened && relay.accessMode == .fullKeyboard else { return }
             for event in events {
                 guard relayOpened else { return }
@@ -461,21 +489,25 @@ final class ControlModel: ObservableObject {
                 if !event.pressed { extraActions.removeValue(forKey: event.key) }
             }
         } else if id == 2 {
-            guard bytes.count == 9, bytes[1] == 0, bytes[2] == 0, bytes.dropFirst(4).allSatisfy({ $0 == 0 }) else {
-                stop("An unsupported pointer report arrived from PT Ergo; mappings stopped."); return
+            guard let pointer = KeyboardPointerReport(data) else {
+                stop("Malformed PT Ergo pointer report (id \(id), \(bytes.count) bytes); mappings stopped.", level: .error); return
             }
-            let steps = Int(Int8(bitPattern: bytes[3])); guard running, steps != 0 else { return }
+            if pointer.hasAuxiliaryInput {
+                let note = "Auxiliary PT Ergo pointer fields ignored; dial mapping continues (buttons \(pointer.buttons), wheel \(pointer.verticalWheel != 0), movement \(pointer.deltaX != 0 || pointer.deltaY != 0))."
+                if note != lastPointerNote { logs.record(note, category: "Keyboard"); lastPointerNote = note }
+            }
+            let steps = pointer.horizontalPan; guard running, steps != 0 else { return }
             let control = steps > 0 ? "leftCW" : "leftCCW"
             lastControl = ControlCatalog.label(control)
             for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control), fromDial: true) }
         } else if id == 3 {
             guard let events = consumer.decode(data, at: ProcessInfo.processInfo.systemUptime) else {
-                stop("Unexpected media packet; mappings stopped."); return
+                stop("Unexpected media packet; mappings stopped.", level: .error); return
             }
             forwardMedia(events)
             scheduleMediaRelease()
         } else if id == 6 { return } // device notifications, not keyboard actions
-        else { stop("This input report needs support (\(id)); mappings stopped.") }
+        else { stop("This input report needs support (\(id)); mappings stopped.", level: .error) }
     }
 
     private func forwardMedia(_ events: [ConsumerKeyEvent]) {

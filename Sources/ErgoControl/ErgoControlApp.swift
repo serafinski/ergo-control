@@ -95,7 +95,7 @@ struct ControlMenu: View {
 
 struct ControlSettingsView: View {
     @ObservedObject var model: ControlModel
-    private enum Section { case keyboard, codex, app }
+    private enum Section { case keyboard, codex, app, logs }
     @State private var section = Section.keyboard
     @State private var keyToAdd = "4"
     @State private var showAddKey = false
@@ -140,6 +140,7 @@ struct ControlSettingsView: View {
                     sectionButton("Keyboard", icon: "keyboard", destination: .keyboard)
                     sectionButton("Codex", icon: "bubble.left.and.bubble.right", destination: .codex)
                     sectionButton("App", icon: "gearshape", destination: .app)
+                    sectionButton("App logs", icon: "list.bullet.rectangle", destination: .logs)
                 }
                 Divider()
                 if section == .keyboard {
@@ -173,7 +174,7 @@ struct ControlSettingsView: View {
                         Button("Remove") { model.removeProfile() }.disabled(model.configuration.profiles.count == 1)
                     }
                 } else {
-                    Text(section == .codex ? "Five chat keys and status lighting" : "Startup and installation").font(.caption).foregroundStyle(.secondary)
+                    Text(section == .codex ? "Five chat keys and status lighting" : section == .logs ? "Recent events and errors" : "Startup and installation").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                 }
                 Divider()
@@ -190,7 +191,11 @@ struct ControlSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(22).frame(width: 250).background(.background.secondary)
             Divider()
-            if section == .app {
+            if section == .logs {
+                ScrollView {
+                    AppLogView(log: model.logs).frame(maxWidth: 1000).frame(maxWidth: .infinity).padding(28)
+                }
+            } else if section == .app {
                 ScrollView {
                     AppSettingsView(startup: model.startup).frame(maxWidth: 800).frame(maxWidth: .infinity).padding(28)
                 }

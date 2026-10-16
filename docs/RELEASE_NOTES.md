@@ -1,3 +1,5 @@
+Version 0.7.7 accepts valid PT Ergo pointer reports with auxiliary button/wheel/movement fields, preventing dial-mode clicks from stopping mappings. Horizontal pan remains the rotation input; auxiliary pointer fields do not generate duplicate mode changes or mouse events. A new App logs sidebar section keeps recent local status/errors, with filter, copy and clear controls.
+
 Version 0.7.6 removes the lighting-tool unused-binding warning and explicitly labels test callbacks. Keyboard behavior is unchanged.
 
 The first GitHub build exposed an older Swift compiler limitation in a test expression. Version 0.7.5 simplifies that expression; keyboard behavior is unchanged from 0.7.4.

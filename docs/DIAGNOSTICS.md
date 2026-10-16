@@ -58,3 +58,8 @@ The original installer/evidence is not distributed with this project. Its hashes
 ### Paired keyboard discovery
 
 `"/Applications/Ergo Control.app/Contents/MacOS/ErgoControl" --keyboard-discovery-check` checks live registry metadata and notification registration only. It prints the matching service count and whether there is one unique Bluetooth endpoint; it does not open a HID device, subscribe to input reports, start a configuration connection, print endpoint UUIDs or change the keyboard. Startup logs now distinguish missing/ambiguous metadata, registry errors, saved-recovery versus live-registry identity, and connection/service errors. Keep logs local; report only relevant diagnostic events.
+
+
+### App logs in Settings
+
+Select **App logs** in the sidebar for recent startup, mapping, dial and lighting events. Use **Warnings and errors only**, **Copy logs**, **Show log file**, or **Clear logs**. The latest 300 entries persist locally; no typed text, raw input reports or Codex chat contents are recorded. Clearing this history does not touch keyboard/lighting recovery records. This view records new events from 0.7.7 onward; older stop reasons are not reconstructed from raw input.
