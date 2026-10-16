@@ -1,0 +1,35 @@
+Ergo Control — installation
+
+1. Quit any running Ergo Control from its menu-bar menu.
+2. Drag Ergo Control.app to Applications using the shortcut in this image.
+3. Eject this disk image. Open Ergo Control from Applications.
+
+Self-signed releases are not Apple-notarized. macOS may block the first launch.
+After attempting to open the app, use System Settings > Privacy & Security >
+Open Anyway to review and approve it. Do not disable Gatekeeper globally.
+
+Enable Input Monitoring and Accessibility for Ergo Control when requested.
+For full dial control, use Keyboard > Full dial control > Install input helper.
+Complete macOS Installer's administrator approval, then Refresh status.
+The helper also needs its separate Input Monitoring grant. If macOS blocks the
+self-signed helper installer, review it in Privacy & Security as well.
+
+Profiles, function-key choices and Codex settings are stored in your Library,
+outside the app. Moving or updating the app preserves them. Keep only one copy
+running. Existing Codex hooks use a stable Application Support path.
+
+App > Launch at login starts the Applications copy when you log in.
+App > Enable mappings automatically starts saved mappings once the keyboard
+and permissions are ready, and resumes after sleep if they were active.
+Codex connection and status-light choices are already remembered.
+
+When updating, install the new bundled helper if the app says one is needed.
+A release signed with a different certificate cannot replace a helper signed
+by the old certificate: remove the old helper using the OLD app first, then
+install the new helper and grant its permissions. Keep the old app until done.
+
+macOS 14 or newer. Bluetooth mappings only; custom USB/receiver mappings are not
+implemented. Universal releases contain Apple Silicon and Intel binaries;
+physical keyboard validation to date has been on Apple Silicon.
+
+Source and release information: https://github.com/serafinski/ergo-control

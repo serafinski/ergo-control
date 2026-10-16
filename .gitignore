@@ -2,6 +2,8 @@
 .build/
 .swiftpm/
 build/
+dist/
+*.dmg
 analysis/
 captures/
 *.app/

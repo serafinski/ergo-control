@@ -2,11 +2,21 @@ import SwiftUI
 import AppKit
 import ApplicationServices
 import IOKit.hid
+import CoreServices
 import ErgoCore
 
 final class ControlAppDelegate: NSObject, NSApplicationDelegate {
     var model: ControlModel?
-    func applicationDidFinishLaunching(_ notification: Notification) { NSApp.setActivationPolicy(.accessory) }
+    private var launchedAtLogin: Bool {
+        NSAppleEventManager.shared().currentAppleEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { !launchedAtLogin }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        if launchedAtLogin {
+            DispatchQueue.main.async { NSApp.windows.filter { $0.canBecomeMain }.forEach { $0.orderOut(nil) } }
+        }
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { model?.terminate() ?? .terminateNow }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
@@ -68,8 +78,8 @@ struct ControlMenu: View {
         }
         Divider()
         Button("Settings…") { openWindow(id: "settings"); NSApp.activate(ignoringOtherApps: true) }
-        Button(model.running || model.preparing ? "Stop mappings" : "Enable mappings") {
-            if model.running || model.preparing { model.stop() } else { model.start() }
+        Button(model.running || model.preparing || model.waitingForAutomaticStart ? "Stop mappings" : "Enable mappings") {
+            if model.running || model.preparing || model.waitingForAutomaticStart { model.stop() } else { model.start() }
         }
         Divider()
         Button("Quit Ergo Control") { NSApp.terminate(nil) }.keyboardShortcut("q")
@@ -78,7 +88,8 @@ struct ControlMenu: View {
 
 struct ControlSettingsView: View {
     @ObservedObject var model: ControlModel
-    @State private var showingCodex = false
+    private enum Section { case keyboard, codex, app }
+    @State private var section = Section.keyboard
     @State private var keyToAdd = "4"
     @State private var showAddKey = false
     @State private var testText = ""
@@ -119,11 +130,12 @@ struct ControlSettingsView: View {
                 Text("PRO TYPE ERGO").font(.caption).foregroundStyle(.secondary)
                 Divider()
                 VStack(spacing: 6) {
-                    sectionButton("Keyboard", icon: "keyboard", codex: false)
-                    sectionButton("Codex", icon: "bubble.left.and.bubble.right", codex: true)
+                    sectionButton("Keyboard", icon: "keyboard", destination: .keyboard)
+                    sectionButton("Codex", icon: "bubble.left.and.bubble.right", destination: .codex)
+                    sectionButton("App", icon: "gearshape", destination: .app)
                 }
                 Divider()
-                if !showingCodex {
+                if section == .keyboard {
                     HStack { Text("Profiles").font(.headline); Spacer(); Button { model.addProfile() } label: { Image(systemName: "plus") }.help("New profile") }
                     ScrollView {
                         VStack(spacing: 6) {
@@ -154,7 +166,7 @@ struct ControlSettingsView: View {
                         Button("Remove") { model.removeProfile() }.disabled(model.configuration.profiles.count == 1)
                     }
                 } else {
-                    Text("Five chat keys and status lighting").font(.caption).foregroundStyle(.secondary)
+                    Text(section == .codex ? "Five chat keys and status lighting" : "Startup and installation").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                 }
                 Divider()
@@ -164,14 +176,18 @@ struct ControlSettingsView: View {
                     Text(model.activeProfileName).font(.headline)
                     Text(model.inputAccessMode == .macroButtons ? "Macro buttons only" : "Dial: \(model.dialName)").font(.caption)
                 }
-                Button(model.running || model.preparing ? "Stop mappings" : "Enable mappings") {
-                    if model.running || model.preparing { model.stop() } else { model.start() }
+                Button(model.running || model.preparing || model.waitingForAutomaticStart ? "Stop mappings" : "Enable mappings") {
+                    if model.running || model.preparing || model.waitingForAutomaticStart { model.stop() } else { model.start() }
                 }.buttonStyle(.borderedProminent).controlSize(.large)
                 Text("Closing this window keeps the menu-bar app available. Quit restores the keyboard’s saved mode.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(22).frame(width: 250).background(.background.secondary)
             Divider()
-            if showingCodex {
+            if section == .app {
+                ScrollView {
+                    AppSettingsView(startup: model.startup).frame(maxWidth: 800).frame(maxWidth: .infinity).padding(28)
+                }
+            } else if section == .codex {
                 ScrollView {
                     CodexSettingsView(model: model).frame(maxWidth: 900).frame(maxWidth: .infinity).padding(28)
                 }
@@ -349,11 +365,11 @@ struct ControlSettingsView: View {
         }.frame(minWidth: 1180, minHeight: 760)
     }
 
-    private func sectionButton(_ title: String, icon: String, codex: Bool) -> some View {
-        Button { showingCodex = codex } label: {
+    private func sectionButton(_ title: String, icon: String, destination: Section) -> some View {
+        Button { section = destination } label: {
             Label(title, systemImage: icon).font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                .background(showingCodex == codex ? Color.accentColor.opacity(0.13) : Color.clear,
+                .background(section == destination ? Color.accentColor.opacity(0.13) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 8))
         }.buttonStyle(.plain)
     }

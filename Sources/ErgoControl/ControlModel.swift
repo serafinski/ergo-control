@@ -13,6 +13,7 @@ final class ControlModel: ObservableObject {
     @Published var status = "Mappings are off. Configure your controls, then enable them."
     @Published var running = false
     @Published var preparing = false
+    @Published private(set) var waitingForAutomaticStart = false
     @Published var activeProfileName = "Default"
     @Published var dialName = "Zoom"
     @Published var lastControl = "No control pressed yet"
@@ -22,6 +23,10 @@ final class ControlModel: ObservableObject {
     let bluetooth = BluetoothController()
     let fullControlHelper = FullControlHelper()
     let codex = CodexBridge()
+    let startup = StartupSettings()
+    private var automaticStart = AutomaticMappingStart()
+    private var automaticStartTimer: Timer?
+    private var resumeAfterWake = false
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
     private let controlIndicator = ControlIndicator()
@@ -71,6 +76,10 @@ final class ControlModel: ObservableObject {
         bluetooth.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        startup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        startup.$automaticMappings.dropFirst().sink { [weak self] enabled in
+            if !enabled { self?.cancelAutomaticStart() }
+        }.store(in: &subscriptions)
         codex.onLightingChange = { [weak self] color in
             guard let self else { return }
             self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity)
@@ -106,7 +115,14 @@ final class ControlModel: ObservableObject {
             self?.updateProfile()
         }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification).sink { [weak self] _ in
-            self?.stop("Mappings stopped for sleep. Enable them after waking PT Ergo.")
+            guard let self else { return }
+            self.resumeAfterWake = self.running || self.preparing
+            self.stop("Mappings stopped for sleep.")
+        }.store(in: &subscriptions)
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification).sink { [weak self] _ in
+            guard let self else { return }
+            if self.resumeAfterWake && self.startup.automaticMappings { self.beginAutomaticStart() }
+            self.resumeAfterWake = false
         }.store(in: &subscriptions)
         bluetooth.$driverModeVerified.removeDuplicates().sink { [weak self] verified in
             guard let self else { return }
@@ -127,7 +143,39 @@ final class ControlModel: ObservableObject {
         let batteryTimer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.pollBattery() }
         self.batteryTimer = batteryTimer
         RunLoop.main.add(batteryTimer, forMode: .common)
-        DispatchQueue.main.async { [weak self] in self?.pollBattery() }
+        DispatchQueue.main.async { [weak self] in
+            self?.pollBattery()
+            if self?.startup.automaticMappings == true { self?.beginAutomaticStart() }
+        }
+    }
+
+    private func cancelAutomaticStart() {
+        waitingForAutomaticStart = false
+        automaticStart.cancel()
+        automaticStartTimer?.invalidate(); automaticStartTimer = nil
+    }
+    private func beginAutomaticStart() {
+        guard !terminating, !running, !preparing, error == nil else { return }
+        cancelAutomaticStart()
+        automaticStart.arm(at: ProcessInfo.processInfo.systemUptime)
+        waitingForAutomaticStart = true
+        status = "Waiting for PT Ergo and input permissions to start saved mappings…"
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.advanceAutomaticStart() }
+        automaticStartTimer = timer; RunLoop.main.add(timer, forMode: .common)
+        advanceAutomaticStart()
+    }
+    private func advanceAutomaticStart() {
+        guard !terminating, startup.automaticMappings else { cancelAutomaticStart(); return }
+        switch automaticStart.next(at: ProcessInfo.processInfo.systemUptime, ready: bluetooth.ready,
+                                   permissions: accessibilityGranted && inputGranted,
+                                   busy: bluetooth.busy || fullControlHelper.checkingPermission,
+                                   restorationPending: bluetooth.restoreOwed || bluetooth.driverModeVerified) {
+        case .wait: break
+        case .start: cancelAutomaticStart(); start()
+        case .expired:
+            cancelAutomaticStart()
+            status = "Automatic start timed out. Connect PT Ergo, check input permissions, then enable mappings."
+        }
     }
 
     var accessibilityGranted: Bool { AXIsProcessTrusted() }
@@ -265,6 +313,7 @@ final class ControlModel: ObservableObject {
     }
 
     func start(testSeconds: TimeInterval? = nil) {
+        cancelAutomaticStart()
         guard !running, !preparing else { return }
         guard !fullControlHelper.checkingPermission else { status = "Wait for the helper permission check to finish."; return }
         error = nil
@@ -312,6 +361,7 @@ final class ControlModel: ObservableObject {
         }
     }
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified") {
+        cancelAutomaticStart()
         bluetooth.setMacroStatusColor(nil)
         batteryPopupTicket = nil
         controlIndicator.dismiss()
