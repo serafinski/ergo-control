@@ -196,7 +196,7 @@ final class ControlModel: ObservableObject {
                 case .script: guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("Choose an existing script") }
                 case .keyboardBrightness: guard action.value == "up" || action.value == "down" else { throw MappingValidationError.message("Choose Increase or Decrease for keyboard brightness") }
                 case .text: guard action.value.utf16.count <= 4096 else { throw MappingValidationError.message("Text actions can contain up to 4096 characters") }
-                case .codexChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a Codex slot from 1 to 5") }
+                case .codexChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a chat slot from 1 to 5") }
                 default: break
                 }
             }
@@ -210,11 +210,11 @@ final class ControlModel: ObservableObject {
         if let existing = configuration.profiles.first(where: { p in
             (1...5).allSatisfy { p.mappings["extra:\($0 + 31)"] == MappingAction(.codexChat, String($0)) }
         }) { selectedProfileID = existing.id; return }
-        var profile = MappingProfile(name: "Codex")
+        var profile = MappingProfile(name: "Chat keys")
         for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(.codexChat, String(slot)) }
         configuration.profiles.append(profile)
         selectedProfileID = profile.id
-        // A dedicated profile can open Codex from anywhere. Existing profiles
+        // A dedicated profile can open the selected chat source from anywhere. Existing profiles
         // remain untouched; selecting the new default is explicit in the UI.
         save()
     }

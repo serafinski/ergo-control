@@ -111,3 +111,8 @@ The optional Codex panel adds five assigned chat slots, per-slot lifecycle statu
 ## Dynamic Codex selection (0.4.0)
 
 Most recent chats is now the default. Pinned chats and Fixed assignments are optional modes; unmapped M1–M5 controls use the current list without separate edits. Existing explicit mappings take precedence. The background metadata reader uses the installed ChatGPT app's CLI and a restricted set of list requests; live status continues to use the already-approved hooks. See [Codex setup](CODEX_SETUP.md). No helper or hook reinstall is needed for this update.
+
+
+## Separate ChatGPT source (0.5.0)
+
+The Chat keys panel now offers Codex / ChatGPT. Codex defaults to Most recent chats. ChatGPT defaults to Pinned chats and also offers Fixed assignments, using independent saved slots/modes and native conversation links. ChatGPT pins are read from the desktop app's saved sidebar metadata without modifying it; Recent and live ChatGPT status are not supported. Source switching stops Codex collection and restores status lighting. Existing profile actions remain compatible under the visible Open chat slot label. All 130 tests pass; native ChatGPT opening needs a live user check. No input helper or hook reinstall is required. See [chat setup and data handling](CODEX_SETUP.md).

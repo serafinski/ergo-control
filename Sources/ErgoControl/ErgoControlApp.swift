@@ -16,6 +16,13 @@ struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
     @StateObject private var model = ControlModel()
     init() {
+        if CommandLine.arguments.contains("--chatgpt-pins-check") {
+            do {
+                let slots = try ChatGPTPins.read(from: ChatGPTPins.defaultURL)
+                print("ChatGPT saved pins: \(slots.filter { $0.threadID != nil }.count) of 5 slots available.")
+                exit(0)
+            } catch { print(error.localizedDescription); exit(1) }
+        }
         if CommandLine.arguments.contains("--codex-history-check") { CodexHistoryReader.checkCommandLine() }
         if CommandLine.arguments.dropFirst().first == "--lighting-lab" {
             LightingLabRunner.runCommandLine(Array(CommandLine.arguments.dropFirst(2)))
@@ -58,12 +65,12 @@ struct ControlMenu: View {
         Button("Refresh battery") { model.refreshBattery() }
         if model.codex.settings.enabled {
             Divider()
-            Text(model.codex.settings.selection.label)
-            Text("\(model.codex.assignedSlotCount) of 5 Codex chat keys assigned")
+            Text(model.codex.selectionLabel)
+            Text("\(model.codex.assignedSlotCount) of 5 chat keys assigned")
             ForEach(model.codex.displaySlots) { slot in
-                let summary = slot.threadID == nil ? model.codex.emptySlotLabel : "\(slot.name) · \(model.codex.activity(slot).label)"
+                let summary = slot.threadID == nil ? model.codex.emptySlotLabel : "\(slot.name) · \(model.codex.statusLabel(slot))"
                 Button("M\(slot.id) · \(summary)") { model.codex.openSlot(slot.id) }
-                    .disabled(slot.url == nil)
+                    .disabled(model.codex.slotURL(slot) == nil)
             }
         }
         Divider()
@@ -249,7 +256,7 @@ struct ControlSettingsView: View {
                                     Text(control.1).fontWeight(.medium).lineLimit(2)
                                     let p = model.configuration.profiles[index]
                                     let action = (model.alternateEditing ? p.alternate : p.mappings)[control.0]
-                                    Text(action?.kind.rawValue ?? (model.alternateEditing ? "Use standard layer" : "Default"))
+                                    Text(action?.kind.label ?? (model.alternateEditing ? "Use standard layer" : "Default"))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }.frame(maxWidth: .infinity, minHeight: 55, alignment: .leading).padding(12)
                                     .background(model.selectedControl == control.0 ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.07),
@@ -376,7 +383,7 @@ struct ActionEditor: View {
                     if previousKind != .application && previousKind != .toggleApplication { action.value = "" }
                 default: action.value = ""
                 }
-            })) { ForEach(ActionKind.allCases) { kind in Text(kind.rawValue).tag(kind) } }
+            })) { ForEach(ActionKind.allCases) { kind in Text(kind.label).tag(kind) } }
             switch action.kind {
             case .shortcut:
                 TextField("Example: cmd+shift+c", text: $action.value)
@@ -406,8 +413,8 @@ struct ActionEditor: View {
                 Picker("Chat slot", selection: $action.value) {
                     ForEach(1...5, id: \.self) { number in Text("M\(number) · Slot \(number)").tag(String(number)) }
                 }
-                Text("Opens the assigned Codex chat. Enable the Codex connection in settings first.").font(.caption).foregroundStyle(.secondary)
-            case .standard: Text("Use the normal action or current dial mode. When connected to Codex, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)
+                Text("Opens the current slot from the selected Codex or ChatGPT source. Enable chat keys in settings first.").font(.caption).foregroundStyle(.secondary)
+            case .standard: Text("Use the normal action or current dial mode. With chat keys enabled, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)
             case .layer: Text("Other controls use this profile’s alternate layer while this button is held.").font(.caption).foregroundStyle(.secondary)
             case .cycleDial: Text("Switch to the next enabled command-dial mode.").font(.caption).foregroundStyle(.secondary)
             case .battery: Text("Show the current keyboard battery percentage in a brief on-screen popup.").font(.caption).foregroundStyle(.secondary)

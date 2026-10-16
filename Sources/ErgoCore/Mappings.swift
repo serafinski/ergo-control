@@ -9,6 +9,7 @@ public enum ActionKind: String, CaseIterable, Codable, Identifiable {
     case codexChat = "Open Codex chat slot"
     case battery = "Show battery", disabled = "Do nothing"
     public var id: String { rawValue }
+    public var label: String { self == .codexChat ? "Open chat slot" : rawValue }
 }
 
 public struct MappingAction: Codable, Equatable {

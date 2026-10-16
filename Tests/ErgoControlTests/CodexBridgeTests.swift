@@ -178,4 +178,62 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertEqual(bridge.activity(slot), .attention)
         bridge.shutdown()
     }
+    func testChatGPTSourceIsolatesModesAssignmentsEventsAndLighting() throws {
+        let source = History()
+        var pin = CodexSlot(1); pin.threadID = UUID().uuidString.lowercased(); pin.name = "Saved pin"
+        let bridge = CodexBridge(folder: folder, startTimer: false, history: source, chatgptPins: { [pin] })
+        bridge.setEnabled(true); bridge.setLighting(true)
+        let codexID = try enqueue(1); bridge.poll()
+        bridge.assign(0, name: "Codex fixed", link: codexID)
+        bridge.setSelection(.fixed)
+        XCTAssertNotNil(bridge.lightingColor)
+        bridge.setSource(.chatgpt)
+        XCTAssertEqual(bridge.settings.activeSelection, .pinned)
+        XCTAssertEqual(bridge.displaySlots, [pin])
+        XCTAssertGreaterThan(source.stops, 0)
+        XCTAssertNil(bridge.lightingColor)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("receiver.pid").path))
+        _ = try enqueue(2); bridge.poll()
+        XCTAssertTrue(bridge.sessions.isEmpty)
+        XCTAssertEqual(bridge.activity(pin), .unknown)
+        XCTAssertEqual(bridge.statusLabel(pin), "Status unavailable")
+        source.onRecent?([]); source.onProblem?(.unavailable("late Codex error"))
+        XCTAssertEqual(bridge.displaySlots, [pin])
+        XCTAssertFalse(bridge.historyMessage.contains("late Codex"))
+        bridge.setSelection(.recent)
+        XCTAssertEqual(bridge.settings.activeSelection, .pinned)
+        bridge.setSelection(.fixed)
+        bridge.assign(0, name: "ChatGPT fixed", link: "https://chatgpt.com/c/\(pin.threadID!)")
+        XCTAssertEqual(bridge.displaySlots[0].name, "ChatGPT fixed")
+        XCTAssertEqual(bridge.slotURL(bridge.displaySlots[0])?.scheme, "https")
+        bridge.setSource(.codex)
+        XCTAssertEqual(bridge.settings.activeSelection, .fixed)
+        XCTAssertEqual(bridge.displaySlots[0].name, "Codex fixed")
+        XCTAssertEqual(bridge.slotURL(bridge.displaySlots[0])?.scheme, "codex")
+        bridge.setSource(.chatgpt)
+        XCTAssertEqual(bridge.settings.activeSelection, .fixed)
+        XCTAssertEqual(bridge.displaySlots[0].name, "ChatGPT fixed")
+        XCTAssertEqual(bridge.defaultAction(for: "extra:32"), MappingAction(.codexChat, "1"))
+        bridge.shutdown()
+        let restored = CodexBridge(folder: folder, startTimer: false)
+        XCTAssertEqual(restored.settings, bridge.settings)
+        restored.shutdown()
+    }
+    func testChatGPTRefreshClearsStaleTargetsOnFailureAndKeepsFixedAssignments() {
+        var fail = false
+        var pin = CodexSlot(1); pin.threadID = UUID().uuidString.lowercased()
+        let bridge = CodexBridge(folder: folder, startTimer: false, chatgptPins: {
+            if fail { throw CodexIntegrationError.message("unavailable") }
+            return [pin]
+        })
+        bridge.setSource(.chatgpt); bridge.setEnabled(true)
+        XCTAssertEqual(bridge.displaySlots, [pin])
+        bridge.assign(0, name: "Keep", link: pin.threadID!)
+        fail = true; bridge.refreshHistory()
+        XCTAssertTrue(bridge.displaySlots.allSatisfy { $0.threadID == nil })
+        bridge.setSelection(.fixed)
+        XCTAssertEqual(bridge.displaySlots[0].name, "Keep")
+        bridge.shutdown()
+    }
+
 }

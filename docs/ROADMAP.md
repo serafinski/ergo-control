@@ -6,6 +6,10 @@ The requested Chroma investigation now has a device-specific result: **M1–M5 s
 
 Version 0.4.0 implements recent chats by default, optional pinned/fixed selection, shared-column Codex status, and five chat slots; see [setup and remaining validation](CODEX_SETUP.md). The optional [Lighting Lab](LIGHTING_LAB.md) now demonstrates isolated M1–M5 pulsing over **both USB and Bluetooth**, with saved-effect restoration verified. Bluetooth custom frames need the hardware-reported backlight region 5, rather than AllRegion 0; the vendor's hardware-effects-only manifest flag did not prevent this working. A moving cyan line is also user-confirmed over USB. General patterns remain in the lab. Version 0.3.0 adds journaled event-driven status lighting; its behavior alongside active mappings still needs live validation. The requested [Chroma/Codex Micro feasibility report](CODEX_AND_CHROMA.md) recommends an independent renderer, documented chat shortcuts, and opt-in lifecycle hooks as the first status source. Exact native Micro integration remains a separate compatibility/distribution problem; the installed app disables the community emulator's launch-shim mechanism. No Codex hooks or Chroma software were installed for this research.
 
+## ChatGPT source follow-up
+
+Version 0.5.0 adds a separate ChatGPT source with saved Pinned and Fixed selections. Recent chats, live ChatGPT status, multi-account selection, and a combined Codex/ChatGPT list remain deferred. Its local sidebar-cache adapter is version-sensitive; native ChatGPT link navigation still needs user confirmation. See [setup](CODEX_SETUP.md).
+
 ## Remaining hardware validation
 
 - Brightness long-term behavior; backlight control, 0–100% read-back, and percentage popup are now confirmed.
