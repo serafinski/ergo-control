@@ -128,7 +128,7 @@ final class CodexIntegrationTests: XCTestCase {
         let heads = (0..<7).map { index in CodexStatusWave.frame(index, activity: .finished).firstIndex(of: CodexActivity.finished.color)! }
         XCTAssertEqual(heads, [0, 6, 12, 18, 12, 6, 0])
         XCTAssertEqual(CodexStatusWave.positions(for: .working), [0, 6, 12, 18])
-        XCTAssertEqual(CodexStatusWave.positions(for: .attention), [0, 6, 12, 18])
+        XCTAssertEqual(CodexStatusWave.positions(for: .attention), [0, 6, 12, 18, 12, 6, 0])
         XCTAssertTrue((0..<7).allSatisfy { CodexStatusWave.frame($0, activity: .finished).count == 19 })
         XCTAssertEqual(CodexLightingTestStage.at(elapsed: 15.9, completionWave: true), .finished)
         XCTAssertEqual(CodexLightingTestStage.at(elapsed: 20, completionWave: true), .restore)
@@ -146,6 +146,15 @@ final class CodexIntegrationTests: XCTestCase {
         XCTAssertEqual(state.workingSince, Date(timeIntervalSince1970: 103))
         state.receive(try event("UserPromptSubmit", turn: "turn-b", time: 105))
         XCTAssertEqual(state.workingSince, Date(timeIntervalSince1970: 105))
+    }
+
+    func testApprovalRemainsPendingUntilANewStatusArrives() throws {
+        var state = CodexSessionStatus(try event("PermissionRequest", time: 100))
+        XCTAssertEqual(state.activity(now: Date(timeIntervalSince1970: 10_000)), .attention)
+        state.receive(try event("PreToolUse", time: 10_001))
+        XCTAssertEqual(state.activity(now: Date(timeIntervalSince1970: 10_002)), .working)
+        state.receive(try event("Stop", time: 10_003))
+        XCTAssertEqual(state.activity(now: Date(timeIntervalSince1970: 10_008)), .idle)
     }
 
 }

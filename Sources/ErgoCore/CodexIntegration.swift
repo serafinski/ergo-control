@@ -225,6 +225,9 @@ public struct CodexSessionStatus {
     }
     public static let completionSignalDuration: TimeInterval = 4
     public func activity(now: Date, completionDuration: TimeInterval = Self.completionSignalDuration) -> CodexActivity {
+        // An approval can legitimately remain pending for a long time. Only a
+        // later hook clears it; activity is transient and resets on app restart.
+        if latest.activity == .attention { return .attention }
         let age = now.timeIntervalSince(latest.time)
         guard age < 1800 else { return .unknown }
         if latest.activity == .finished, age >= completionDuration { return .idle }

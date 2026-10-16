@@ -83,7 +83,7 @@ struct CodexSettingsView: View {
                     statusKey(.working); statusKey(.attention); statusKey(.finished)
                 }
                 Text(model.codex.settings.lightingArea == .completionWave
-                     ? "Blue sweeps once from M1–M5 to the right when work starts. Amber repeats that sweep while approval is pending. Green travels right and back once when the turn ends. One-shot waves restore your normal effect; brightness stays unchanged."
+                     ? "Blue sweeps once from M1–M5 to the right when work starts. Amber bounces continuously right and left while approval is pending. Green travels right and back once when the turn ends. One-shot waves restore your normal effect; brightness stays unchanged."
                      : "Green lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -98,7 +98,7 @@ struct CodexSettingsView: View {
                     }
                 }
                 Text(model.codex.settings.lightingArea == .completionWave
-                     ? "The test shows a blue sweep, repeating amber sweeps, then one green out-and-back sweep and your previous effect. Live status resumes afterward; chat status is unchanged."
+                     ? "The test shows a blue sweep, bouncing amber waves, then one green out-and-back sweep and your previous effect. Live status resumes afterward; chat status is unchanged."
                      : "The test shows blue → amber → green → your previous effect, for four seconds each. Live status resumes afterward; chat status is unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.bluetooth.macroStatusLightingMessage.isEmpty {

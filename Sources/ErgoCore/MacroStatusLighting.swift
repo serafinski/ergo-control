@@ -45,12 +45,11 @@ public enum MacroStatusFrame {
 public enum CodexStatusWave {
     public static let maximumDuration: TimeInterval = 6
     public static let minimumFrameInterval: TimeInterval = 0
-    public static let approvalPause: TimeInterval = 0.5
     public static let completionWindow: TimeInterval = 8
     public static func positions(for activity: CodexActivity) -> [Int] {
         switch activity {
-        case .working, .attention: return [0, 6, 12, 18]
-        case .finished: return [0, 6, 12, 18, 12, 6, 0]
+        case .working: return [0, 6, 12, 18]
+        case .attention, .finished: return [0, 6, 12, 18, 12, 6, 0]
         default: return []
         }
     }

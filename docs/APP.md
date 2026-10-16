@@ -139,3 +139,10 @@ Six acknowledged frames use the existing queue/timer, with a bounded runtime and
 Renamed Completion wave to **Status waves**, preserving its saved setting. Working sends one blue wave from M1–M5 to the right, approval sends repeated amber waves until its status changes, and completion sends one green wave right and back to M1–M5. One-shot passes restore the previous effect immediately; approval retains lighting ownership while pending. Work resuming after approval gets a new start sweep; repeated tool hooks do not retrigger it. Older acknowledgement callbacks cannot restart an interrupted approval loop.
 
 Forward passes use four broad frames; completion uses seven for its round trip. Removed the added inter-frame delay; Bluetooth acknowledgements still determine throughput. The preview now lasts 24 seconds to show repeated approval passes. All 143 tests pass. No helper/hook reinstall is needed; physical speed/direction and real approval transitions remain pending verification.
+
+
+## Continuous approval bounce and measured speed (0.6.3)
+
+Approval now bounces right and left continuously while pending. Removed the half-second cycle pause and skipped the duplicate macro-side endpoint when restarting the round trip. Pending approval no longer expires after 30 minutes; a later status hook or ending the connection clears it. Working and completion retain their one-shot behavior. Tests verify both reversals, continued bouncing without a one-shot deadline, resolution, and restoration; all 144 pass.
+
+Read-only timings from recent actual Bluetooth frames show about 482 ms median request-to-success, with the next frame starting about 14 ms later. This is close to the current acknowledged transport's observed throughput, not a proven keyboard maximum. Larger speed gains need a separately validated streaming path. No helper or hook reinstall is required; physical approval-bounce verification remains pending.

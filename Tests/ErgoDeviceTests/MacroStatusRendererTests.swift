@@ -253,15 +253,18 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(rig.frames.count, 5)
         XCTAssertFalse(rig.writesBeforeSnapshot)
     }
-    func testApprovalSweepsRepeatUntilWorkResumesThenRestore() {
+    func testApprovalBouncesWithoutEndpointPauseUntilWorkResumesThenRestore() {
         let rig = Rig()
         rig.renderer.request(CodexActivity.attention.color, area: .completionWave, signalID: "approval-a", activity: .attention)
-        for _ in 0..<12 { rig.renderer.pump(); rig.clock += 0.6 }
-        XCTAssertEqual(rig.frames.count, 12)
-        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.attention.color)! }, [0, 6, 12, 18, 0, 6, 12, 18, 0, 6, 12, 18])
+        for _ in 0..<13 { rig.renderer.pump(); rig.clock += 0.1 }
+        XCTAssertEqual(rig.frames.count, 13)
+        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.attention.color)! }, [0, 6, 12, 18, 12, 6, 0, 6, 12, 18, 12, 6, 0])
         XCTAssertNotNil(rig.saved)
         rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 13)
+        XCTAssertEqual(rig.frames.count, 14, "No extra pause or duplicate endpoint when bouncing")
+        XCTAssertEqual(rig.frames.last?.firstIndex(of: CodexActivity.attention.color), 6)
+        rig.clock += 3600; rig.renderer.pump()
+        XCTAssertNotNil(rig.renderer.desired, "Pending approval has no one-shot timeout")
         rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-resumed", activity: .working)
         for _ in 0..<4 { rig.renderer.pump(); rig.clock += 0.1 }
         XCTAssertTrue(rig.frames.suffix(4).allSatisfy { $0.contains(CodexActivity.working.color) })

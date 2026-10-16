@@ -115,9 +115,10 @@ final class MacroStatusRenderer {
                 self.nextWaveFrame = self.uptime() + CodexStatusWave.minimumFrameInterval
                 if self.waveIndex == CodexStatusWave.positions(for: state).count {
                     if state == .attention {
-                        self.waveIndex = 0; self.waveStarted = nil
-                        self.nextWaveFrame = self.uptime() + CodexStatusWave.approvalPause
-                        self.message("Approval wave repeats while approval is pending")
+                        // The last frame is already at the macro-side endpoint.
+                        // Advance toward the right immediately, without duplicating it.
+                        self.waveIndex = 1; self.waveStarted = nil
+                        self.message("Approval wave bounces while approval is pending")
                     } else {
                         self.consumeSignal(wave); self.desired = nil; self.waveStarted = nil
                         self.message("Status wave finished · restoring previous effect")
