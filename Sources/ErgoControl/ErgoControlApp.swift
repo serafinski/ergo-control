@@ -40,6 +40,7 @@ struct ErgoControlApp: App {
             NativeDialInspection.runCommandLine()
         }
         if CommandLine.arguments.contains("--helper-access-status") { HelperPermissionCheck.runCommandLine() }
+        if CommandLine.arguments.contains("--helper-service-status") { FullControlHelper.statusCommandLine() }
     }
     var body: some Scene {
         WindowGroup("Ergo Control", id: "settings") {
@@ -240,7 +241,9 @@ struct ControlSettingsView: View {
                                 Text("The optional input helper gives Ergo Control exclusive access to PT Ergo so dial actions can be replaced. Installation requires administrator approval. The helper releases the keyboard when mappings stop or the app stops responding.")
                                     .font(.caption).foregroundStyle(.secondary)
                                 HStack {
-                                    if model.fullControlHelper.enabled || model.fullControlHelper.needsApproval {
+                                    if model.fullControlHelper.needsStartupRepair {
+                                        Button("Repair helper startup…") { model.enableFullControl() }
+                                    } else if model.fullControlHelper.enabled || model.fullControlHelper.needsApproval {
                                         if model.fullControlHelper.needsApproval {
                                             Button("Open approval settings") { model.fullControlHelper.showApproval() }
                                         }

@@ -13,6 +13,7 @@ work = app.parent / "helper-packages"
 work.mkdir(parents=True, exist_ok=True)
 helper = app / "Contents/Library/HelperTools/ErgoInputHelper"
 service = "dev.local.ergocontrol.inputhelper"
+local_service = service + ".local"
 tool_path = "/Library/PrivilegedHelperTools/" + service
 plist_path = "/Library/LaunchDaemons/" + service + ".plist"
 result = subprocess.run(["codesign", "--display", "--requirements", "-", str(helper)],
@@ -29,6 +30,7 @@ set -eu
 tool={shlex.quote(tool_path)}
 plist={shlex.quote(plist_path)}
 service={shlex.quote(service)}
+local_service={shlex.quote(local_service)}
 if [ "$(/usr/bin/id -u)" != 0 ]; then
   echo 'This package must be run through the macOS administrator installer.' >&2
   exit 1
@@ -57,6 +59,9 @@ fi
 stop = """if /bin/launchctl print "system/$service" >/dev/null 2>&1; then
   /bin/launchctl bootout "system/$service"
 fi
+if /bin/launchctl print "system/$local_service" >/dev/null 2>&1; then
+  /bin/launchctl bootout "system/$local_service"
+fi
 """
 
 
@@ -76,7 +81,7 @@ daemons.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(helper, tools / service)
 (tools / service).chmod(0o755)
 (daemons / (service + ".plist")).write_bytes(plistlib.dumps({
-    "Label": service, "Program": tool_path,
+    "Label": local_service, "Program": tool_path,
     "AssociatedBundleIdentifiers": ["dev.local.ergocontrol.app"],
     "MachServices": {service: True}, "ProcessType": "Interactive",
     "ThrottleInterval": 1,
@@ -84,8 +89,8 @@ shutil.copyfile(helper, tools / service)
 (daemons / (service + ".plist")).chmod(0o644)
 install_scripts, remove_scripts = work / "install-scripts", work / "remove-scripts"
 script(install_scripts, "preinstall", guard + stop)
-script(install_scripts, "postinstall", guard + """/bin/launchctl enable "system/$service"
-/bin/launchctl bootstrap system "$plist"
+script(install_scripts, "postinstall", guard + """/bin/launchctl bootstrap system "$plist"
+/bin/launchctl enable "system/$local_service"
 echo 'Ergo Control input helper installed. No input is captured until mappings are enabled.'
 """)
 script(remove_scripts, "postinstall", guard + stop + """/bin/rm -f "$tool" "$plist"
@@ -96,9 +101,9 @@ output = app / "Contents/Resources"
 output.mkdir(parents=True, exist_ok=True)
 package_environment = dict(os.environ, COPYFILE_DISABLE="1")
 subprocess.run(["pkgbuild", "--root", str(payload), "--ownership", "recommended",
-                "--identifier", service + ".install", "--version", "0.2.2",
+                "--identifier", service + ".install", "--version", "0.2.3",
                 "--install-location", "/", "--scripts", str(install_scripts),
                 str(output / "ErgoInputHelper-Install.pkg")], check=True, env=package_environment)
 subprocess.run(["pkgbuild", "--nopayload", "--identifier", service + ".uninstall",
-                "--version", "0.2.2", "--scripts", str(remove_scripts),
+                "--version", "0.2.3", "--scripts", str(remove_scripts),
                 str(output / "ErgoInputHelper-Uninstall.pkg")], check=True, env=package_environment)

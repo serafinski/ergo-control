@@ -52,8 +52,8 @@ The workflow imports the persistent identity into an ephemeral keychain, selects
 Update `VERSION` and `docs/RELEASE_NOTES.md`, commit, then create a matching tag:
 
 ```sh
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.7.1
+git push origin v0.7.1
 ```
 
 `.github/workflows/release.yml` tests, builds Apple Silicon + Intel app/hook/helper binaries, signs them, verifies the helper's accepted-client requirement, packages/verifies the DMG and writes a SHA-256 checksum. It creates a **draft** release with the DMG and checksum. You can also run it manually against an existing matching tag. It refuses a tag that disagrees with `VERSION` and never overwrites an existing release. Remove an unsuccessful draft deliberately before rerunning final release creation.
@@ -68,6 +68,10 @@ zsh tools/build_dmg.sh "$PWD/build/release-check/Ergo Control.app"
 ```
 
 Universal builds rebuild their helper; reuse is refused. A new helper may need installation even with the same certificate because the client verifies its exact bundled helper hash.
+
+## Repair early development installations
+
+If Full dial control reports a bundled-helper conflict, choose **Repair helper startup…** and complete Installer before enabling mappings. Package 0.2.3 unregisters the old bundled route and uses a distinct local launchd label, preserving the installed executable and privacy identity. Copying a new app alone cannot replace an already registered system job. Installer-only rebuilds can use `ERGO_REUSE_HELPER=1 ERGO_REBUILD_PACKAGES=1 zsh tools/build_app.sh`; no helper binary rebuild is needed for that path.
 
 ## Startup
 

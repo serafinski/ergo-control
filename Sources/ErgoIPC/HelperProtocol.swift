@@ -3,6 +3,9 @@ import Security
 
 public enum HelperIdentity {
     public static let service = "dev.local.ergocontrol.inputhelper"
+    // Keep the installed executable/TCC identity and XPC endpoint stable while
+    // separating its launchd label from the former bundled SMAppService job.
+    public static let localService = service + ".local"
     public static let plist = service + ".plist"
     public static let app = "dev.local.ergocontrol.app"
     public static let installedExecutable = "/Library/PrivilegedHelperTools/" + service

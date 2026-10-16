@@ -166,6 +166,9 @@ final class ControlModel: ObservableObject {
     }
     private func advanceAutomaticStart() {
         guard !terminating, startup.automaticMappings else { cancelAutomaticStart(); return }
+        if fullControlHelper.needsStartupRepair {
+            cancelAutomaticStart(); status = fullControlHelper.status; return
+        }
         switch automaticStart.next(at: ProcessInfo.processInfo.systemUptime, ready: bluetooth.ready,
                                    permissions: accessibilityGranted && inputGranted,
                                    busy: bluetooth.busy || fullControlHelper.checkingPermission,
@@ -318,6 +321,7 @@ final class ControlModel: ObservableObject {
         guard !fullControlHelper.checkingPermission else { status = "Wait for the helper permission check to finish."; return }
         error = nil
         fullControlHelper.refresh()
+        guard !fullControlHelper.needsStartupRepair else { status = fullControlHelper.status; return }
         guard accessibilityGranted, inputGranted else { status = "Enable Input Monitoring and Accessibility for Ergo Control, then try again."; return }
         let conflicts = NSWorkspace.shared.runningApplications.filter {
             ["dev.local.ergocontrol.probe", "dev.local.ergocontrol.bluetooth", "com.razer.synapse", "com.razer.appengine.app"].contains($0.bundleIdentifier ?? "")

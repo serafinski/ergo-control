@@ -205,3 +205,10 @@ Added self-signed DMG packaging, universal app/hook/helper builds and a GitHub t
 All 162 tests pass, including delayed startup, missing permissions, pending recovery, manual cancellation and no repeated activation after failure. Local native and universal builds pass signature/helper self-checks. Both DMGs pass image verification; the native image was mounted, inspected and copied into /Applications/Ergo Control.app, then signature-verified. The daily helper remains byte-identical to the installed helper. A disposable certificate exercised runner import, identity selection, actual signing and cleanup locally. No release secrets, version tag or GitHub release have been created. Full login and sleep/wake behavior remain pending a user reboot/check.
 
 After the final Applications-copy update, a manual app relaunch used the saved automaticMappings=true preference: the new input-status report recorded fullKeyboard/result 0, Bluetooth read normal mode 0, and temporary_driver_mode_verified appeared and renewed. This confirms automatic mapping activation on app launch with the installed helper; launch-at-login after reboot and sleep/wake remain pending.
+
+
+## Early development helper migration (0.7.1)
+
+An old bundled SMAppService daemon could override the separately installed helper after reboot and request Input Monitoring for its developer-folder path. The GUI now detects this in local builds and offers Keyboard → Full dial control → Repair helper startup. Complete Installer, then refresh helper status. The repair unregisters the old bundled service first and installs the existing executable under a separate local launchd label, retaining its executable path, input permission identity and XPC endpoint. The installer never re-enables the old bundled label.
+
+The first migration attempt failed in postinstall because the old/new jobs shared a label; the revised 0.2.3 package separates them. The helper binary is unchanged for this local update. All 166 tests and package content/ordering/privilege checks pass. Revised installation and reboot verification are pending the user's hardware test; no success is claimed solely from the tests.

@@ -11,6 +11,7 @@ Open Anyway to review and approve it. Do not disable Gatekeeper globally.
 Enable Input Monitoring and Accessibility for Ergo Control when requested.
 For full dial control, use Keyboard > Full dial control > Install input helper.
 Complete macOS Installer's administrator approval, then Refresh status.
+If Keyboard shows Repair helper startup, use that before retrying mappings.
 The helper also needs its separate Input Monitoring grant. If macOS blocks the
 self-signed helper installer, review it in Privacy & Security as well.
 

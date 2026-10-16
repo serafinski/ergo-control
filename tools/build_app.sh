@@ -51,7 +51,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>CFBundleShortVersionString</key><string>VERSION_PLACEHOLDER</string>
-<key>CFBundleVersion</key><string>48</string>
+<key>CFBundleVersion</key><string>50</string>
 <key>LSUIElement</key><true/>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSBluetoothAlwaysUsageDescription</key><string>Connect only to your paired PT Ergo to enable its extra controls, read battery status, adjust keyboard lighting and the dial indicator, and restore its saved mode when mappings stop.</string>
@@ -69,6 +69,9 @@ cp "$binary_folder/ErgoInputHelper" "$app/Contents/Library/HelperTools/ErgoInput
 codesign --force --sign "$identity" "${signing_options[@]}" --identifier dev.local.ergocontrol.inputhelper "$app/Contents/Library/HelperTools/ErgoInputHelper"
 cp resources/dev.local.ergocontrol.inputhelper.plist "$app/Contents/Library/LaunchDaemons/"
 python3 tools/build_helper_packages.py "$app"
+elif [[ "${ERGO_REBUILD_PACKAGES:-0}" == 1 ]]; then
+  # Installer-only repairs preserve the helper binary's existing TCC identity.
+  python3 tools/build_helper_packages.py "$app"
 fi
 codesign --force --sign "$identity" "${signing_options[@]}" "$app"
 python3 tools/helper_signing.py verify "$app" "$helper_info"
