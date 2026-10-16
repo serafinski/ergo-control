@@ -55,6 +55,13 @@ struct ControlMenu: View {
         Text("\(model.activeProfileName) · \(model.dialName)")
         Text(model.bluetooth.batteryText)
         Button("Refresh battery") { model.refreshBattery() }
+        if model.codex.settings.enabled {
+            Divider()
+            ForEach(model.codex.settings.slots) { slot in
+                Button("M\(slot.id) · \(slot.name) · \(model.codex.activity(slot).label)") { model.codex.openSlot(slot.id) }
+                    .disabled(slot.url == nil)
+            }
+        }
         Divider()
         Button("Settings…") { openWindow(id: "settings"); NSApp.activate(ignoringOtherApps: true) }
         Button(model.running || model.preparing ? "Stop mappings" : "Enable mappings") {
@@ -181,6 +188,7 @@ struct ControlSettingsView: View {
                             if model.preparing || model.running || model.bluetooth.restoreOwed { Text(model.bluetooth.status).font(.caption).foregroundStyle(.secondary) }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(6)
                     }
+                    CodexSettingsView(model: model)
                     KeyboardLightingView(model: model)
                     GroupBox("Try your mappings") {
                         VStack(alignment: .leading, spacing: 8) {
@@ -359,6 +367,7 @@ struct ActionEditor: View {
                 case .scroll: action.value = "down"
                 case .media: action.value = "playPause"
                 case .keyboardBrightness: action.value = "up"
+                case .codexChat: action.value = "1"
                 case .application, .toggleApplication:
                     if previousKind != .application && previousKind != .toggleApplication { action.value = "" }
                 default: action.value = ""
@@ -389,6 +398,11 @@ struct ActionEditor: View {
                     Text("Increase").tag("up"); Text("Decrease").tag("down")
                 }
                 Text("Adjust PT Ergo’s backlight in 5% steps.").font(.caption).foregroundStyle(.secondary)
+            case .codexChat:
+                Picker("Chat slot", selection: $action.value) {
+                    ForEach(1...5, id: \.self) { number in Text("M\(number) · Slot \(number)").tag(String(number)) }
+                }
+                Text("Opens the assigned Codex chat. Enable the Codex connection in settings first.").font(.caption).foregroundStyle(.secondary)
             case .standard: Text("Use the normal action, or the current dial mode.").font(.caption).foregroundStyle(.secondary)
             case .layer: Text("Other controls use this profile’s alternate layer while this button is held.").font(.caption).foregroundStyle(.secondary)
             case .cycleDial: Text("Switch to the next enabled command-dial mode.").font(.caption).foregroundStyle(.secondary)

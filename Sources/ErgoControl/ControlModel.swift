@@ -21,6 +21,7 @@ final class ControlModel: ObservableObject {
     @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController()
     let fullControlHelper = FullControlHelper()
+    let codex = CodexBridge()
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
     private let controlIndicator = ControlIndicator()
@@ -69,6 +70,11 @@ final class ControlModel: ObservableObject {
         frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         bluetooth.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        codex.onLightingChange = { [weak self] color in
+            guard let self else { return }
+            self.bluetooth.setMacroStatusColor(self.running ? color : nil)
+        }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
             DispatchQueue.main.async { self?.updateProfile() }
@@ -80,6 +86,7 @@ final class ControlModel: ObservableObject {
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
+        engine.onCodexSlot = { [weak self] number in self?.codex.openSlot(number) }
         bluetooth.$keyboardBrightnessPercent.dropFirst().sink { [weak self] percent in
             guard let self, self.running, let percent else { return }
             self.controlIndicator.showBrightness(percent)
@@ -105,7 +112,11 @@ final class ControlModel: ObservableObject {
             if verified && self.preparing && self.relayOpened {
                 self.running = true; self.preparing = false
                 self.indicatedMode = nil
-                DispatchQueue.main.async { [weak self] in self?.updateProfile() }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.running else { return }
+                    self.updateProfile()
+                    self.bluetooth.setMacroStatusColor(self.codex.lightingColor)
+                }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
                     : "Mappings active · PT Ergo only"
@@ -185,6 +196,7 @@ final class ControlModel: ObservableObject {
                 case .script: guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("Choose an existing script") }
                 case .keyboardBrightness: guard action.value == "up" || action.value == "down" else { throw MappingValidationError.message("Choose Increase or Decrease for keyboard brightness") }
                 case .text: guard action.value.utf16.count <= 4096 else { throw MappingValidationError.message("Text actions can contain up to 4096 characters") }
+                case .codexChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a Codex slot from 1 to 5") }
                 default: break
                 }
             }
@@ -193,6 +205,18 @@ final class ControlModel: ObservableObject {
     func addProfile() {
         let profile = MappingProfile(name: "New profile")
         configuration.profiles.append(profile); selectedProfileID = profile.id
+    }
+    func createCodexProfile() {
+        if let existing = configuration.profiles.first(where: { p in
+            (1...5).allSatisfy { p.mappings["extra:\($0 + 31)"] == MappingAction(.codexChat, String($0)) }
+        }) { selectedProfileID = existing.id; return }
+        var profile = MappingProfile(name: "Codex")
+        for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(.codexChat, String(slot)) }
+        configuration.profiles.append(profile)
+        selectedProfileID = profile.id
+        // A dedicated profile can open Codex from anywhere. Existing profiles
+        // remain untouched; selecting the new default is explicit in the UI.
+        save()
     }
     func duplicateProfile() {
         var profile = configuration.profiles[profileIndex]; profile.id = UUID(); profile.name += " copy"
@@ -283,6 +307,7 @@ final class ControlModel: ObservableObject {
         }
     }
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified") {
+        bluetooth.setMacroStatusColor(nil)
         batteryPopupTicket = nil
         controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
@@ -294,6 +319,7 @@ final class ControlModel: ObservableObject {
     }
     func terminate() -> NSApplication.TerminateReply {
         terminating = true
+        codex.shutdown()
         batteryTimer?.invalidate(); batteryTimer = nil
         stop()
         return bluetooth.requestTermination()

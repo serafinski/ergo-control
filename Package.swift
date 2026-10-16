@@ -7,10 +7,12 @@ let package = Package(
     products: [.executable(name: "ErgoProbe", targets: ["ErgoProbe"]),
                .executable(name: "ErgoBluetooth", targets: ["ErgoBluetooth"]),
                .executable(name: "ErgoControl", targets: ["ErgoControl"]),
+               .executable(name: "ErgoCodexHook", targets: ["ErgoCodexHook"]),
                .executable(name: "ErgoInputHelper", targets: ["ErgoInputHelper"]),
                .executable(name: "ErgoUSBInspector", targets: ["ErgoUSBInspector"])],
     targets: [
         .target(name: "ErgoCore"),
+        .executableTarget(name: "ErgoCodexHook", dependencies: ["ErgoCore"]),
         .target(name: "ErgoUSBResearch", dependencies: ["ErgoCore"],
                 linkerSettings: [.linkedFramework("IOKit")]),
         .executableTarget(name: "ErgoUSBInspector", dependencies: ["ErgoUSBResearch"]),

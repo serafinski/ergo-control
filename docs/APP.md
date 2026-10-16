@@ -103,3 +103,7 @@ Settings are stored locally in `~/Library/Application Support/ErgoControl/Settin
 The earlier build used an ad-hoc signature. Version 0.2.2 uses a persistent, isolated local development certificate by default, or ERGO_CODESIGN_IDENTITY when supplied. The first signing-identity change may require refreshed macOS grants. Developer ID signing/notarization and publication are deferred; the optional helper requires separate macOS administrator authorization. Bundled Service Management registration failed for the local build; the explicit local installer, helper permission grant, and first full-control session now work on this Mac. Removal and distribution signing remain unverified.
 
 For GUI-only development changes with an existing valid bundle, `ERGO_REUSE_HELPER=1 zsh tools/build_app.sh` preserves its helper and installer packages. Use this only when the helper/IPC code and signing policy do not need updating. The build verifies both signatures and runs the reused helper's read-only signing-policy self-check; it does not install or start a service.
+
+## Codex connection (0.3.0)
+
+The optional Codex panel adds five assigned chat slots, per-slot lifecycle status, a dedicated mappings profile, and shared macro-column status lighting. See [Codex setup](CODEX_SETUP.md) for installation, Codex hook review, data handling, recovery, and first-use checks. Existing profiles and the installed input helper are preserved.

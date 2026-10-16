@@ -18,6 +18,7 @@ jobs:
       - name: Compile app and helper
         run: |
           swift build -c release --product ErgoControl
+          swift build -c release --product ErgoCodexHook
           swift build -c release --product ErgoInputHelper
       - name: Check build scripts and Python syntax
         run: |

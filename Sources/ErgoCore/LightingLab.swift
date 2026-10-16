@@ -93,8 +93,9 @@ public enum LightingLabError: LocalizedError {
     }
 }
 
-/// Research-only profile-0 operations from rzDevice30's lighting-engine path.
-/// Kept separate from the regular app's five-effect writer.
+/// Fixed profile-0 operations recovered from the lighting-engine path. The lab
+/// and journaled macro-status renderer share these packet definitions; the
+/// regular effect picker retains its separate five-effect writer.
 public enum BluetoothLightingLabCommand {
     case readRegions, readEffect, selectCustom, restore(KeyboardEffect), frame([DialColor])
 

@@ -1,6 +1,6 @@
 # Chroma value and a five-key Codex companion
 
-Research completed 16 October 2026. This is a feasibility report, not an installed Codex integration. No Codex settings, hooks, app files, permissions, or hardware identities were changed for this research.
+Research completed 16 October 2026. This report records the feasibility investigation; the subsequent opt-in 0.3.0 implementation is documented in [Codex setup](CODEX_SETUP.md). No Codex settings, hooks, app files, permissions, or hardware identities were changed for this research.
 
 ## Recommendation
 
@@ -55,7 +55,7 @@ Target the intended app/window before dispatching a command and confirm focus. G
 
 ### Status events
 
-Codex's [documented hooks](https://learn.chatgpt.com/docs/hooks) can deliver lifecycle events, with `session_id` and optional turn identifiers. A small opt-in hook sender can forward only those identifiers, an event name, and time to a private local Ergo Control socket. It should discard prompt/tool/transcript contents, emit no behavioral decisions, never block approval, and do nothing harmful when the app is closed. Hooks require Codex's own definition review/trust; none have been configured here.
+Codex's [documented hooks](https://learn.chatgpt.com/docs/hooks) can deliver lifecycle events, with `session_id` and optional turn identifiers. A small opt-in hook sender can forward only those identifiers, an event name, and time to private local Ergo Control IPC. It should discard prompt/tool/transcript contents, emit no behavioral decisions, never block approval, and do nothing harmful when the app is closed. Hooks require Codex's own definition review/trust; none have been configured here.
 
 Suggested coarse mapping: submission/activity → working; an actual permission request → attention; turn stop → finished/idle; interruption/end → idle. Avoid treating every recoverable tool error as a failed chat. A permission hook does not cover every arbitrary user question. Hooks alone do not establish app unread flags, selected/pinned order, cloud-chat coverage, or the exact Micro error/attention semantics. Event ordering, stale events, subagents sharing the parent session ID, and stop hooks that can continue a turn need deliberate handling and runtime validation.
 

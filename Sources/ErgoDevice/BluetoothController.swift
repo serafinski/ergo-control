@@ -9,6 +9,7 @@ struct SavedMode: Codable {
     let mode: UInt8
     let parameter: UInt8
     var dialLight: SavedDialLight? = nil
+    var macroLighting: SavedMacroLighting? = nil
 }
 
 struct SavedDialLight: Codable {
@@ -79,6 +80,22 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     public private(set) var keyboardEffectRequestSucceeded = false
     public var connectedDeviceIdentity: String? { targetID?.uuidString }
     private var effectRequests = KeyboardLightingRequests()
+    @Published public private(set) var macroStatusLightingMessage = ""
+    private lazy var macroRenderer = MacroStatusRenderer(command: { [weak self] operation, region, completion in
+        guard let self else { return }
+        do {
+            let request = try operation.request(transaction: self.transactions.next(), region: region)
+            self.send(request) { result in completion(result.map(\.payload)) }
+        } catch { completion(.failure(error)) }
+    }, load: { [weak self] in self?.original?.macroLighting }, persist: { [weak self] light in
+        guard let self, var saved = self.original else { throw LightingLabError.message("No mapping recovery session is active.") }
+        saved.macroLighting = light
+        try self.persistMode(saved)
+        self.original = saved
+    }, allowed: { [weak self] in
+        guard let self else { return false }
+        return self.ready && self.driverModeVerified && !self.restoreRequested && !self.restorationChain && !self.closing
+    }, message: { [weak self] in self?.macroStatusLightingMessage = $0 })
     private var brightnessSteps = BrightnessSteps()
     private var lightingRegion: UInt8?
     private var lightingTimer: Timer?
@@ -380,6 +397,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     public var canEditKeyboardLighting: Bool {
         ready && !keyboardEffectBusy && !closing && !restoreRequested
             && !restorationChain && (!restoreOwed || driverModeVerified)
+            && original?.macroLighting == nil && macroRenderer.desired == nil && !macroRenderer.busy
     }
 
     public func refreshKeyboardLighting() {
@@ -543,13 +561,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         let saved = SavedMode(peripheral: targetID, mode: currentMode.0, parameter: currentMode.1)
         // Recovery is durable before sending any state-changing command.
         do {
-            try JSONEncoder().encode(saved).write(to: recoveryURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: recoveryURL.path)
-            let recoveryFile = try FileHandle(forWritingTo: recoveryURL)
-            try recoveryFile.synchronize()
-            try recoveryFile.close()
+            try persistMode(saved)
         } catch { status = "Cannot save restoration state; the keyboard was not changed"; return }
         original = saved
+        macroRenderer.reset()
         brightnessUnavailable = false
         // A rejected indicator API stays disabled for this app session.
         // Repeated mapping starts must not repeat known-unsupported probes.
@@ -608,6 +623,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     public func restore() {
+        macroRenderer.desired = nil
         cancelQueuedKeyboardEffect()
         lightingTimer?.invalidate(); lightingTimer = nil
         indicatorBacklight.cancel()
@@ -663,7 +679,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     private func pumpLighting() {
         guard ready, !restoreRequested, !closing, !restorationChain else { return }
-        if let request = effectRequests.takeIfIdle(commandBusy: busy, dialLightingBusy: lightingOperation) {
+        if let request = effectRequests.takeIfIdle(commandBusy: busy, dialLightingBusy: lightingOperation || macroRenderer.busy) {
             switch request {
             case .read: beginKeyboardEffectRead()
             case .apply(let effect):
@@ -674,7 +690,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             }
             return
         }
-        guard !keyboardEffectBusy else { return }
+        guard !keyboardEffectBusy, !macroRenderer.busy else { return }
         guard driverModeVerified else {
             lightingTimer?.invalidate(); lightingTimer = nil
             return
@@ -695,7 +711,9 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         } else if !brightnessSteps.isEmpty, !brightnessUnavailable {
             lightingOperation = true
             ensureLightingRegion(brightness: true) { [weak self] in self?.changeBrightness() }
-        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged {
+        } else if macroRenderer.hasWork {
+            macroRenderer.pump()
+        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged, original?.macroLighting == nil {
             lightingTimer?.invalidate(); lightingTimer = nil
         }
     }
@@ -940,14 +958,14 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
                 if let light = saved.dialLight {
                     self.restoreDialLight(light) { [weak self] success in
                         guard let self else { return }
-                        if success { self.finishRestoration(saved) }
+                        if success { self.restoreMacroLightingThenFinish(saved) }
                         else {
                             self.restorationChain = false
                             self.status = "Normal keyboard mode restored; dial light restoration is pending. Keep PT Ergo connected."
                             self.scheduleRestoreRetry()
                         }
                     }
-                } else { self.finishRestoration(saved) }
+                } else { self.restoreMacroLightingThenFinish(saved) }
             } else {
                 self.restorationChain = false
                 self.status = "Restoration has not been verified; retrying while PT Ergo is connected…"
@@ -965,6 +983,39 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         retryTimer?.invalidate(); retryTimer = nil
         try? FileManager.default.removeItem(at: recoveryURL)
         if closing { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
+    }
+
+    public func setMacroStatusColor(_ color: DialColor?) {
+        if color != nil {
+            let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("ErgoControl/LightingLab/pending-lighting.json")
+            guard !FileManager.default.fileExists(atPath: journal.path) else {
+                macroStatusLightingMessage = "Restore the pending lighting experiment before enabling Codex lighting."
+                return
+            }
+        }
+        // Only an active mapping lease can own custom status lighting.
+        macroRenderer.request(driverModeVerified ? color : nil)
+        if macroRenderer.hasWork { startLightingTimer(); pumpLighting() }
+    }
+
+    private func persistMode(_ saved: SavedMode) throws {
+        try JSONEncoder().encode(saved).write(to: recoveryURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: recoveryURL.path)
+        let file = try FileHandle(forWritingTo: recoveryURL)
+        try file.synchronize(); try file.close()
+    }
+
+    private func restoreMacroLightingThenFinish(_ saved: SavedMode) {
+        macroRenderer.restore { [weak self] success in
+            guard let self else { return }
+            if success { self.finishRestoration(saved) }
+            else {
+                self.restorationChain = false
+                self.status = "Normal input restored; keyboard lighting restoration is pending. Keep PT Ergo connected."
+                self.scheduleRestoreRetry()
+            }
+        }
     }
 
     private func scheduleRestoreRetry() {

@@ -66,6 +66,7 @@ final class ActionEngine {
     var onCycle: (() -> Void)?
     var onBrightness: ((Int) -> Void)?
     var onBattery: (() -> Void)?
+    var onCodexSlot: ((Int) -> Void)?
     var onError: ((String) -> Void)?
     var physicalModifiers: UInt8 = 0
     private let source = CGEventSource(stateID: .privateState)
@@ -158,6 +159,9 @@ final class ActionEngine {
             case .shortcut: chord(try KeyChord(action.value))
             case .macro: run(try MacroStep.parse(action.value))
             case .text: type(action.value)
+            case .codexChat:
+                guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a Codex slot from 1 to 5") }
+                onCodexSlot?(slot)
             case .application:
                 let url = URL(fileURLWithPath: action.value)
                 guard url.pathExtension == "app" else { throw MappingValidationError.message("Choose an application") }

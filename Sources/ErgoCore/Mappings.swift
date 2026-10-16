@@ -6,6 +6,7 @@ public enum ActionKind: String, CaseIterable, Codable, Identifiable {
     case toggleApplication = "Show / minimize application"
     case media = "Media action", cycleDial = "Next dial mode", layer = "Hold alternate layer"
     case keyboardBrightness = "Keyboard brightness"
+    case codexChat = "Open Codex chat slot"
     case battery = "Show battery", disabled = "Do nothing"
     public var id: String { rawValue }
 }
