@@ -4,6 +4,7 @@ import ApplicationServices
 import IOKit.hid
 import CoreServices
 import ErgoCore
+import ErgoDevice
 
 final class ControlAppDelegate: NSObject, NSApplicationDelegate {
     var model: ControlModel?
@@ -24,8 +25,9 @@ final class ControlAppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
-    @StateObject private var model = ControlModel()
+    @StateObject private var model: ControlModel
     init() {
+        if CommandLine.arguments.contains("--keyboard-discovery-check") { PairedKeyboardDiscovery.checkCommandLine() }
         if CommandLine.arguments.contains("--codex-history-check") { CodexHistoryReader.checkCommandLine() }
         if CommandLine.arguments.dropFirst().first == "--lighting-lab" {
             LightingLabRunner.runCommandLine(Array(CommandLine.arguments.dropFirst(2)))
@@ -41,20 +43,24 @@ struct ErgoControlApp: App {
         }
         if CommandLine.arguments.contains("--helper-access-status") { HelperPermissionCheck.runCommandLine() }
         if CommandLine.arguments.contains("--helper-service-status") { FullControlHelper.statusCommandLine() }
+        let model = ControlModel()
+        _model = StateObject(wrappedValue: model)
+        // Login launches may never show Settings or open the menu. Termination
+        // must still reach the model and verify restoration before exiting.
+        delegate.model = model
     }
     var body: some Scene {
         WindowGroup("Ergo Control", id: "settings") {
-            ControlSettingsView(model: model).onAppear { delegate.model = model }
+            ControlSettingsView(model: model)
         }.defaultSize(width: 1280, height: 850)
         MenuBarExtra {
-            ControlMenu(model: model).onAppear { delegate.model = model }
+            ControlMenu(model: model)
         } label: {
             HStack(spacing: 4) {
                 Image(nsImage: AppBranding.menuMark).renderingMode(.template)
                 Text(model.menuBarBatteryLabel).monospacedDigit()
             }
             .accessibilityLabel("Ergo Control, keyboard battery \(model.menuBarBatteryLabel)")
-            .onAppear { delegate.model = model }
         }
     }
 }

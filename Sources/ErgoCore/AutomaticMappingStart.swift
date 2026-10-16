@@ -1,18 +1,16 @@
-import Foundation
-
 /// A launch/wake request waits for permissions, connection and restoration. It
 /// permits one activation attempt, so a failing helper never causes a retry loop.
+/// Readiness has no deadline: Bluetooth may arrive well after login. Only manual
+/// cancellation or consuming the activation attempt ends the pending request.
 public struct AutomaticMappingStart {
-    private var deadline: TimeInterval?
+    private var pending = false
     public init() {}
-    public mutating func arm(at time: TimeInterval) { deadline = time + 120 }
-    public mutating func cancel() { deadline = nil }
-    public enum Decision: Equatable { case wait, start, expired }
-    public mutating func next(at time: TimeInterval, ready: Bool, permissions: Bool,
+    public mutating func arm() { pending = true }
+    public mutating func cancel() { pending = false }
+    public enum Decision: Equatable { case wait, start }
+    public mutating func next(ready: Bool, permissions: Bool,
                               busy: Bool, restorationPending: Bool) -> Decision {
-        guard let deadline else { return .wait }
-        guard time < deadline else { cancel(); return .expired }
-        guard ready, permissions, !busy, !restorationPending else { return .wait }
+        guard pending, ready, permissions, !busy, !restorationPending else { return .wait }
         cancel()
         return .start
     }

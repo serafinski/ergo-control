@@ -116,7 +116,7 @@ final class ControlModel: ObservableObject {
         }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification).sink { [weak self] _ in
             guard let self else { return }
-            self.resumeAfterWake = self.running || self.preparing
+            self.resumeAfterWake = self.running || self.preparing || self.waitingForAutomaticStart
             self.stop("Mappings stopped for sleep.")
         }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification).sink { [weak self] _ in
@@ -157,7 +157,7 @@ final class ControlModel: ObservableObject {
     private func beginAutomaticStart() {
         guard !terminating, !running, !preparing, error == nil else { return }
         cancelAutomaticStart()
-        automaticStart.arm(at: ProcessInfo.processInfo.systemUptime)
+        automaticStart.arm()
         waitingForAutomaticStart = true
         status = "Waiting for PT Ergo and input permissions to start saved mappings…"
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.advanceAutomaticStart() }
@@ -169,15 +169,26 @@ final class ControlModel: ObservableObject {
         if fullControlHelper.needsStartupRepair {
             cancelAutomaticStart(); status = fullControlHelper.status; return
         }
-        switch automaticStart.next(at: ProcessInfo.processInfo.systemUptime, ready: bluetooth.ready,
-                                   permissions: accessibilityGranted && inputGranted,
+        let permissionsReady = accessibilityGranted && inputGranted
+        switch automaticStart.next(ready: bluetooth.ready,
+                                   permissions: permissionsReady,
                                    busy: bluetooth.busy || fullControlHelper.checkingPermission,
                                    restorationPending: bluetooth.restoreOwed || bluetooth.driverModeVerified) {
-        case .wait: break
+        case .wait:
+            let message: String
+            if !permissionsReady {
+                message = "Waiting for Input Monitoring and Accessibility. Saved mappings will start when permissions and the keyboard are ready."
+            } else if !bluetooth.ready {
+                message = "Waiting for PT Ergo to connect. Saved mappings will start automatically; Stop mappings cancels."
+            } else if bluetooth.restoreOwed || bluetooth.driverModeVerified {
+                message = "Restoring the keyboard's saved mode before starting mappings…"
+            } else if fullControlHelper.checkingPermission {
+                message = "Waiting for the helper permission check before starting mappings…"
+            } else {
+                message = "Waiting for the keyboard's current operation to finish before starting mappings…"
+            }
+            if status != message { status = message }
         case .start: cancelAutomaticStart(); start()
-        case .expired:
-            cancelAutomaticStart()
-            status = "Automatic start timed out. Connect PT Ergo, check input permissions, then enable mappings."
         }
     }
 
@@ -205,7 +216,8 @@ final class ControlModel: ObservableObject {
         guard !terminating else { return }
         switch batterySchedule.next(at: ProcessInfo.processInfo.systemUptime, ready: bluetooth.ready,
                                     busy: bluetooth.busy, preparingMappings: preparing,
-                                    restorationOwed: bluetooth.restoreOwed, driverModeVerified: bluetooth.driverModeVerified) {
+                                    restorationOwed: bluetooth.restoreOwed, driverModeVerified: bluetooth.driverModeVerified,
+                                    automaticStartPending: waitingForAutomaticStart) {
         case .connect: bluetooth.connect()
         case .read: bluetooth.readBattery()
         case nil: break

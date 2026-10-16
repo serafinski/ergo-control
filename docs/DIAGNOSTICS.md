@@ -53,3 +53,8 @@ The Bluetooth helper also has **Read Battery**, which queries the keyboard witho
 `python3 tools/fetch_device_sources.py` downloads product-specific vendor JavaScript into the ignored `analysis/vendor/` directory for inspection only. It never executes downloaded code. `python3 tools/collect_evidence.py` produces a scoped local snapshot in `analysis/local/environment.json`; vendor evidence and an installed Razer engine are optional. See its `--help` for alternate paths.
 
 The original installer/evidence is not distributed with this project. Its hashes and provenance remain in [the research archive](research/initial-handoff/HANDOFF.md) and [manifest](research/initial-handoff/MANIFEST.json). All actual vendor files, captures, and signing material stay outside Git.
+
+
+### Paired keyboard discovery
+
+`"/Applications/Ergo Control.app/Contents/MacOS/ErgoControl" --keyboard-discovery-check` checks live registry metadata and notification registration only. It prints the matching service count and whether there is one unique Bluetooth endpoint; it does not open a HID device, subscribe to input reports, start a configuration connection, print endpoint UUIDs or change the keyboard. Startup logs now distinguish missing/ambiguous metadata, registry errors, saved-recovery versus live-registry identity, and connection/service errors. Keep logs local; report only relevant diagnostic events.

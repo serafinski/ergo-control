@@ -133,6 +133,9 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             .appendingPathComponent("ErgoControl/Bluetooth", isDirectory: true)
     }
     private var recoveryURL: URL { Self.folder.appendingPathComponent("pending-restoration.json") }
+    private let discovery = PairedKeyboardDiscovery()
+    private var connectionWanted = false
+    private var connectionInProgress = false
 
     public override init() {
         super.init()
@@ -150,6 +153,15 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             restoreOwed = true
             status = "A previous temporary change needs restoration. Connect the same PT Ergo to restore it."
         }
+        log("controller_started", ["restorationPending": restoreOwed])
+        discovery.start(onChange: { [weak self] in
+            guard let self else { return }
+            let snapshot = PairedKeyboardDiscovery.snapshot()
+            self.log("paired_endpoint_changed", ["services": snapshot.matchingServices,
+                     "endpoints": snapshot.endpointIDs.count, "missingIdentity": snapshot.missingIdentity,
+                     "lookupResult": snapshot.lookupResult])
+            if self.connectionWanted && !self.ready && !self.connectionInProgress && (!self.closing || self.restoreOwed) { self.connect() }
+        }, onFailure: { [weak self] result in self?.log("endpoint_observer_failed", ["result": result]) })
     }
 
     private func log(_ kind: String, _ fields: [String: Any] = [:]) {
@@ -166,34 +178,34 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     private func exactTargetID() -> UUID? {
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
-        IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey: ErgoTarget.vendorID,
-            kIOHIDProductIDKey: ErgoTarget.productID, kIOHIDTransportKey: ErgoTarget.transport] as CFDictionary)
-        let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> ?? []
-        let eligible = devices.filter { device in
-            let vid = (IOHIDDeviceGetProperty(device, kIOHIDVendorIDKey as CFString) as? NSNumber)?.intValue ?? 0
-            let pid = (IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? NSNumber)?.intValue ?? 0
-            let transport = IOHIDDeviceGetProperty(device, kIOHIDTransportKey as CFString) as? String ?? ""
-            return ErgoTarget.matches(vendor: vid, product: pid, transport: transport)
-        }
-        let ids = Set(eligible.compactMap {
-            UUID(uuidString: IOHIDDeviceGetProperty($0, "PhysicalDeviceUniqueID" as CFString) as? String ?? "")
-        })
-        guard ids.count == 1 else { return nil }
-        return ids.first
+        PairedKeyboardDiscovery.snapshot().uniqueID
     }
 
     public func connect() {
+        connectionWanted = true
+        // A presence event or background poll must not reset an in-flight BLE
+        // connection/service discovery or rediscover an already ready service.
+        guard !ready, !connectionInProgress else { return }
         guard !busy else { return }
-        guard let id = exactTargetID() else { status = "Wake PT Ergo and try again; its paired Bluetooth endpoint was not found."; return }
+        let snapshot = PairedKeyboardDiscovery.snapshot()
+        log("connection_lookup", ["services": snapshot.matchingServices, "endpoints": snapshot.endpointIDs.count,
+                                  "missingIdentity": snapshot.missingIdentity, "restorationPending": restoreOwed,
+                                  "lookupResult": snapshot.lookupResult])
+        guard let id = snapshot.connectionTarget(recoveryID: original?.peripheral) else {
+            status = original != nil ? "Waiting for the saved PT Ergo; a different or unresolved keyboard cannot be used for recovery."
+                : "Waiting for one paired PT Ergo Bluetooth endpoint to appear."
+            return
+        }
         if let original, original.peripheral != id {
             status = "Restoration belongs to a different PT Ergo. Reconnect that keyboard first."
             return
         }
         targetID = id
+        connectionInProgress = true
         status = "Connecting to PT Ergo's configuration service…"
         ready = false
-        log("target_verified", ["vendor": ErgoTarget.vendorID, "product": ErgoTarget.productID, "transport": ErgoTarget.transport])
+        log("target_verified", ["vendor": ErgoTarget.vendorID, "product": ErgoTarget.productID, "transport": ErgoTarget.transport,
+                                "source": snapshot.uniqueID == id ? "live_registry" : "saved_recovery_identity"])
         if central == nil {
             central = CBCentralManager(delegate: self, queue: .main,
                                        options: [CBCentralManagerOptionShowPowerAlertKey: false])
@@ -202,17 +214,20 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     private func connectKnownTarget() {
         guard let central, let targetID else { return }
+        connectionInProgress = true
         connectionTimeout?.invalidate()
         guard let device = central.retrievePeripherals(withIdentifiers: [targetID]).first,
-              device.identifier == targetID else { status = "Could not retrieve the paired PT Ergo endpoint"; scheduleRestoreRetry(); return }
+              device.identifier == targetID else { connectionInProgress = false; status = "Could not retrieve the paired PT Ergo endpoint"; log("endpoint_retrieval_failed"); scheduleRestoreRetry(); return }
         target = device
         device.delegate = self
-        guard device.state != .disconnecting else { scheduleRestoreRetry(); return }
+        guard device.state != .disconnecting else { connectionInProgress = false; scheduleRestoreRetry(); return }
         if device.state == .connected { device.discoverServices([serviceUUID]) }
         else { central.connect(device, options: nil) }
         connectionTimeout = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] _ in
             guard let self else { return }
             self.status = "Configuration connection timed out. Wake PT Ergo and retry."
+            self.connectionInProgress = false
+            self.log("configuration_connection_timeout")
             self.ready = false
             if let target = self.target { self.central?.cancelPeripheralConnection(target) }
             self.scheduleRestoreRetry()
@@ -223,6 +238,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         log("bluetooth_state", ["state": central.state.rawValue])
         if central.state == .poweredOn { connectKnownTarget() }
         else {
+            connectionInProgress = false
             ready = false
             status = central.state == .unauthorized ? "Bluetooth access is required for Ergo Bluetooth in System Settings." : "Bluetooth is unavailable; enable it and retry."
         }
@@ -235,7 +251,9 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        guard peripheral == target else { return }
         connectionTimeout?.invalidate()
+        connectionInProgress = false
         ready = false
         status = error?.localizedDescription ?? "Could not connect to the keyboard configuration service"
         log("connection_failed", ["error": status])
@@ -244,6 +262,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         guard peripheral == target else { return }
+        connectionInProgress = false
         ready = false
         driverModeVerified = false
         writeCharacteristic = nil
@@ -283,6 +302,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         if let error { connectionFailed(error.localizedDescription); return }
         guard characteristic.isNotifying else { connectionFailed("Response notifications are not enabled"); return }
         connectionTimeout?.invalidate()
+        connectionInProgress = false
         ready = true
         log("responses_enabled")
         if restoreOwed { restore() }
@@ -291,6 +311,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     private func connectionFailed(_ reason: String) {
         connectionTimeout?.invalidate()
+        connectionInProgress = false
         ready = false
         status = reason
         log("connection_error", ["error": reason])
@@ -1001,6 +1022,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         status = "Original keyboard mode restored and verified"
         retryTimer?.invalidate(); retryTimer = nil
         try? FileManager.default.removeItem(at: recoveryURL)
+        log("restoration_completed")
         if closing { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
     }
 
@@ -1047,6 +1069,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     public func requestTermination() -> NSApplication.TerminateReply {
+        log("termination_requested", ["restorationPending": restoreOwed, "ready": ready, "busy": busy])
         guard restoreOwed else { return .terminateNow }
         closing = true
         restore()

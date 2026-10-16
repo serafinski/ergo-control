@@ -50,7 +50,7 @@ struct AppSettingsView: View {
                     Toggle("Launch at login", isOn: Binding(get: { startup.loginEnabled }, set: startup.setLoginEnabled))
                     Text(startup.loginMessage).font(.caption).foregroundStyle(.secondary)
                     Toggle("Enable mappings automatically", isOn: $startup.automaticMappings)
-                    Text("Start your saved mappings when Ergo Control opens. If mappings were active before sleep, resume after waking. The keyboard and permissions must be ready; Stop mappings cancels a pending start.")
+                    Text("Start your saved mappings when Ergo Control opens. Keep waiting if the keyboard connects later. If mappings were active before sleep, resume after waking. Stop mappings cancels a pending start; an activation error requires a manual retry.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("Codex connection and status-light choices are remembered automatically. These settings take effect immediately; no Save changes is needed.")
                         .font(.caption).foregroundStyle(.secondary)

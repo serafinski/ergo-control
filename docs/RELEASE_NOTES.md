@@ -4,7 +4,7 @@ Install by dragging Ergo Control to Applications, ejecting the DMG, then opening
 
 Early development installations with a conflicting bundled-helper registration now offer Repair helper startup under Keyboard → Full dial control. Complete the updated helper installer to migrate to the separate local service; existing profiles are preserved.
 
-Startup now connects to complete saved keyboard recovery before activating mappings; a pending recovery record no longer blocks its own connection.
+Startup reconnects the exact paired endpoint saved in its recovery record without waiting for a live HID node, and reacts immediately to keyboard arrival. Duplicate polls cannot restart an in-flight connection. Readiness no longer expires after two minutes; activation errors still require a manual retry. Recovery records are retained until restoration is verified. Login launches also attach restoration handling before any window or menu appears.
 
 Keyboard mappings start independently of Codex/ChatGPT. The optional chat reader waits while Codex is closed and reconnects automatically when it opens; slow metadata process launch or communication no longer blocks the keyboard/UI main thread.
 
