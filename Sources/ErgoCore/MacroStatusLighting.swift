@@ -43,6 +43,7 @@ public enum MacroStatusFrame {
 /// Fixed passes over the recovered 19-zone row. Approval repeats by request;
 /// working settles on a blue macro column; completion restores the normal effect.
 public enum CodexStatusWave {
+    /// Working falls back to solid blue; completion waits for its finite acknowledged pass.
     public static let maximumDuration: TimeInterval = 6
     public static let minimumFrameInterval: TimeInterval = 0
     public static let completionWindow: TimeInterval = 8

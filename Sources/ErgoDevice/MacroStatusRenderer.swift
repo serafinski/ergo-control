@@ -42,7 +42,11 @@ final class MacroStatusRenderer {
         if completedIDs.count > 32 { completedIDs.removeFirst() }
     }
     func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn,
-                 signalID id: String? = nil, activity: CodexActivity? = nil) {
+                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false) {
+        // A chat becoming idle must not truncate an acknowledged return sweep.
+        // Explicit disable/stop and new activity still supersede it immediately.
+        if color == nil, allowCompletionToFinish, area == .completionWave,
+           waveActivity == .finished, let signalID, !completedIDs.contains(signalID), !failed { return }
         let animate = color != nil && area == .completionWave && id != nil
             && activity.map { [.working, .attention, .finished].contains($0) } == true
         let nextID = animate ? id : nil
@@ -73,7 +77,7 @@ final class MacroStatusRenderer {
     func pump() {
         guard hasWork, allowed() else { return }
         busy = true
-        if waveActivity != .attention, let start = waveStarted, uptime() - start >= CodexStatusWave.maximumDuration {
+        if waveActivity == .working, let start = waveStarted, uptime() - start >= CodexStatusWave.maximumDuration {
             finishWave()
         }
         if desired == nil || failed { restore { _ in }; return }

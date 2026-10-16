@@ -212,8 +212,11 @@ struct ControlSettingsView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text("Profile name").font(.caption).foregroundStyle(.secondary)
                                 TextField("Profile name", text: profile.name)
-                                    .textFieldStyle(.roundedBorder).font(.title.bold())
-                                    .frame(maxWidth: 380)
+                                    .textFieldStyle(.plain).font(.title2.bold())
+                                    .padding(.horizontal, 10).padding(.vertical, 8)
+                                    .frame(maxWidth: 380, minHeight: 48, alignment: .leading)
+                                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
                                     .accessibilityLabel("Profile name")
                                     .help("Rename this profile, then choose Save changes.")
                                 Text("Make the keyboard work the way you do.").foregroundStyle(.secondary)

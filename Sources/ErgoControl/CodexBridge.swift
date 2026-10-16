@@ -16,6 +16,8 @@ final class CodexBridge: ObservableObject {
     private let now: () -> Date
     private var timer: Timer?
     private var lastColor: DialColor?
+    private var lastAllowsCompletionToFinish = false
+    private var shuttingDown = false
     private var lastArea: CodexLightingArea = .macroColumn
     private var lastSignalID: String?
     private var lastActivities: [CodexActivity] = []
@@ -199,6 +201,7 @@ final class CodexBridge: ObservableObject {
         } else { try? FileManager.default.removeItem(at: receiverURL) }
     }
     func shutdown() {
+        shuttingDown = true
         timer?.invalidate(); timer = nil
         lightingTestStarted = nil; lightingTestStage = nil
         history?.stop()
@@ -265,10 +268,15 @@ final class CodexBridge: ObservableObject {
         if activities != lastActivities { lastActivities = activities; objectWillChange.send() }
         let color = lightingColor
         let signalID = lightingSignalID
-        if color != lastColor || (color != nil && (settings.lightingArea != lastArea || signalID != lastSignalID)) {
+        if color != lastColor || settings.lightingArea != lastArea || allowsCompletionToFinish != lastAllowsCompletionToFinish
+            || (color != nil && signalID != lastSignalID) {
             lastColor = color; lastArea = settings.lightingArea; lastSignalID = signalID
+            lastAllowsCompletionToFinish = allowsCompletionToFinish
             onLightingChange?(color)
         }
+    }
+    var allowsCompletionToFinish: Bool {
+        !shuttingDown && settings.enabled && settings.lighting && settings.lightingArea == .completionWave && lightingActivity == .idle
     }
     var lightingColor: DialColor? {
         guard settings.enabled, settings.lighting else { return nil }

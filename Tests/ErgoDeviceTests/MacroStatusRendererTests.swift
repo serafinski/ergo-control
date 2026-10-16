@@ -211,16 +211,54 @@ final class MacroStatusRendererTests: XCTestCase {
         rig.renderer.request(nil); rig.renderer.pump()
         XCTAssertNil(rig.saved)
     }
-    func testCompletionWaveDeadlineRestoresInsteadOfContinuingAfterDelay() {
+    func testSlowCompletionReturnsToMacrosBeforeRestoringEvenAfterStatusExpires() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
+        for index in 0..<7 {
+            // A slow/shared transport can take longer than both old time limits.
+            rig.renderer.pump()
+            XCTAssertNotNil(rig.saved, "Do not restore before the last frame is acknowledged")
+            rig.clock += 2
+            if rig.clock >= 100 + CodexStatusWave.completionWindow {
+                rig.renderer.request(nil, area: .completionWave, activity: .idle, allowCompletionToFinish: true)
+            }
+            XCTAssertEqual(rig.frames.count, index + 1)
+            XCTAssertFalse(rig.operations.contains("restore"))
+        }
+        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.finished.color)! }, [0, 6, 12, 18, 12, 6, 0])
+        XCTAssertEqual(rig.frames.last?.first, CodexActivity.finished.color)
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
+        XCTAssertFalse(rig.renderer.hasWork, "An expired completion must not replay")
+    }
+
+    func testExplicitDisableStillCancelsAnExpiredCompletion() {
         let rig = Rig()
         rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
         rig.renderer.pump()
-        rig.clock += CodexStatusWave.maximumDuration
+        rig.clock += 10
+        rig.renderer.request(nil, area: .completionWave, activity: .idle, allowCompletionToFinish: true)
+        rig.renderer.request(nil) // Mappings/status lighting explicitly disabled.
         rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, 1)
         XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
+
+    func testFailedFrameDuringIdleCompletionStillRestores() {
+        let rig = Rig()
         rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
-        XCTAssertFalse(rig.renderer.hasWork)
+        rig.renderer.pump()
+        rig.clock += 10
+        rig.renderer.request(nil, area: .completionWave, activity: .idle, allowCompletionToFinish: true)
+        rig.rejectFrame = true
+        rig.renderer.pump()
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2)
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
     }
 
     func testWaveCancelOrRejectedFrameStopsThePassAndRetainsVerifiedRestoration() {

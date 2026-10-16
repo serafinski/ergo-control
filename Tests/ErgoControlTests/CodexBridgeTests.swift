@@ -252,6 +252,25 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertEqual(restored.settings.lightingArea, .macroColumn)
         restored.shutdown()
     }
+    func testDisablingLightingAfterCompletionExpiryStillNotifiesRendererToCancel() throws {
+        var time = Date()
+        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
+        bridge.setLightingArea(.completionWave)
+        _ = try enqueue(1, name: "Stop", time: time); bridge.poll()
+        var finishPermissions: [Bool] = []
+        bridge.onLightingChange = { color in
+            XCTAssertNil(color)
+            finishPermissions.append(bridge.allowsCompletionToFinish)
+        }
+        time.addTimeInterval(CodexStatusWave.completionWindow)
+        bridge.poll()
+        XCTAssertEqual(finishPermissions, [true], "Idle lets a slow return sweep finish")
+        bridge.setLighting(false)
+        XCTAssertEqual(finishPermissions, [true, false], "Explicit disable must notify even though both colors are nil")
+        bridge.shutdown()
+    }
+
     func testIdleDoesNotClearAnotherWorkingOrApprovalChat() throws {
         var time = Date()
         let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })

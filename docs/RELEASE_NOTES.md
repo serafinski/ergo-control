@@ -1,3 +1,5 @@
+Version 0.7.11 lets the green completion sweep finish its acknowledged return to the macro keys before restoring the prior effect, including when Bluetooth is slow or the chat status has expired to idle. Explicit disable, new work, errors and mapping shutdown still interrupt it. The profile-name field has more vertical space so its text fits.
+
 Version 0.7.10 makes expandable section headings clickable across the arrow, text and empty row space. Removed the unsupported physical dial-indicator color pickers, experimental guidance and automatic diagnostics; mode changes continue to show an on-screen popup. Existing saved mode settings remain compatible.
 
 Version 0.7.9 moves sidebar keyboard focus to the section being opened, so the previous Keyboard row no longer retains its focus outline after navigation. Profile names now use a visibly bordered text field with a Profile name label.
