@@ -17,7 +17,7 @@ struct FunctionKeySettingsView: View {
         })
     }
     var body: some View {
-        GroupBox("Function keys") {
+        GroupBox("Search and dictation") {
             VStack(alignment: .leading, spacing: 10) {
                 Picker("F4 · Search", selection: $model.configuration.functionKeys.search) {
                     ForEach(SearchKeyProvider.allCases) { Text($0.label).tag($0) }

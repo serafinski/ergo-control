@@ -92,7 +92,7 @@ Universal builds rebuild their helper; reuse is refused. A new helper may need i
 
 ## Repair early development installations
 
-If Full dial control reports a bundled-helper conflict, choose **Repair helper startup…** and complete Installer before enabling mappings. Package 0.2.3 unregisters the old bundled route and uses a distinct local launchd label, preserving the installed executable and privacy identity. Copying a new app alone cannot replace an already registered system job. Installer-only rebuilds can use `ERGO_REUSE_HELPER=1 ERGO_REBUILD_PACKAGES=1 zsh tools/build_app.sh`; no helper binary rebuild is needed for that path.
+If Setup & diagnostics → Full keyboard control reports a bundled-helper conflict, choose **Repair helper startup…** and complete Installer before enabling mappings. Package 0.2.3 unregisters the old bundled route and uses a distinct local launchd label, preserving the installed executable and privacy identity. Copying a new app alone cannot replace an already registered system job. Installer-only rebuilds can use `ERGO_REUSE_HELPER=1 ERGO_REBUILD_PACKAGES=1 zsh tools/build_app.sh`; no helper binary rebuild is needed for that path.
 
 ## Startup
 

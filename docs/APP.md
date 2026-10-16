@@ -4,7 +4,15 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.2.8**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.8.0**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+
+## Current settings layout (0.8.0)
+
+Keyboard opens on **Buttons**. Five tabs separate Buttons, Dials, Lighting, Function keys and Profiles. Macro/AI and media/battery cards show current action summaries; split keys and ordinary remaps are behind Other keys. Clicking a whole card opens a focused action dialog. Its draft stays out of the configuration until Save mapping; Cancel dismisses without applying it. The test pad is expandable. There is no permanent right-hand editor.
+
+Dials groups the left and right controls with the left dial’s modes. Mode enable switches remain visible; only the chosen mode’s detailed actions expand. Profiles contains naming, duplicate/removal, default selection, automatic switching and linked apps. The sidebar remains a profile switcher, with a Manage profiles link. A persistent Save changes button covers configuration edits; battery and actionable error notices stay above the selected task.
+
+**Setup & diagnostics** is a separate sidebar destination for macOS permissions, helper installation/repair and advanced permission/timed-input checks. App is reserved for startup and installation; App logs keeps recent events. The older entries below record development history, including superseded layouts and control names.
 
 ## One app for normal use
 
@@ -294,3 +302,9 @@ Expandable sections in Settings share a disclosure style with a single full-widt
 The renderer previously cut one-shot waves off after six seconds, and chat completion expired after eight seconds independently of acknowledged frame progress. Completion now renders its finite seven-frame out-and-back sequence through the macro-side endpoint before restoring. The bridge explicitly allows an in-flight completion to finish across ordinary idle expiry; disable, area changes, new activity, transport failure, stop and shutdown retain cancellation/restoration. A flag change notifies the renderer even when both old and new colors are nil, so disabling during that idle tail cancels it. The existing working-wave fallback and command timeouts are unchanged. Profile naming uses a padded plain text field within a minimum 48-point bordered area, avoiding the native small control bezel around a large font. Physical return-sweep visibility still needs confirmation.
 
 All 188 local tests pass, including a completion lasting longer than the old six/eight-second limits, an explicit disable after idle expiry, failed-frame restoration and notification when lighting is disabled with no color transition. The helper binary is reused unchanged.
+
+## Task-based settings redesign (0.8.0)
+
+Split the previous long Keyboard page into the five task tabs described above. The existing profile schema, engine, Bluetooth protocol, helper, hooks, startup and lighting renderer are unchanged. Existing action/profile bindings back the new views; only a mapping dialog holds a draft until Save. Failed save errors remain visible and the dialog stays open, restoring the prior in-memory profile so an invalid draft is not applied. Profile removal has a native confirmation. All ordinary and extra controls remain reachable, with explicit F-row customization alongside its providers. The function-key native defaults still take precedence when no override exists. Existing regression tests pass; visual use of the revised controls awaits user confirmation because native app-control is unavailable. GitHub workflows remain manual-only.
+
+The 0.8.0 local build passed all 188 regression tests with no compiler warnings. Its helper reuse/self-check and signed app verification pass. The installed helper is unchanged; no helper or hook update is required for the settings reorganization.
