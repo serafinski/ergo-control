@@ -4,6 +4,35 @@ import ErgoCore
 
 /// Exercise the real engine with an output sink; never post input to the Mac.
 final class ActionEngineTests: XCTestCase {
+    func testArrowEventsKeepNativeMetadataAndBothModifierSides() throws {
+        for usage: UInt8 in 79...82 {
+            for mods: UInt8 in [0x05,0x50] {
+                let event = try XCTUnwrap(MacKeys.event(usage: usage, pressed: true, repeated: false,
+                    modifiers: mods, capsLock: false, source: CGEventSource(stateID: .privateState)))
+                XCTAssertEqual(event.type, .keyDown)
+                XCTAssertTrue(event.flags.contains([.maskControl,.maskAlternate,.maskNumericPad,.maskSecondaryFn]))
+                XCTAssertEqual(event.flags.rawValue & 0x2061, mods == 5 ? 0x21 : 0x2040)
+                XCTAssertFalse(event.flags.contains(.maskCommand))
+                XCTAssertEqual(event.getIntegerValueField(.keyboardEventKeycode), Int64(MacKeys.codes[usage]!))
+            }
+        }
+    }
+    func testBackspaceUsesProvidedRepeatTimingAndStopsOnRelease() {
+        var output: [(KeyboardOutput, Bool)] = []
+        let engine = ActionEngine(repeatTiming: { NativeKeyboardTiming(delay: 0.4, interval: 0.4) },
+                                  keyOutput: { output.append(($0,$1)) })
+        engine.relay(42, pressed: true, owner: "extra:251")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(output.count, 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        XCTAssertEqual(output.filter(\.1).count, 1)
+        engine.relay(42, pressed: false, owner: "extra:251")
+        XCTAssertEqual(output.last?.0, KeyboardOutput(42, pressed: false, modifiers: 0))
+        let count = output.count
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(output.count, count)
+        engine.stop()
+    }
     func testRepeatedPlayPauseWithoutNeutralReportsProducesBalancedEvents() {
         var output: [ConsumerKeyEvent] = []
         let engine = ActionEngine(mediaOutput: { usage, pressed in output.append(ConsumerKeyEvent(usage, pressed: pressed)) })

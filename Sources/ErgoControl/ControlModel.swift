@@ -326,27 +326,25 @@ final class ControlModel: ObservableObject {
         if id == 1 {
             guard bytes.count == 12 else { stop("Unexpected keyboard packet size; mappings stopped."); return }
             guard let snapshot = KeyboardSnapshot(data) else { return }
-            engine.physicalModifiers = snapshot.modifiers
             let current = snapshot.held
             guard current.allSatisfy({ MacKeys.codes[$0] != nil }) else {
                 stop("This key needs support; PT Ergo has been returned to normal input."); return
             }
-            let released = ordinary.subtracting(current).sorted()
-            let pressed = current.subtracting(ordinary).sorted()
-            if !released.isEmpty || !pressed.isEmpty { engine.endAppSwitcher() }
-            for usage in released {
+            let transitions = NativeKeyboardTransitions.changes(from: ordinary, to: current)
+            if !transitions.isEmpty { engine.endAppSwitcher() }
+            for transition in transitions {
                 guard relayOpened else { return }
-                let action = keyActions.removeValue(forKey: usage) ?? MappingAction()
-                if action.kind == .standard { engine.relay(usage, pressed: false) }
-                else { execute(action, control: "key:\(usage)", pressed: false) }
+                let usage = transition.usage
+                engine.physicalModifiers = transition.modifiers
+                let mapping: MappingAction
+                if transition.pressed {
+                    mapping = running ? action(for: "key:\(usage)") : MappingAction()
+                    keyActions[usage] = mapping
+                } else { mapping = keyActions.removeValue(forKey: usage) ?? MappingAction() }
+                if mapping.kind == .standard { engine.relay(usage, pressed: transition.pressed) }
+                else { execute(mapping, control: "key:\(usage)", pressed: transition.pressed) }
             }
-            for usage in pressed {
-                guard relayOpened else { return }
-                let mapping = running ? action(for: "key:\(usage)") : MappingAction()
-                keyActions[usage] = mapping
-                if mapping.kind == .standard { engine.relay(usage, pressed: true) }
-                else { execute(mapping, control: "key:\(usage)", pressed: true) }
-            }
+            engine.physicalModifiers = snapshot.modifiers
             ordinary = current
         } else if id == 5 {
             guard let events = extraDecoder.decode(reportID: id, bytes: data) else { stop("Unexpected extra-key packet; mappings stopped."); return }

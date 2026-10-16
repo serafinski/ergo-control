@@ -24,7 +24,27 @@ enum MacKeys {
         if modifiers & 0x22 != 0 { flags.insert(.maskShift) }
         if modifiers & 0x44 != 0 { flags.insert(.maskAlternate) }
         if modifiers & 0x88 != 0 { flags.insert(.maskCommand) }
+        // The device-dependent left/right bits accompany native flagsChanged
+        // events. Global hotkey consumers can inspect these as well.
+        let deviceBits: [UInt64] = [0x1,0x2,0x20,0x8,0x2000,0x4,0x40,0x10]
+        for bit in 0..<8 where modifiers & (1 << bit) != 0 {
+            flags.formUnion(CGEventFlags(rawValue: deviceBits[bit]))
+        }
         return flags
+    }
+
+    static func event(usage: UInt8, pressed: Bool, repeated: Bool, modifiers: UInt8,
+                      capsLock: Bool, source: CGEventSource?) -> CGEvent? {
+        guard let code = codes[usage],
+              let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: pressed) else { return nil }
+        // CGEvent adds the native keypad/function flags to arrow keys. Preserve
+        // that metadata instead of replacing every flag with the modifier mask.
+        let intrinsic = event.flags.intersection([.maskNumericPad, .maskSecondaryFn])
+        if usage >= 224 || usage == 57 { event.type = .flagsChanged }
+        event.flags = intrinsic.union(flags(modifiers))
+        if capsLock { event.flags.insert(.maskAlphaShift) }
+        if repeated { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
+        return event
     }
 }
 
@@ -49,19 +69,21 @@ final class ActionEngine {
     private var switcherTimer: Timer?
     private let keyOutput: ((KeyboardOutput, Bool) -> Void)?
     private let mediaOutput: ((UInt16, Bool) -> Void)?
+    private let repeatTiming: () -> NativeKeyboardTiming
     private let applicationToggle = ApplicationToggle()
 
-    init(mediaOutput: ((UInt16, Bool) -> Void)? = nil, keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) {
+    init(mediaOutput: ((UInt16, Bool) -> Void)? = nil,
+         repeatTiming: @escaping () -> NativeKeyboardTiming = {
+             NativeKeyboardTiming(delay: NSEvent.keyRepeatDelay, interval: NSEvent.keyRepeatInterval)
+         }, keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) {
         self.keyOutput = keyOutput; self.mediaOutput = mediaOutput
+        self.repeatTiming = repeatTiming
     }
 
     func key(_ usage: UInt8, pressed: Bool, repeated: Bool = false, modifiers: UInt8? = nil, tracked: Bool = true) {
-        guard let code = MacKeys.codes[usage] else { onError?("This keyboard key needs support (\(usage)); mappings were stopped"); return }
-        guard let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: pressed) else { return }
-        if usage >= 224 || usage == 57 { event.type = .flagsChanged }
-        event.flags = MacKeys.flags(modifiers ?? physicalModifiers)
-        if capsLock { event.flags.insert(.maskAlphaShift) }
-        if repeated { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
+        guard MacKeys.codes[usage] != nil else { onError?("This keyboard key needs support (\(usage)); mappings were stopped"); return }
+        guard let event = MacKeys.event(usage: usage, pressed: pressed, repeated: repeated,
+                                       modifiers: modifiers ?? physicalModifiers, capsLock: capsLock, source: source) else { return }
         if let keyOutput { keyOutput(KeyboardOutput(usage, pressed: pressed, modifiers: modifiers ?? physicalModifiers), repeated) }
         else { event.post(tap: .cghidEventTap) }
         if !repeated && tracked {
@@ -77,13 +99,12 @@ final class ActionEngine {
         guard usage < 224, usage != 57 else { return }
         if pressed {
             repeatTimer?.invalidate(); repeating = usage
-            let delay = max(0.25, min(2, UserDefaults.standard.double(forKey: "InitialKeyRepeat") * 0.015))
-            repeatTimer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            let timing = repeatTiming()
+            repeatTimer = Timer(timeInterval: timing.delay, repeats: false) { [weak self] _ in
                 guard let self, self.repeating == usage else { return }
                 self.endAppSwitcher()
                 self.key(usage, pressed: true, repeated: true)
-                let interval = max(0.015, min(0.15, UserDefaults.standard.double(forKey: "KeyRepeat") * 0.015))
-                self.repeatTimer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+                self.repeatTimer = Timer(timeInterval: timing.interval, repeats: true) { [weak self] _ in
                     self?.endAppSwitcher()
                     self?.key(usage, pressed: true, repeated: true)
                 }
