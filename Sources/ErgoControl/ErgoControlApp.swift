@@ -163,6 +163,7 @@ struct ControlSettingsView: View {
                                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                         .background(model.selectedProfileID == p.id ? Color.accentColor.opacity(0.13) : Color.clear,
                                                     in: RoundedRectangle(cornerRadius: 10))
+                                        .contentShape(Rectangle())
                                 }.buttonStyle(.plain)
                             }
                         }
@@ -385,6 +386,7 @@ struct ControlSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(10)
                 .background(section == destination ? Color.accentColor.opacity(0.13) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
 

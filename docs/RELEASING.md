@@ -50,18 +50,34 @@ gh secret set SIGNING_CERTIFICATE_PASSWORD --repo serafinski/ergo-control
 
 The second command prompts for the export password. Alternatively use repository Settings → Secrets and variables → Actions. Keep a secure backup of the identity; remove the temporary export after configuring secrets. Do not paste the P12, password or private key into chat, issues or commits. GitHub Actions will have a key that can sign app/helper updates; restrict repository write access accordingly. This self-signed route needs no Apple ID, Apple password, provisioning profile or custom GitHub token.
 
-The workflow imports the persistent identity into an ephemeral keychain, selects it explicitly, and removes it in an always-run cleanup. Credentials are not logged or included in release artifacts. Public pull-request CI has no release secrets. A fresh certificate on every runner would break upgrade identity: the helper refuses replacement/removal by an unrelated signer. To intentionally change signer, remove the old helper using the old app first, then install the new one and review privacy permissions.
+The workflow imports the persistent identity into an ephemeral keychain, selects it explicitly, and removes it in an always-run cleanup. Credentials are not logged or included in release artifacts. Only the manually dispatched release workflow uses release signing secrets. A fresh certificate on every runner would break upgrade identity: the helper refuses replacement/removal by an unrelated signer. To intentionally change signer, remove the old helper using the old app first, then install the new one and review privacy permissions.
+
+## Run GitHub builds manually
+
+Both workflows run only through **Actions → select workflow → Run workflow**. Pushing commits, opening pull requests, and pushing tags do not start builds or consume runner minutes. Manual runs still use runner minutes.
+
+For tests and compilation, select **Build and test**, or run:
+
+```sh
+gh workflow run ci.yml --ref main --repo serafinski/ergo-control
+```
 
 ## Create a draft release
 
 Update `VERSION` and `docs/RELEASE_NOTES.md`, commit, then create a matching tag:
 
 ```sh
-git tag v0.7.7
-git push origin v0.7.7
+git tag v0.7.8
+git push origin v0.7.8
 ```
 
-`.github/workflows/release.yml` tests, builds Apple Silicon + Intel app/hook/helper binaries, signs them, verifies the helper's accepted-client requirement, packages/verifies the DMG and writes a SHA-256 checksum. It creates a **draft** release with the DMG and checksum. You can also run it manually against an existing matching tag. It refuses a tag that disagrees with `VERSION` and never overwrites an existing release. Remove an unsuccessful draft deliberately before rerunning final release creation.
+Pushing the tag does not build a release. In Actions, select **Build release DMG (self-signed)** → **Run workflow**, leave the workflow branch on `main`, and enter the existing version tag. Alternatively:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v0.7.8 --repo serafinski/ergo-control
+```
+
+`.github/workflows/release.yml` checks out that tag, tests, builds Apple Silicon + Intel app/hook/helper binaries, signs them, verifies the helper's accepted-client requirement, packages/verifies the DMG and writes a SHA-256 checksum. It creates a **draft** release with the DMG and checksum. It refuses a tag that disagrees with `VERSION` and never overwrites an existing release. Remove an unsuccessful draft deliberately before rerunning final release creation.
 
 Review/download the draft and test installation, permission grants, optional helper installation, mappings, Codex hooks and login behavior before publishing. Compilation does not establish physical validation on Intel. The v0.7.5 workflow completed with the persistent certificate and created a draft universal DMG. Its downloaded checksum, image integrity, signature, expected signing identity and arm64/x86_64 app/hook/helper architectures were verified locally. Intel hardware validation remains pending. Ordinary local builds do not create tags or releases.
 
