@@ -20,14 +20,18 @@ python3 tools/lighting_lab.py run bluetooth --pattern presets --seconds 6
 python3 tools/lighting_lab.py run usb --pattern scan --seconds 8
 python3 tools/lighting_lab.py run usb --pattern macro-pulse --seconds 8
 python3 tools/lighting_lab.py run bluetooth --pattern macro-pulse --seconds 10 --experimental-frames
+python3 tools/lighting_lab.py run bluetooth --pattern throughput --seconds 5 --experimental-frames
+python3 tools/lighting_lab.py run bluetooth --pattern native-wave --seconds 6 --experimental-frames
 ```
 
-Durations must be 2–30 seconds. For `presets` this is the duration **per step** (nine steps); for a zone pattern it is the total duration. Bluetooth zone patterns require the explicit research flag (the menu adds it). Commands do not accept arbitrary opcodes, effect IDs, rates, profiles, region addresses, or dimensions.
+Durations must be 2–30 seconds. For throughput, the duration applies to each of three stages, plus connection/restoration time. For `presets` this is the duration **per step** (nine steps); for a zone pattern it is the total duration. Bluetooth zone patterns require the explicit research flag (the menu adds it). Commands do not accept arbitrary opcodes, effect IDs, rates, profiles, region addresses, or dimensions.
 
 ## Patterns
 
 | Name | Output | Connection |
 | --- | --- | --- |
+| `throughput` | Current serial path, queued verified frames, isolated vendor-style stream; measured rates | Bluetooth lab only |
+| `native-wave` | Fixed native Wave with a blue/black palette; requires visual confirmation | Bluetooth lab only |
 | `presets` | Red/green/blue static, one-color/two-color/random breathing, spectrum, Wave left/right | Bluetooth or experimental USB |
 | `macro-solid` | Cyan shared M1–M5 column; other zones dark | USB / Bluetooth lab |
 | `macro-pulse` | Gentle two-second pulse on the shared macro column | USB / Bluetooth lab; observed on both |
@@ -81,3 +85,12 @@ The report is 90 bytes, using the same feature-report envelope/checksum as the r
 On 15 October 2026, live USB tests entered custom-frame mode and completed eight-second `chase` and `macro-pulse` runs, each with 35 acknowledged frames. The original effect was restored and independently read back after each run; no recovery remained pending. The user confirmed a cyan line moving across the keyboard and a visible pulsing pattern. A subsequent 20-second USB macro pulse sent 87 acknowledged frames, and the user confirmed **only M1–M5 pulse, with all other keys dark**.
 
 The subsequent ten-second **Bluetooth-only** macro pulse targeted reported region 5 and sent 20 acknowledged frames. The user confirmed the same isolated M1–M5 pulse; saved-effect restoration was read-back verified. Neither test required Chroma or a Razer driver. Other generated patterns and physical interruption recovery remain untested. The existing `ErgoUSBInspector` remains read-only. Receiver transport, direct indicator RGB control, per-key LEDs, and Codex integration are not added by this tool.
+
+
+## Bluetooth speed comparison (0.6.8)
+
+The throughput test keeps every ATT write acknowledged. Its final phase follows the vendor's separate frame-stream behavior: queue the header and 20-byte payload pieces, finish the frame at write completion, observe keyboard response headers separately, and drain replies at the end. It uses an isolated configuration connection, then disconnects before the normal controller reconnects to restore/read-verify the saved effect. The regular Codex renderer does not use this experimental stream. [Apple documents write completion separately from application-level responses](https://developer.apple.com/documentation/corebluetooth/cbperipheral/writevalue(_:for:type:)).
+
+A five-second-per-stage comparison on 16 October 2026 measured serial 2.55 fps (13 frames; median 466 ms), queued-with-command-verification 2.15 fps (11; 470 ms), and streaming 2.01 fps (11; 521 ms). All 11 streamed frames had successful zero-payload keyboard replies by the drain boundary, and the original effect was restored and verified. This sample shows no speed improvement from queueing/streaming; it does not establish an absolute Bluetooth/hardware ceiling.
+
+The native-wave experiment uses the existing common effect envelope with exactly [4,2,40,2,0,120,255,0,0,0] at profile 0 / reported region 5. The keyboard acknowledged it and returned that exact payload, then restored its original effect. This proves parameter acceptance/readback only; a physical blue/black moving wave remains unconfirmed. The regular effect picker still refuses Wave palettes until that visual behavior is established.

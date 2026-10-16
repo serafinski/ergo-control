@@ -125,33 +125,35 @@ public struct Protocol30ResponseAssembler {
 public struct Protocol30Exchange {
     private let chunks: [Data]
     private var nextIndex = 0
-    private var awaitingAcknowledgement = false
+    private let queueWrites: Bool
+    private var outstandingWrites = 0
     private var assembler: Protocol30ResponseAssembler
     private var response: Protocol30Response?
 
-    public init(request: Protocol30Request) throws {
+    public init(request: Protocol30Request, queueWrites: Bool = false) throws {
         chunks = request.writeChunks
+        self.queueWrites = queueWrites
         assembler = try Protocol30ResponseAssembler(transaction: request.transaction)
     }
 
     public mutating func nextWrite() -> Data? {
-        guard !awaitingAcknowledgement, nextIndex < chunks.count else { return nil }
+        guard (queueWrites || outstandingWrites == 0), nextIndex < chunks.count else { return nil }
         let chunk = chunks[nextIndex]
         nextIndex += 1
-        awaitingAcknowledgement = true
+        outstandingWrites += 1
         return chunk
     }
 
     public mutating func acknowledgeWrite() throws {
-        guard awaitingAcknowledgement else { throw Protocol30Error.unexpectedAcknowledgement }
-        awaitingAcknowledgement = false
+        guard outstandingWrites > 0 else { throw Protocol30Error.unexpectedAcknowledgement }
+        outstandingWrites -= 1
     }
 
     public mutating func receive(_ data: Data) throws {
         if let value = try assembler.append(data) { response = value }
     }
 
-    public var completedResponse: Protocol30Response? {
-        nextIndex == chunks.count && !awaitingAcknowledgement ? response : nil
-    }
+    /// Transport completion is distinct from keyboard command success.
+    public var writesComplete: Bool { nextIndex == chunks.count && outstandingWrites == 0 }
+    public var completedResponse: Protocol30Response? { writesComplete ? response : nil }
 }

@@ -45,6 +45,8 @@ def interactive():
         available = subprocess.run([str(APP), "--lighting-lab", "list"],
                                    check=True, text=True, capture_output=True).stdout.splitlines()
         options = [line for line in available if not line.startswith("presets:")]
+        if connection == "usb":
+            options = [line for line in options if not line.startswith(("throughput:", "native-wave:"))]
         for index, line in enumerate(options, 1):
             print(f"{index}. {line}")
         chosen = input("Pattern number (or Enter to cancel): ").strip()
@@ -55,6 +57,8 @@ def interactive():
             return 2
         pattern = options[int(chosen) - 1].split(":", 1)[0]
     print("\nEach preset stays on for six seconds; a zone pattern runs for six seconds.")
+    if pattern == "throughput":
+        print("The speed comparison has three six-second stages, plus connection and restoration time.")
     print("Press Control+C to stop and restore. A disconnected keyboard needs recovery after reconnecting.\n")
     arguments = ["run", connection, "--pattern", pattern, "--seconds", "6"]
     if selection == "6":
@@ -70,7 +74,7 @@ def main():
     run = sub.add_parser("run", help="Run a bounded test, then restore the saved effect")
     run.add_argument("connection", choices=("bluetooth", "usb"))
     run.add_argument("--pattern", default="presets",
-                     choices=("presets", "macro-solid", "macro-pulse", "macro-colors", "scan", "chase", "progress", "rainbow"))
+                     choices=("presets", "macro-solid", "macro-pulse", "macro-colors", "scan", "chase", "progress", "rainbow", "throughput", "native-wave"))
     run.add_argument("--seconds", type=float, default=6,
                      help="2–30 seconds per preset, or total duration for a zone pattern")
     run.add_argument("--experimental-frames", action="store_true",

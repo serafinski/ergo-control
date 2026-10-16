@@ -3,9 +3,10 @@ import Foundation
 /// Deliberately bounded experiments, separate from normal mappings/settings.
 public enum LightingLabPattern: String, CaseIterable {
     case presets, macroSolid = "macro-solid", macroPulse = "macro-pulse"
-    case macroColors = "macro-colors", scan, chase, progress, rainbow
+    case macroColors = "macro-colors", scan, chase, progress, rainbow, throughput
+    case nativeWave = "native-wave"
 
-    public var requiresZones: Bool { self != .presets }
+    public var requiresZones: Bool { self != .presets && self != .nativeWave }
     public var explanation: String {
         switch self {
         case .presets: return "Static colors, breathing, spectrum, and Wave in both directions"
@@ -16,6 +17,8 @@ public enum LightingLabPattern: String, CaseIterable {
         case .chase: return "A moving line with a fading trail across the 19 zones"
         case .progress: return "A progress bar fills the 19 zones"
         case .rainbow: return "A moving rainbow across the 19 zones"
+        case .throughput: return "Compare ordinary acknowledged frames with the isolated Bluetooth stream"
+        case .nativeWave: return "Test whether the native Wave accepts a blue-and-black palette"
         }
     }
 
@@ -27,7 +30,7 @@ public enum LightingLabPattern: String, CaseIterable {
         // Bound time before converting to an integer, including external previews.
         let tick = Int((seconds.truncatingRemainder(dividingBy: 60) * 5).rounded(.down))
         switch self {
-        case .presets: throw LightingLabError.invalidPattern
+        case .presets, .nativeWave: throw LightingLabError.invalidPattern
         case .macroSolid: result[0] = cyan
         case .macroPulse:
             let level = (1 - cos(seconds.truncatingRemainder(dividingBy: 2) * .pi)) / 2
@@ -38,7 +41,7 @@ public enum LightingLabPattern: String, CaseIterable {
                           DialColor(red: 255, green: 0, blue: 60)]
             result[0] = colors[Int(seconds.truncatingRemainder(dividingBy: 6) / 2)]
         case .scan: result[tick % 19] = cyan
-        case .chase:
+        case .chase, .throughput:
             for trail in 0..<4 {
                 let level = Double(4 - trail) / 4
                 result[(tick - trail + 19) % 19] = DialColor(red: 0, green: UInt8(180 * level), blue: UInt8(255 * level))
@@ -98,9 +101,16 @@ public enum LightingLabError: LocalizedError {
 /// regular effect picker retains its separate five-effect writer.
 public enum BluetoothLightingLabCommand {
     case readRegions, readEffect, selectCustom, restore(KeyboardEffect), frame([DialColor])
+    case experimentalWavePalette
 
     public func request(transaction: UInt8, region: UInt8 = 0) throws -> Protocol30Request {
         switch self {
+        case .experimentalWavePalette:
+            guard region == 5 else { throw LightingLabError.invalidPattern }
+            // Fixed experiment using the recovered common effect envelope.
+            // The regular writer still refuses Wave colors: support is unverified.
+            return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 3,
+                                         argument7: region, payload: Data([4,2,40,2,0,120,255,0,0,0]))
         case .readRegions: return try .readLightingRegions(transaction: transaction)
         case .readEffect:
             return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 0x83, argument7: region)

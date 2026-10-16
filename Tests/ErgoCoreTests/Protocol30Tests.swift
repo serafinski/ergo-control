@@ -3,6 +3,31 @@ import XCTest
 @testable import ErgoCore
 
 final class Protocol30Tests: XCTestCase {
+    func testQueuedFrameWritesKeepTransportCompletionSeparateFromKeyboardSuccess() throws {
+        let request = try BluetoothLightingLabCommand.frame(Array(repeating: .defaultColor(for: "Zoom"), count: 19))
+            .request(transaction: 4, region: 5)
+        var exchange = try Protocol30Exchange(request: request, queueWrites: true)
+        var queued: [Data] = []
+        while let chunk = exchange.nextWrite() { queued.append(chunk) }
+        XCTAssertEqual(queued, request.writeChunks)
+        XCTAssertEqual(queued.count, 5)
+        for _ in 0..<4 { try exchange.acknowledgeWrite(); XCTAssertFalse(exchange.writesComplete) }
+        try exchange.acknowledgeWrite()
+        XCTAssertTrue(exchange.writesComplete)
+        XCTAssertNil(exchange.completedResponse, "ATT acknowledgements are not keyboard command success")
+        try exchange.receive(header())
+        XCTAssertTrue(try XCTUnwrap(exchange.completedResponse).succeeded)
+        XCTAssertThrowsError(try exchange.acknowledgeWrite())
+    }
+    func testEarlyRejectedQueuedFrameCannotCompleteBeforeEveryWriteAcknowledgement() throws {
+        let request = try Protocol30Request(transaction: 4, commandClass: 16, commandID: 4, payload: Data(repeating: 0, count: 62))
+        var exchange = try Protocol30Exchange(request: request, queueWrites: true)
+        while exchange.nextWrite() != nil {}
+        try exchange.receive(header(status: 7))
+        for _ in 0..<4 { try exchange.acknowledgeWrite(); XCTAssertNil(exchange.completedResponse) }
+        try exchange.acknowledgeWrite()
+        XCTAssertEqual(exchange.completedResponse?.status, 7)
+    }
     private func header(transaction: UInt8 = 4, length: Int = 0, status: UInt8 = 2, size: Int = 20) -> Data {
         Data([transaction, UInt8(length & 255), UInt8((length >> 8) & 255), UInt8((length >> 16) & 255),
               0, 0, 0, status] + Array(repeating: 0, count: size - 8))

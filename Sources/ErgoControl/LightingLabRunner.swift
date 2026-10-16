@@ -79,7 +79,8 @@ enum LightingLabRunner {
         setbuf(stdout, nil)
         if args == ["list"] {
             for pattern in LightingLabPattern.allCases {
-                print("\(pattern.rawValue): \(pattern.explanation) [\(pattern.requiresZones ? "USB; Bluetooth with --experimental-frames" : "Bluetooth or USB")]")
+                let connection = pattern == .nativeWave || pattern == .throughput ? "Bluetooth with --experimental-frames" : pattern.requiresZones ? "USB; Bluetooth with --experimental-frames" : "Bluetooth or USB"
+                print("\(pattern.rawValue): \(pattern.explanation) [\(connection)]")
             }
             exit(0)
         }
@@ -96,7 +97,8 @@ enum LightingLabRunner {
                   args[4] == "--seconds", let seconds = Double(args[5]), seconds.isFinite,
                   (2...30).contains(seconds) else { usage() }
             pattern = selected; duration = seconds
-            if args[1] == "bluetooth" && pattern.requiresZones && args.count != 7 {
+            if (pattern == .throughput || pattern == .nativeWave) && args[1] != "bluetooth" { usage() }
+            if args[1] == "bluetooth" && (pattern.requiresZones || pattern == .nativeWave) && args.count != 7 {
                 print("Bluetooth zone tests require --experimental-frames to opt into the research path."); exit(2)
             }
         }
@@ -207,12 +209,12 @@ enum LightingLabRunner {
         if let recovery, recovery.identity != identity {
             throw LightingLabError.message("Recovery belongs to another keyboard.")
         }
-        let profileZero = recovery.map { $0.bluetoothProfile == 0 } ?? pattern.requiresZones
+        let profileZero = recovery.map { $0.bluetoothProfile == 0 } ?? (pattern.requiresZones || pattern == .nativeWave)
         var selectedRegion: UInt8 = recovery?.bluetoothRegion ?? 0
-        func command(_ operation: BluetoothLightingLabCommand) throws -> Data {
+        func command(_ operation: BluetoothLightingLabCommand, queued: Bool = false) throws -> Data {
             try session.until({ !controller.busy }, seconds: 6, interruptible: false)
             var result: Result<Data, Error>?
-            controller.runLightingLabCommand(operation, region: selectedRegion) { result = $0 }
+            controller.runLightingLabCommand(operation, region: selectedRegion, queueFrameWrites: queued) { result = $0 }
             try session.until({ result != nil }, seconds: 7, interruptible: false)
             return try result!.get()
         }
@@ -262,7 +264,14 @@ enum LightingLabRunner {
         session.log("start", ["connection": "bluetooth", "pattern": pattern.rawValue, "seconds": duration])
         var failure: Error?
         do {
-            if pattern == .presets {
+            if pattern == .nativeWave {
+                print("Native Wave palette test: requested blue and black")
+                _ = try command(.experimentalWavePalette)
+                let observed = try read()
+                session.log("native_wave_palette_readback", ["payload": Array(observed.payload)])
+                print("Native Wave readback: \(Array(observed.payload))")
+                session.wait(duration)
+            } else if pattern == .presets {
                 for (name, effect) in LightingLabPattern.presetSteps {
                     if session.stopped { break }
                     print("Showing: \(name)")
@@ -275,15 +284,72 @@ enum LightingLabRunner {
                 _ = try command(.selectCustom)
                 guard try read().id == 8 else { throw LightingLabError.message("Bluetooth custom-frame selection was not confirmed.") }
                 session.log("custom_effect_verified")
-                let started = ProcessInfo.processInfo.systemUptime
-                var frames = 0
-                while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
-                    _ = try command(.frame(pattern.frame(at: ProcessInfo.processInfo.systemUptime - started)))
-                    frames += 1
-                    session.wait(0.25) // At most four frames/sec; commands remain serialized.
+                if pattern == .throughput {
+                    func report(_ phase: String, frames: Int, seconds: Double, samples: [Double]) {
+                        let sorted = samples.sorted(), median = sorted.isEmpty ? 0 : sorted[sorted.count / 2]
+                        session.log("throughput", ["phase": phase, "frames": frames, "seconds": seconds,
+                                                   "frames_per_second": Double(frames) / seconds, "median_frame_ms": median * 1000])
+                        print("\(phase): \(frames) frames, \(String(format: "%.2f", Double(frames) / seconds)) fps, median \(Int(median * 1000)) ms/frame")
+                    }
+                    print("First: ordinary acknowledged frame path")
+                    var started = ProcessInfo.processInfo.systemUptime, frames = 0, samples: [Double] = []
+                    while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
+                        let before = ProcessInfo.processInfo.systemUptime
+                        _ = try command(.frame(pattern.frame(at: Double(frames) * 0.2)))
+                        samples.append(ProcessInfo.processInfo.systemUptime - before); frames += 1
+                    }
+                    report("serial", frames: frames, seconds: ProcessInfo.processInfo.systemUptime - started, samples: samples)
+                    print("Second: queued writes with full keyboard command verification")
+                    started = ProcessInfo.processInfo.systemUptime; frames = 0; samples = []
+                    while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
+                        let before = ProcessInfo.processInfo.systemUptime
+                        _ = try command(.frame(pattern.frame(at: Double(frames) * 0.2)), queued: true)
+                        samples.append(ProcessInfo.processInfo.systemUptime - before); frames += 1
+                    }
+                    report("queued-verified", frames: frames, seconds: ProcessInfo.processInfo.systemUptime - started, samples: samples)
+                    try controller.disconnectForLightingLab()
+                    try session.until({ controller.lightingLabDisconnected }, seconds: 7, interruptible: false)
+                    let stream = try BluetoothFrameStream(verifiedIdentity: identity, region: selectedRegion)
+                    var streamError: Error?
+                    do {
+                        stream.connect()
+                        try session.until({ stream.ready || stream.failure != nil }, seconds: 20)
+                        if let error = stream.failure { throw error }
+                        print("Now: queued acknowledged writes, streamed frame responses")
+                        started = ProcessInfo.processInfo.systemUptime; frames = 0; samples = []
+                        while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
+                            let before = ProcessInfo.processInfo.systemUptime
+                            var result: Result<Void, Error>?
+                            stream.frame(try pattern.frame(at: Double(frames) * 0.2)) { result = $0 }
+                            try session.until({ result != nil }, seconds: 5, interruptible: false)
+                            try result!.get()
+                            samples.append(ProcessInfo.processInfo.systemUptime - before); frames += 1
+                            session.wait(max(0, 0.05 - (ProcessInfo.processInfo.systemUptime - before))) // Vendor's 20 fps ceiling.
+                        }
+                        report("stream", frames: frames, seconds: ProcessInfo.processInfo.systemUptime - started, samples: samples)
+                        // Frame replies are drained once at the boundary, not between
+                        // frames. Restoration still uses a fresh configuration link.
+                        try session.until({ stream.successReplies >= stream.transportFrames || stream.failure != nil }, seconds: 5, interruptible: false)
+                        session.log("stream_replies", ["writes_completed": stream.transportFrames, "success_headers": stream.successReplies])
+                        if let error = stream.failure { throw error }
+                    } catch { streamError = error }
+                    stream.stop()
+                    try session.until({ stream.disconnected }, seconds: 7, interruptible: false)
+                    controller.connect()
+                    try session.until({ controller.ready && !controller.busy }, seconds: 25, interruptible: false)
+                    guard controller.connectedDeviceIdentity == identity else { throw LightingLabError.message("Keyboard identity changed during the frame test.") }
+                    if let streamError { throw streamError }
+                } else {
+                    let started = ProcessInfo.processInfo.systemUptime
+                    var frames = 0
+                    while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
+                        _ = try command(.frame(pattern.frame(at: ProcessInfo.processInfo.systemUptime - started)))
+                        frames += 1
+                        session.wait(0.25) // At most four frames/sec; commands remain serialized.
+                    }
+                    session.log("frames_acknowledged", ["count": frames])
+                    print("Sent \(frames) acknowledged Bluetooth frames; watch the physical lighting.")
                 }
-                session.log("frames_acknowledged", ["count": frames])
-                print("Sent \(frames) acknowledged Bluetooth frames; watch the physical lighting.")
             }
         } catch { failure = error; session.log("test_error", ["message": error.localizedDescription]) }
         print("Restoring previous effect…")

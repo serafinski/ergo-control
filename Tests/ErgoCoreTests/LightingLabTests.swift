@@ -2,6 +2,13 @@ import XCTest
 @testable import ErgoCore
 
 final class LightingLabTests: XCTestCase {
+    func testNativeWavePaletteProbeIsFixedAndCannotBecomeARegularEffect() throws {
+        let request = try BluetoothLightingLabCommand.experimentalWavePalette.request(transaction: 4, region: 5)
+        XCTAssertEqual(request.header, Data([4,10,0,0,16,3,0,5]))
+        XCTAssertEqual(request.payload, Data([4,2,40,2,0,120,255,0,0,0]))
+        XCTAssertThrowsError(try BluetoothLightingLabCommand.experimentalWavePalette.request(transaction: 4, region: 1))
+        XCTAssertThrowsError(try Protocol30Request.keyboardEffect(transaction: 4, effect: KeyboardEffect(payload: request.payload)))
+    }
     private let black = DialColor(red: 0, green: 0, blue: 0)
 
     func testExperimentalBluetoothFramesUseProfileZeroAndRecoveredTypeFourBounds() throws {

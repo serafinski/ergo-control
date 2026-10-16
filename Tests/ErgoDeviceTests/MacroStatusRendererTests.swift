@@ -26,6 +26,9 @@ final class MacroStatusRendererTests: XCTestCase {
                 frames.append(colors)
                 XCTAssertEqual(colors.count, 19)
             case .restore: name = "restore"; response = Data()
+            case .experimentalWavePalette:
+                XCTFail("Regular status rendering must not send the experimental Wave palette")
+                name = "unexpected"; response = Data()
             }
             if name == "frame" || name == "custom" { writesBeforeSnapshot = writesBeforeSnapshot || saved == nil }
             operations.append(name); beforeReply?(name)

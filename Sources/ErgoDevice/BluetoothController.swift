@@ -29,9 +29,9 @@ private final class PendingCommand {
     var nextWrite = 0
     let completion: (Result<Protocol30Response, Error>) -> Void
 
-    init(_ request: Protocol30Request, completion: @escaping (Result<Protocol30Response, Error>) -> Void) throws {
+    init(_ request: Protocol30Request, queueWrites: Bool = false, completion: @escaping (Result<Protocol30Response, Error>) -> Void) throws {
         self.request = request
-        self.exchange = try Protocol30Exchange(request: request)
+        self.exchange = try Protocol30Exchange(request: request, queueWrites: queueWrites)
         self.completion = completion
     }
 }
@@ -297,12 +297,12 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         scheduleRestoreRetry()
     }
 
-    private func send(_ request: Protocol30Request, completion: @escaping (Result<Protocol30Response, Error>) -> Void) {
+    private func send(_ request: Protocol30Request, queueWrites: Bool = false, completion: @escaping (Result<Protocol30Response, Error>) -> Void) {
         guard ready, target?.state == .connected, writeCharacteristic != nil, pending == nil else {
             completion(.failure(BluetoothFailure.message("Configuration connection is not ready or a command is already active")))
             return
         }
-        do { pending = try PendingCommand(request, completion: completion) }
+        do { pending = try PendingCommand(request, queueWrites: queueWrites, completion: completion) }
         catch { completion(.failure(error)); return }
         busy = true
         log("command", ["header": request.header.hex, "payload": request.payload.hex])
@@ -314,10 +314,11 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     private func writeNextChunk() {
         guard let pending, let target, let writeCharacteristic else { return }
-        guard let chunk = pending.exchange.nextWrite() else { return }
-        pending.nextWrite += 1
-        log("write", ["chunk": pending.nextWrite, "hex": chunk.hex])
-        target.writeValue(chunk, for: writeCharacteristic, type: .withResponse)
+        while let chunk = pending.exchange.nextWrite() {
+            pending.nextWrite += 1
+            log("write", ["chunk": pending.nextWrite, "hex": chunk.hex])
+            target.writeValue(chunk, for: writeCharacteristic, type: .withResponse)
+        }
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -414,8 +415,19 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     /// Fixed, opt-in research commands. Normal mappings never call this path.
+    public var lightingLabDisconnected: Bool { target?.state == .disconnected && !ready }
+    public func disconnectForLightingLab() throws {
+        guard !busy, !driverModeVerified, !restoreOwed, let target, target.state == .connected else {
+            throw LightingLabError.message("Finish pending commands before the isolated frame test.")
+        }
+        ready = false; writeCharacteristic = nil
+        lightingTimer?.invalidate(); lightingTimer = nil
+        central?.cancelPeripheralConnection(target)
+    }
+
     public func runLightingLabCommand(_ operation: BluetoothLightingLabCommand,
                                       region: UInt8 = 0,
+                                      queueFrameWrites: Bool = false,
                                       completion: @escaping (Result<Data, Error>) -> Void) {
         guard ready, !busy, !keyboardEffectBusy, !driverModeVerified, !restoreOwed,
               !closing, !restoreRequested, !restorationChain else {
@@ -423,8 +435,11 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             return
         }
         do {
+            if queueFrameWrites {
+                guard case .frame = operation else { throw LightingLabError.invalidPattern }
+            }
             let request = try operation.request(transaction: transactions.next(), region: region)
-            send(request) { result in completion(result.map(\.payload)) }
+            send(request, queueWrites: queueFrameWrites) { result in completion(result.map(\.payload)) }
         } catch { completion(.failure(error)) }
     }
 
