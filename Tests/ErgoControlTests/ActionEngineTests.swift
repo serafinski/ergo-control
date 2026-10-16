@@ -11,7 +11,7 @@ final class ActionEngineTests: XCTestCase {
         let engine = ActionEngine(functionActionOutput: { actions.append($0) },
                                   repeatTiming: { NativeKeyboardTiming(delay: 0.05, interval: 0.05) },
                                   keyOutput: { keys.append($0); _ = $1 })
-        let requests: [(UInt8, NativeFunctionAction)] = [(60,.missionControl),(61,.raycast),(62,.dictation),(63,.emoji),(67,.lockScreen)]
+        let requests: [(UInt8, NativeFunctionAction)] = [(60,.missionControl),(61,.spotlight),(62,.dictation),(63,.emoji),(67,.lockScreen)]
         for (usage, action) in requests {
             let before = actions.count
             engine.relay(usage, pressed: true)
@@ -28,6 +28,93 @@ final class ActionEngineTests: XCTestCase {
         XCTAssertEqual(actions.count, count, "Explicit shortcut mappings must remain raw F-keys")
         engine.stop()
         XCTAssertEqual(actions.count, count, "Stopping cannot re-trigger a system action")
+    }
+
+    func testFunctionProvidersRouteChoicesWithoutChangingExplicitShortcuts() {
+        var actions: [NativeFunctionAction] = []
+        var keys: [KeyboardOutput] = []
+        let engine = ActionEngine(functionActionOutput: { actions.append($0) }, keyOutput: { keys.append($0); _ = $1 })
+        engine.functionKeys = FunctionKeyPreferences(search: .raycast, dictation: .fluidVoice)
+        for usage: UInt8 in [61,62] { engine.relay(usage, pressed: true); engine.relay(usage, pressed: false) }
+        XCTAssertEqual(actions, [.raycast,.fluidVoice])
+        engine.functionKeys = FunctionKeyPreferences()
+        for usage: UInt8 in [61,62] { engine.relay(usage, pressed: true); engine.relay(usage, pressed: false) }
+        XCTAssertEqual(actions, [.raycast,.fluidVoice,.spotlight,.dictation])
+        engine.perform(MappingAction(.shortcut, "f4")); engine.perform(MappingAction(.shortcut, "f5"))
+        XCTAssertEqual(actions.count, 4)
+        XCTAssertEqual(keys.map(\.usage), [61,61,62,62])
+        engine.stop()
+    }
+
+    func testFluidVoiceFollowsPhysicalF5LifetimeAndReleasesAfterPreferenceChangeOrStop() {
+        var keys: [KeyboardOutput] = []
+        let engine = ActionEngine(fluidVoiceAvailable: { true },
+                                  repeatTiming: { NativeKeyboardTiming(delay: 0.05, interval: 0.05) },
+                                  keyOutput: { keys.append($0); _ = $1 })
+        engine.functionKeys.dictation = .fluidVoice
+        engine.relay(62, pressed: true); engine.relay(62, pressed: true)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.13))
+        XCTAssertEqual(keys, [KeyboardOutput(230, pressed: true, modifiers: 64)])
+        engine.functionKeys.dictation = .apple
+        engine.functionKeys.fluidVoiceShortcut = "ctrl+shift+space"
+        engine.relay(62, pressed: false)
+        XCTAssertEqual(keys.last, KeyboardOutput(230, pressed: false, modifiers: 0))
+        engine.relay(7, pressed: true); engine.relay(7, pressed: false)
+        XCTAssertEqual(keys.last, KeyboardOutput(7, pressed: false, modifiers: 0))
+        engine.functionKeys.dictation = .fluidVoice
+        engine.functionKeys.fluidVoiceShortcut = "rightoption"
+        engine.relay(62, pressed: true); engine.stop()
+        XCTAssertEqual(keys.suffix(2), [KeyboardOutput(230, pressed: true, modifiers: 64), KeyboardOutput(230, pressed: false, modifiers: 0)])
+        let count = keys.count
+        engine.relay(62, pressed: false)
+        XCTAssertEqual(keys.count, count)
+    }
+
+    func testFluidVoiceChordReleasesOnlyItsOwnModifiersAndRetainsThemDuringOtherInput() {
+        var keys: [KeyboardOutput] = []
+        let engine = ActionEngine(fluidVoiceAvailable: { true }, keyOutput: { keys.append($0); _ = $1 })
+        engine.functionKeys = FunctionKeyPreferences(dictation: .fluidVoice, fluidVoiceShortcut: "ctrl+shift+space")
+        engine.physicalModifiers = 1
+        engine.relay(62, pressed: true)
+        XCTAssertEqual(keys, [KeyboardOutput(225, pressed: true, modifiers: 3), KeyboardOutput(44, pressed: true, modifiers: 3)])
+        engine.relay(4, pressed: true); engine.relay(4, pressed: false)
+        XCTAssertEqual(keys.last, KeyboardOutput(4, pressed: false, modifiers: 3))
+        engine.relay(62, pressed: false)
+        XCTAssertEqual(keys.suffix(2), [KeyboardOutput(44, pressed: false, modifiers: 3), KeyboardOutput(225, pressed: false, modifiers: 1)])
+        XCTAssertFalse(keys.contains { $0.usage == 224 }, "Do not release the user's held Control key")
+        engine.functionKeys.fluidVoiceShortcut = "rightoption"
+        engine.physicalModifiers = 0; engine.relay(62, pressed: true)
+        engine.physicalModifiers = 64; engine.relay(230, pressed: true)
+        let count = keys.count
+        engine.relay(62, pressed: false)
+        XCTAssertEqual(keys.count, count, "A real Option press takes ownership before F5 is released")
+        engine.physicalModifiers = 0; engine.relay(230, pressed: false)
+        XCTAssertEqual(keys.last, KeyboardOutput(230, pressed: false, modifiers: 0))
+        let before = keys.count
+        engine.relay(62, pressed: true)
+        engine.physicalModifiers = 64; engine.relay(230, pressed: true)
+        engine.physicalModifiers = 0; engine.relay(230, pressed: false)
+        XCTAssertEqual(keys.count, before + 1, "Physical Option cannot release the still-held F5 trigger")
+        engine.relay(62, pressed: false)
+        XCTAssertEqual(keys.suffix(2), [KeyboardOutput(230, pressed: true, modifiers: 64), KeyboardOutput(230, pressed: false, modifiers: 0)])
+        engine.relay(62, pressed: true)
+        engine.physicalModifiers = 64; engine.relay(230, pressed: true)
+        engine.stop()
+        XCTAssertEqual(keys.last, KeyboardOutput(230, pressed: false, modifiers: 0), "Stop must release a shared modifier even when its first press came from Fluid Voice")
+    }
+
+    func testUnavailableFluidVoiceAndInvalidShortcutLeaveOrdinaryInputWorking() {
+        for available in [false,true] {
+            var keys: [KeyboardOutput] = [], notices: [String] = [], errors: [String] = []
+            let engine = ActionEngine(fluidVoiceAvailable: { available }, keyOutput: { keys.append($0); _ = $1 })
+            engine.functionKeys = FunctionKeyPreferences(dictation: .fluidVoice, fluidVoiceShortcut: available ? "d" : "rightoption")
+            engine.onNotice = { notices.append($0) }; engine.onError = { errors.append($0) }
+            engine.relay(62, pressed: true); engine.relay(62, pressed: false)
+            XCTAssertEqual(notices.count, 1); XCTAssertTrue(keys.isEmpty); XCTAssertTrue(errors.isEmpty)
+            engine.relay(4, pressed: true); engine.relay(4, pressed: false)
+            XCTAssertEqual(keys.map(\.usage), [4,4])
+            engine.stop()
+        }
     }
 
     func testF11F12UseKeyboardBacklightCallbackInRequestedDirectionsAndStopOnRelease() {

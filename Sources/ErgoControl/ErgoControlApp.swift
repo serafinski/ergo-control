@@ -209,6 +209,7 @@ struct ControlSettingsView: View {
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(6)
                         }
                         KeyboardLightingView(model: model)
+                        FunctionKeySettingsView(model: model)
                         GroupBox("Try your mappings") {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Click below to test ordinary typing, shortcuts, and macros. This text is not saved.")
@@ -333,7 +334,7 @@ struct ControlSettingsView: View {
                     Text(ControlCatalog.label(model.selectedControl)).font(.title.bold())
                     Text(model.alternateEditing ? "Alternate layer" : "Standard layer").foregroundStyle(.secondary)
                     Divider()
-                    ActionEditor(action: mapping, control: model.selectedControl)
+                    ActionEditor(action: mapping, control: model.selectedControl, functionKeys: model.configuration.functionKeys)
                         .disabled(model.inputAccessMode == .macroButtons && !InputAccessMode.macroButtons.supports(control: model.selectedControl))
                     if model.alternateEditing {
                         Text("Assign Hold alternate layer to a button in the standard layer first.").font(.caption).foregroundStyle(.secondary)
@@ -386,6 +387,7 @@ struct ControlSettingsView: View {
 struct ActionEditor: View {
     @Binding var action: MappingAction
     var control: String? = nil
+    var functionKeys = FunctionKeyPreferences()
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Action", selection: Binding(get: { action.kind }, set: { kind in
@@ -436,7 +438,7 @@ struct ActionEditor: View {
                 Text("Opens the current Codex slot. Enable the connection in the Codex section first.").font(.caption).foregroundStyle(.secondary)
             case .standard:
                 if let control, control.hasPrefix("key:"), let usage = UInt8(control.dropFirst(4)),
-                   let label = NativeFunctionKeys.label(for: usage) {
+                   let label = NativeFunctionKeys.label(for: usage, preferences: functionKeys) {
                     Text("Default: \(label). Choose Shortcut and enter \(ControlCatalog.label(control).lowercased()) to send the function key instead.").font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Use the normal action or current dial mode. With chat keys enabled, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)

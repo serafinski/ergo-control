@@ -83,6 +83,7 @@ final class ControlModel: ObservableObject {
         relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.") }
         relay.onFailure = { [weak self] message in self?.stop(message) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message) }
+        engine.onNotice = { [weak self] message in self?.error = message }
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
@@ -187,6 +188,9 @@ final class ControlModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
     private func validate() throws {
+        if configuration.functionKeys.dictation == .fluidVoice {
+            _ = try DictationTrigger(configuration.functionKeys.fluidVoiceShortcut)
+        }
         for profile in configuration.profiles {
             for action in Array(profile.mappings.values) + Array(profile.alternate.values) + profile.dialModes.flatMap({ [$0.clockwise, $0.counterclockwise] }) {
                 switch action.kind {
@@ -237,6 +241,7 @@ final class ControlModel: ObservableObject {
     }
     private func updateProfile(forceIndicator: Bool = false) {
         engine.endAppSwitcher()
+        engine.functionKeys = configuration.functionKeys
         let previousMode = indicatedMode
         activeProfileName = activeProfile.name
         let modes = activeProfile.dialModes.filter(\.enabled)

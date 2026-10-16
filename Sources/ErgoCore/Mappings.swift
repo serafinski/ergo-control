@@ -70,14 +70,19 @@ public struct MappingConfiguration: Codable, Equatable {
     public var profiles: [MappingProfile]
     public var manualProfileID: UUID
     public var autoSwitch = true
+    public var functionKeys = FunctionKeyPreferences()
     public init() { let profile = MappingProfile(); profiles = [profile]; manualProfileID = profile.id }
-    private enum CodingKeys: String, CodingKey { case schema, profiles, manualProfileID, autoSwitch }
+    private enum CodingKeys: String, CodingKey { case schema, profiles, manualProfileID, autoSwitch, functionKeys }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         schema = try values.decode(Int.self, forKey: .schema)
         profiles = try values.decode([MappingProfile].self, forKey: .profiles)
         manualProfileID = try values.decode(UUID.self, forKey: .manualProfileID)
         autoSwitch = try values.decode(Bool.self, forKey: .autoSwitch)
+        // Pre-selector builds used Raycast. Preserve that behavior on upgrade;
+        // brand-new configurations use the system providers instead.
+        functionKeys = try values.decodeIfPresent(FunctionKeyPreferences.self, forKey: .functionKeys)
+            ?? FunctionKeyPreferences(search: .raycast)
         if schema == 1 {
             for index in profiles.indices {
                 if !profiles[index].dialModes.contains(where: {

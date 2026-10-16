@@ -12,7 +12,7 @@ public enum NativeExtraKeys {
 }
 
 public enum NativeFunctionAction: Equatable {
-    case missionControl, raycast, dictation, emoji, lockScreen
+    case missionControl, spotlight, raycast, dictation, fluidVoice, emoji, lockScreen
     case keyboardBrightnessUp, keyboardBrightnessDown
 
     public var brightnessStep: Int? {
@@ -25,8 +25,10 @@ public enum NativeFunctionAction: Equatable {
     public var label: String {
         switch self {
         case .missionControl: return "Mission Control"
+        case .spotlight: return "Spotlight"
         case .raycast: return "Raycast"
         case .dictation: return "Mac dictation"
+        case .fluidVoice: return "Fluid Voice"
         case .emoji: return "Emoji picker"
         case .lockScreen: return "Lock screen"
         case .keyboardBrightnessUp: return "Keyboard brightness up"
@@ -45,11 +47,11 @@ public enum NativeFunctionKeys {
         default: return nil
         }
     }
-    public static func action(for usage: UInt8) -> NativeFunctionAction? {
+    public static func action(for usage: UInt8, preferences: FunctionKeyPreferences = .init()) -> NativeFunctionAction? {
         switch usage {
         case 60: return .missionControl // F3
-        case 61: return .raycast        // F4
-        case 62: return .dictation      // F5
+        case 61: return preferences.search == .spotlight ? .spotlight : .raycast // F4
+        case 62: return preferences.dictation == .apple ? .dictation : .fluidVoice // F5
         case 63: return .emoji          // F6
         case 67: return .lockScreen     // F10
         case 68: return .keyboardBrightnessDown // F11
@@ -57,10 +59,10 @@ public enum NativeFunctionKeys {
         default: return nil
         }
     }
-    public static func label(for usage: UInt8) -> String? {
+    public static func label(for usage: UInt8, preferences: FunctionKeyPreferences = .init()) -> String? {
         if usage == 58 { return "Screen brightness down" }
         if usage == 59 { return "Screen brightness up" }
-        return action(for: usage)?.label
+        return action(for: usage, preferences: preferences)?.label
     }
 }
 

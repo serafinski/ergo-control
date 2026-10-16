@@ -93,6 +93,8 @@ final class ActionEngine {
     var onBattery: (() -> Void)?
     var onCodexSlot: ((Int) -> Void)?
     var onError: ((String) -> Void)?
+    var onNotice: ((String) -> Void)?
+    var functionKeys = FunctionKeyPreferences()
     var physicalModifiers: UInt8 = 0
     private let source = CGEventSource(stateID: .privateState)
     private var down: Set<UInt8> = []
@@ -110,24 +112,31 @@ final class ActionEngine {
     private let keyOutput: ((KeyboardOutput, Bool) -> Void)?
     private let mediaOutput: ((UInt16, Bool) -> Void)?
     private let functionActionOutput: ((NativeFunctionAction) -> Void)?
+    private let fluidVoiceAvailable: () -> Bool
+    private var heldFluidTrigger: (trigger: DictationTrigger, ownedModifiers: UInt8)?
     private let repeatTiming: () -> NativeKeyboardTiming
     private let applicationToggle = ApplicationToggle()
 
     init(mediaOutput: ((UInt16, Bool) -> Void)? = nil,
          functionActionOutput: ((NativeFunctionAction) -> Void)? = nil,
+         fluidVoiceAvailable: @escaping () -> Bool = {
+             NSRunningApplication.runningApplications(withBundleIdentifier: "com.FluidApp.app").contains { !$0.isTerminated }
+         },
          repeatTiming: @escaping () -> NativeKeyboardTiming = {
              NativeKeyboardTiming(delay: NSEvent.keyRepeatDelay, interval: NSEvent.keyRepeatInterval)
          }, keyOutput: ((KeyboardOutput, Bool) -> Void)? = nil) {
         self.keyOutput = keyOutput; self.mediaOutput = mediaOutput
         self.functionActionOutput = functionActionOutput
+        self.fluidVoiceAvailable = fluidVoiceAvailable
         self.repeatTiming = repeatTiming
     }
 
     func key(_ usage: UInt8, pressed: Bool, repeated: Bool = false, modifiers: UInt8? = nil, tracked: Bool = true) {
         guard MacKeys.codes[usage] != nil else { onError?("This keyboard key needs support (\(usage)); mappings were stopped"); return }
+        let modifiers = modifiers ?? (physicalModifiers | (heldFluidTrigger?.ownedModifiers ?? 0))
         guard let event = MacKeys.event(usage: usage, pressed: pressed, repeated: repeated,
-                                       modifiers: modifiers ?? physicalModifiers, capsLock: capsLock, source: source) else { return }
-        if let keyOutput { keyOutput(KeyboardOutput(usage, pressed: pressed, modifiers: modifiers ?? physicalModifiers), repeated) }
+                                       modifiers: modifiers, capsLock: capsLock, source: source) else { return }
+        if let keyOutput { keyOutput(KeyboardOutput(usage, pressed: pressed, modifiers: modifiers), repeated) }
         else { event.post(tap: .cghidEventTap) }
         if !repeated && tracked {
             if pressed { down.insert(usage) } else { down.remove(usage) }
@@ -140,7 +149,7 @@ final class ActionEngine {
         if usage == 57 && pressed { capsLock.toggle() }
         nativeKey(usage, pressed: pressed)
         guard usage < 224, usage != 57 else { return }
-        if NativeFunctionKeys.action(for: usage).map({ $0.brightnessStep == nil }) == true {
+        if NativeFunctionKeys.action(for: usage, preferences: functionKeys).map({ $0.brightnessStep == nil }) == true {
             if pressed { repeatTimer?.invalidate(); repeatTimer = nil; repeating = nil }
             return
         }
@@ -162,9 +171,11 @@ final class ActionEngine {
     }
 
     private func nativeKey(_ usage: UInt8, pressed: Bool, repeated: Bool = false) {
+        // Release the trigger that owned this press, even if preferences changed.
+        if usage == 62, !pressed { releaseFluidVoice(); return }
         if let consumer = NativeFunctionKeys.consumerUsage(for: usage) {
             _ = media(consumer, pressed: pressed, repeated: repeated)
-        } else if let action = NativeFunctionKeys.action(for: usage) {
+        } else if let action = NativeFunctionKeys.action(for: usage, preferences: functionKeys) {
             guard pressed, !repeated || action.brightnessStep != nil else { return }
             if let functionActionOutput { functionActionOutput(action) }
             else { performFunctionAction(action) }
@@ -175,10 +186,12 @@ final class ActionEngine {
         if let step = action.brightnessStep { onBrightness?(step); return }
         switch action {
         case .missionControl: openFunctionApplication("com.apple.exposelauncher", name: action.label)
+        case .spotlight: openFunctionApplication("com.apple.Spotlight", name: action.label)
         case .raycast: openFunctionApplication("com.raycast.macos", name: action.label)
         case .dictation:
             guard let events = MacKeys.dictationEvents(modifiers: physicalModifiers, capsLock: capsLock, source: source) else { return }
             for event in events { event.post(tap: .cghidEventTap) }
+        case .fluidVoice: pressFluidVoice()
         case .emoji:
             if let shortcut = try? KeyChord("ctrl+cmd+space") { chord(shortcut) }
         case .lockScreen:
@@ -187,19 +200,59 @@ final class ActionEngine {
         }
     }
 
+    private func pressFluidVoice() {
+        guard heldFluidTrigger == nil else { return }
+        guard fluidVoiceAvailable() else {
+            onNotice?("Open Fluid Voice before using F5. Its shortcut must match Function keys in Ergo Control."); return
+        }
+        do {
+            let trigger = try DictationTrigger(functionKeys.fluidVoiceShortcut)
+            let owned = trigger.modifiers & ~physicalModifiers
+            guard trigger.usage != nil || owned != 0 else {
+                onNotice?("Release the Fluid Voice shortcut modifier before pressing F5."); return
+            }
+            heldFluidTrigger = (trigger, owned)
+            var modifiers = physicalModifiers
+            for bit in 0..<8 where owned & (1 << bit) != 0 {
+                modifiers |= 1 << bit
+                let usage = UInt8(224 + bit)
+                if nativeOwners.change(usage, owner: "fluidVoice:\(usage)", pressed: true) {
+                    key(usage, pressed: true, modifiers: modifiers)
+                }
+            }
+            if let usage = trigger.usage { key(usage, pressed: true, modifiers: modifiers, tracked: false) }
+        } catch { onNotice?(error.localizedDescription) }
+    }
+
+    private func releaseFluidVoice() {
+        guard let held = heldFluidTrigger else { return }
+        heldFluidTrigger = nil
+        var modifiers = physicalModifiers | held.ownedModifiers
+        if let usage = held.trigger.usage { key(usage, pressed: false, modifiers: modifiers, tracked: false) }
+        for bit in (0..<8).reversed() where held.ownedModifiers & (1 << bit) != 0 {
+            modifiers &= ~(1 << bit); modifiers |= physicalModifiers
+            // A physically held modifier remains owned by its hardware input.
+            let usage = UInt8(224 + bit)
+            let released = nativeOwners.change(usage, owner: "fluidVoice:\(usage)", pressed: false)
+            if released, physicalModifiers & (1 << bit) == 0 {
+                key(usage, pressed: false, modifiers: modifiers)
+            }
+        }
+    }
+
     private func openFunctionApplication(_ bundleID: String, name: String) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            onError?("\(name) is not installed. Choose another mapping for this key."); return
+            onNotice?("\(name) is not installed. Choose another option under Function keys."); return
         }
         NSWorkspace.shared.openApplication(at: url, configuration: .init()) { [weak self] _, error in
-            if let error { DispatchQueue.main.async { self?.onError?("Could not open \(name): \(error.localizedDescription)") } }
+            if let error { DispatchQueue.main.async { self?.onNotice?("Could not open \(name): \(error.localizedDescription)") } }
         }
     }
 
     func media(_ usage: UInt16, pressed: Bool, repeated: Bool = false) -> Bool {
         endAppSwitcher()
         guard let event = MacMediaKeys.event(usage: usage, pressed: pressed, repeated: repeated,
-                                            modifiers: physicalModifiers) else { return false }
+                                            modifiers: physicalModifiers | (heldFluidTrigger?.ownedModifiers ?? 0)) else { return false }
         if let mediaOutput { mediaOutput(usage, pressed) }
         else { event.post(tap: .cghidEventTap) }
         if pressed { heldMedia.insert(usage) } else { heldMedia.remove(usage) }
@@ -310,6 +363,7 @@ final class ActionEngine {
     }
     func stop() {
         endAppSwitcher()
+        releaseFluidVoice()
         applicationToggle.cancelPending()
         generation += 1; jobs.forEach { $0.cancel() }; jobs.removeAll(); macroActive = false
         repeatTimer?.invalidate(); repeatTimer = nil; repeating = nil

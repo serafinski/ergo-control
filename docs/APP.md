@@ -155,7 +155,7 @@ Default physical F1/F2 now send macOS screen-brightness down/up while the full k
 Status waves now settle on a steady blue M1–M5 zone after the starting sweep, keeping the existing saved effect until work ends. A delayed starting sweep also settles on blue rather than releasing the signal. Repeated hooks send no extra frames. Approval still bounces continuously; completion makes its green round trip and restores the previous effect. Disable, idle, mapping stop, and recovery retain the existing restoration behavior. All 148 tests pass; hardware confirmation of these two fixes remains pending. The helper and hooks are unchanged.
 
 
-## Mac function-row defaults (0.6.6)
+## Mac function-row defaults (0.6.7)
 
 The user reports the 0.6.4 brightness and blue-hold changes appear to work, then requested these additional primary actions while mappings are enabled:
 
@@ -163,14 +163,25 @@ The user reports the 0.6.4 brightness and blue-hold changes appear to work, then
 | --- | --- |
 | F1 / F2 | Screen brightness down / up |
 | F3 | Mission Control |
-| F4 | Open Raycast |
-| F5 | Native Mac dictation |
+| F4 | Spotlight or Raycast (choose under Function keys) |
+| F5 | Apple dictation or Fluid Voice (choose under Function keys) |
 | F6 | Emoji picker |
 | F10 | Lock screen |
 | F11 / F12 | Ergo keyboard backlight down / up |
 
 F11/F12 directions include the user's correction in 0.6.6: F11 decreases brightness and F12 increases it. F7–F9 retain ordinary function-key output. Explicit mappings and the alternate layer take priority over these defaults. To send an ordinary F-key, use Add ordinary key, choose that F-key, then save a Shortcut containing its name (for example f3). Its Default editor describes the built-in action.
 
-Mission Control and Raycast use macOS application reopening by bundle identifier, without assuming a configured launcher hotkey. Raycast must already be installed. Dictation uses a balanced Fn-D sequence; Emoji uses Control-Command-Space; lock uses Control-Command-Q. These are native actions, so Dictation availability still follows macOS Keyboard settings. One-shot actions do not auto-repeat or trigger on release. Backlight adjustments use the existing device callback, ordered five-percent steps, readback, and percentage popup, including key repeat while held. Firmware Fn-row settings and the input helper are unchanged; separate physical Fn-layer behavior is not claimed.
+Mission Control, Spotlight, and Raycast use macOS application reopening by bundle identifier, without assuming a configured launcher hotkey. Raycast must already be installed. Dictation uses a balanced Fn-D sequence; Emoji uses Control-Command-Space; lock uses Control-Command-Q. These are native actions, so Dictation availability still follows macOS Keyboard settings. One-shot actions do not auto-repeat or trigger on release. Backlight adjustments use the existing device callback, ordered five-percent steps, readback, and percentage popup, including key repeat while held. Firmware Fn-row settings and the input helper are unchanged; separate physical Fn-layer behavior is not claimed.
 
-All 151 automated tests pass. Tests intercept actions and construct events without launching apps, starting dictation, locking the Mac, or posting input. Hardware confirmation of the new F3–F12 defaults remains pending. Native shortcut reference: [Apple keyboard shortcuts](https://support.apple.com/en-ie/102650).
+All 157 automated tests pass. Tests intercept actions and construct events without launching apps, starting dictation, locking the Mac, or posting input. Hardware confirmation of the new F3–F12 defaults remains pending. Native shortcut reference: [Apple keyboard shortcuts](https://support.apple.com/en-ie/102650).
+
+
+## Search and dictation choices (0.6.7)
+
+Under Keyboard → Function keys, choose F4 · Search (Spotlight / Raycast) and F5 · Dictation (Apple dictation / Fluid Voice), then Save changes. These choices apply to all profiles. An explicit custom F4/F5 mapping still takes priority. Fresh installations use Spotlight and Apple dictation; upgrading existing settings preserves the previous Raycast search behavior. Preferences remain in the local profiles file; no vendor or system settings are changed.
+
+Fluid Voice must be installed and running. Open Fluid Voice in the panel starts the existing app; Ergo Control does not install it or its models. Set Fluid Voice shortcut to the same trigger used by Fluid Voice: rightoption is the default in the inspected 1.6.11 release. Other sided modifiers (for example leftcontrol or rightcommand) and ordinary modified key chords (for example ctrl+shift+space) are supported. Bare letter/space triggers are refused. Fn-only and mouse triggers are not supported by this adapter. Fluid Voice's toggle/hold behavior remains its own setting: Ergo Control forwards F5 press/release as the matching trigger press/release. It does not use hidden debug notifications, read transcripts, capture microphone audio, or include Fluid Voice code.
+
+The trigger is latched at press time and released even if its preference changes while held. Stop/disconnect/sleep/quit use the existing engine stop path to release it. Modifiers already physically held remain owned by the keyboard. If Fluid Voice is unavailable or the trigger is invalid, a message appears and ordinary mappings remain active. Missing optional search apps also produce a message without stopping input. Spotlight opens directly, so it does not depend on whether Raycast has taken over Command-Space.
+
+All 157 tests pass, including settings migration/roundtrip, provider routing, explicit shortcut overrides, hold/release and preference changes, stop-time release, physical modifier ownership, invalid triggers, and unavailable Fluid Voice. Hardware confirmation of switching providers and recording through F5 remains pending. Interface reference: [Fluid Voice 1.6.11 shortcut settings](https://github.com/altic-dev/FluidVoice/blob/9bf99b4f51839c6927022ed76630533b0329fa32/Sources/Fluid/Persistence/SettingsStore.swift).
