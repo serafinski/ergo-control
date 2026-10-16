@@ -83,9 +83,9 @@ public enum CodexSelectionMode: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
     public var label: String {
         switch self {
-        case .recent: return "Most recent chats"
-        case .pinned: return "Pinned chats"
-        case .fixed: return "Fixed assignments"
+        case .recent: return "Recent Codex chats"
+        case .pinned: return "Pinned Codex chats"
+        case .fixed: return "Fixed Codex assignments"
         }
     }
 }

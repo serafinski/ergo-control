@@ -59,8 +59,10 @@ struct ControlMenu: View {
         if model.codex.settings.enabled {
             Divider()
             Text(model.codex.settings.selection.label)
+            Text("\(model.codex.assignedSlotCount) of 5 Codex chat keys assigned")
             ForEach(model.codex.displaySlots) { slot in
-                Button("M\(slot.id) · \(slot.name) · \(model.codex.activity(slot).label)") { model.codex.openSlot(slot.id) }
+                let summary = slot.threadID == nil ? model.codex.emptySlotLabel : "\(slot.name) · \(model.codex.activity(slot).label)"
+                Button("M\(slot.id) · \(summary)") { model.codex.openSlot(slot.id) }
                     .disabled(slot.url == nil)
             }
         }

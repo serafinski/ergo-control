@@ -5,65 +5,74 @@ import ErgoCore
 struct CodexSettingsView: View {
     @ObservedObject var model: ControlModel
     var body: some View {
-        GroupBox("Codex · five chat slots") {
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("Connect to Codex", isOn: Binding(get: { model.codex.settings.enabled }, set: model.codex.setEnabled))
-                Text("M1–M5 follow your five most recent chats by default. Choose Pinned chats to follow your pinned order, or Fixed assignments to choose chats yourself.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if model.codex.settings.enabled {
-                    Picker("Chat selection", selection: Binding(get: { model.codex.settings.selection }, set: model.codex.setSelection)) {
-                        ForEach(CodexSelectionMode.allCases) { mode in Text(mode.label).tag(mode) }
-                    }
-                    Toggle("Use unmapped M1–M5 for Codex chats", isOn: Binding(get: { model.codex.settings.useUnmappedMacroKeys }, set: model.codex.setUseUnmappedMacroKeys))
-                    Text("With mappings enabled, macro keys set to Default open their current chat slot. Your explicit mappings and alternate-layer actions take precedence.")
+        VStack(alignment: .leading, spacing: 12) {
+            GroupBox("Codex chats in ChatGPT") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Connect to Codex", isOn: Binding(get: { model.codex.settings.enabled }, set: model.codex.setEnabled))
+                    Text("M1–M5 follow your five most recent Codex chats by default. Choose Pinned Codex chats to follow their pinned order, or Fixed Codex assignments to choose them yourself.")
                         .font(.caption).foregroundStyle(.secondary)
-                    if model.codex.settings.selection != .fixed {
-                        HStack {
-                            Text(model.codex.historyMessage.isEmpty ? "Reading ChatGPT chats…" : model.codex.historyMessage).font(.caption)
-                            Spacer()
-                            Button("Refresh chats") { model.codex.refreshHistory() }
+                    if model.codex.settings.enabled {
+                        Picker("Chat selection", selection: Binding(get: { model.codex.settings.selection }, set: model.codex.setSelection)) {
+                            ForEach(CodexSelectionMode.allCases) { mode in Text(mode.label).tag(mode) }
                         }
-                        Text("The list refreshes automatically, including while the menu is closed. A key always opens the chat currently shown for its slot.")
+                        Text("\(model.codex.assignedSlotCount) of 5 macro keys have a Codex chat")
                             .font(.caption).foregroundStyle(.secondary)
-                        Text("Lists local Codex chats from ChatGPT. Ordinary ChatGPT conversations and remote-only chats are not included.")
+                        Toggle("Use unmapped M1–M5 for Codex chats", isOn: Binding(get: { model.codex.settings.useUnmappedMacroKeys }, set: model.codex.setUseUnmappedMacroKeys))
+                        Text("With mappings enabled, macro keys set to Default open their current chat slot. Your explicit mappings and alternate-layer actions take precedence.")
                             .font(.caption).foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Button("Install status hooks") { model.codex.installHooks() }
-                        Button("Review hooks file") { NSWorkspace.shared.open(model.codex.hooksURL) }
-                        Button("Remove status hooks") { model.codex.installHooks(remove: true) }
-                    }
-                    Text("Review and trust ErgoCodexHook if ChatGPT asks. Once accepted, keep using the desktop app normally. Events report working, approval requested, and turn ended; they do not report unread messages or every question.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(model.codex.displaySlots) { slot in
-                        if model.codex.settings.selection == .fixed {
-                            CodexSlotEditor(slot: slot, activity: model.codex.activity(slot)) { name, link in
-                                model.codex.assign(slot.id - 1, name: name, link: link)
-                            } open: { model.codex.openSlot(slot.id) }
-                        } else {
+                        if model.codex.settings.selection != .fixed {
                             HStack {
-                                Text("M\(slot.id)").bold()
-                                Text(slot.threadID == nil ? "No chat" : slot.name).lineLimit(1)
+                                Text(model.codex.historyMessage.isEmpty ? "Reading Codex chats…" : model.codex.historyMessage).font(.caption)
                                 Spacer()
-                                Text(model.codex.activity(slot).label).font(.caption).foregroundStyle(.secondary)
-                                Button("Open chat") { model.codex.openSlot(slot.id) }.disabled(slot.url == nil)
+                                Button("Refresh chats") { model.codex.refreshHistory() }
+                            }
+                            Text("The list refreshes automatically, including while the menu is closed. A key always opens the chat currently shown for its slot.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Lists local Codex chats from ChatGPT. Ordinary ChatGPT conversations and remote-only chats are not included.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Button("Install status hooks") { model.codex.installHooks() }
+                            Button("Review hooks file") { NSWorkspace.shared.open(model.codex.hooksURL) }
+                            Button("Remove status hooks") { model.codex.installHooks(remove: true) }
+                        }
+                        Text("Review and trust ErgoCodexHook if ChatGPT asks. Once accepted, keep using the desktop app normally. Events report working, approval requested, and turn ended; they do not report unread messages or every question.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ForEach(model.codex.displaySlots) { slot in
+                            if model.codex.settings.selection == .fixed {
+                                CodexSlotEditor(slot: slot, activity: model.codex.activity(slot)) { name, link in
+                                    model.codex.assign(slot.id - 1, name: name, link: link)
+                                } open: { model.codex.openSlot(slot.id) }
+                            } else {
+                                HStack {
+                                    Text("M\(slot.id)").bold()
+                                    Text(slot.threadID == nil ? model.codex.emptySlotLabel : slot.name).lineLimit(1)
+                                    Spacer()
+                                    Text(slot.threadID == nil ? "Unassigned" : model.codex.activity(slot).label).font(.caption).foregroundStyle(.secondary)
+                                    Button("Open chat") { model.codex.openSlot(slot.id) }.disabled(slot.url == nil)
+                                }
                             }
                         }
-                    }
-                    HStack {
-                        Button("Create Codex mappings profile") { model.createCodexProfile() }
-                        Text("Optional: replace all five actions in a separate profile. Existing profiles are preserved.")
+                        HStack {
+                            Button("Create Codex mappings profile") { model.createCodexProfile() }
+                            Text("Optional: replace all five actions in a separate profile. Existing profiles are preserved.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Toggle("Show Codex status on the macro column", isOn: Binding(get: { model.codex.settings.lighting }, set: model.codex.setLighting))
+                        Text("While mappings are enabled: amber = approval, blue = working, green = turn ended, white = idle. All five macro keys share one color; the most urgent assigned chat wins. Other keys stay white. Your previous effect returns when this is switched off or mappings stop. Keep brightness above 0%.")
                             .font(.caption).foregroundStyle(.secondary)
+                        if !model.bluetooth.macroStatusLightingMessage.isEmpty {
+                            Text(model.bluetooth.macroStatusLightingMessage).font(.caption)
+                        }
                     }
-                    Toggle("Show Codex status on the macro column", isOn: Binding(get: { model.codex.settings.lighting }, set: model.codex.setLighting))
-                    Text("While mappings are enabled: amber = approval, blue = working, green = turn ended, white = idle. All five macro keys share one color; the most urgent assigned chat wins. Other keys stay white. Your previous effect returns when this is switched off or mappings stop. Keep brightness above 0%.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if !model.bluetooth.macroStatusLightingMessage.isEmpty {
-                        Text(model.bluetooth.macroStatusLightingMessage).font(.caption)
-                    }
-                }
-                Text(model.codex.message).font(.callout).textSelection(.enabled)
-            }.padding(8)
+                    Text(model.codex.message).font(.callout).textSelection(.enabled)
+                }.padding(8)
+            }
+            GroupBox("ChatGPT conversations") {
+                Text("These have a separate recent and pinned list. They are not supported by Ergo Control yet, so they do not fill the Codex chat keys above.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+            }
         }
     }
 }

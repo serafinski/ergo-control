@@ -46,16 +46,16 @@ final class CodexBridge: ObservableObject {
         self.history?.onRecent = { [weak self] slots in
             guard let self else { return }
             if self.recentSlots != slots { self.recentSlots = slots }
-            if self.settings.selection == .recent && self.historyMessage != "Recent chats synced from ChatGPT." {
-                self.historyMessage = "Recent chats synced from ChatGPT."
+            if self.settings.selection == .recent && self.historyMessage != "Recent Codex chats synced." {
+                self.historyMessage = "Recent Codex chats synced."
             }
             self.updateLighting()
         }
         self.history?.onPinned = { [weak self] slots in
             guard let self else { return }
             if self.pinnedSlots != slots { self.pinnedSlots = slots }
-            if self.settings.selection == .pinned && self.historyMessage != "Pinned chats synced from ChatGPT." {
-                self.historyMessage = "Pinned chats synced from ChatGPT."
+            if self.settings.selection == .pinned && self.historyMessage != "Pinned Codex chats synced." {
+                self.historyMessage = "Pinned Codex chats synced."
             }
             self.updateLighting()
         }
@@ -96,6 +96,14 @@ final class CodexBridge: ObservableObject {
         case .recent: return recentSlots
         case .pinned: return pinnedSlots
         case .fixed: return settings.slots
+        }
+    }
+    var assignedSlotCount: Int { displaySlots.filter { $0.threadID != nil }.count }
+    var emptySlotLabel: String {
+        switch settings.selection {
+        case .recent: return "No other recent Codex chat"
+        case .pinned: return "No other pinned Codex chat"
+        case .fixed: return "No Codex chat assigned"
         }
     }
     func setSelection(_ mode: CodexSelectionMode) {
