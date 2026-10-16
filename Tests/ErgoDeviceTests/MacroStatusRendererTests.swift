@@ -8,6 +8,7 @@ final class MacroStatusRendererTests: XCTestCase {
         var saved: SavedMacroLighting?
         var operations: [String] = []
         var frames: [[DialColor]] = []
+        var clock: TimeInterval = 100
         var writesBeforeSnapshot = false
         var allowed = true
         var saveFails = false
@@ -32,7 +33,7 @@ final class MacroStatusRendererTests: XCTestCase {
         }, load: { [unowned self] in saved }, persist: { [unowned self] value in
             if saveFails { throw LightingLabError.invalidPacket }
             operations.append(value == nil ? "clear" : "save"); saved = value
-        }, allowed: { [unowned self] in allowed }, message: { _ in })
+        }, allowed: { [unowned self] in allowed }, message: { _ in }, uptime: { [unowned self] in clock })
     }
     func testSnapshotPrecedesEveryWriteAndFramesAreCoalesced() throws {
         let rig = Rig()
@@ -166,6 +167,73 @@ final class MacroStatusRendererTests: XCTestCase {
         rig.renderer.request(nil); rig.renderer.pump()
         XCTAssertNil(rig.saved)
         XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
+
+    func testCompletionWavePlaysOnceAndRestoresEvenBeforeStatusExpires() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        for _ in CodexCompletionWave.positions {
+            rig.renderer.pump(); rig.clock += 0.3
+        }
+        XCTAssertEqual(rig.frames.count, CodexCompletionWave.positions.count)
+        XCTAssertEqual(rig.frames, (0..<6).map(CodexCompletionWave.frame))
+        XCTAssertNil(rig.renderer.desired)
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 6, "An unchanged completion must never loop")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-b")
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 7, "A distinct completion can start a new pass")
+        rig.renderer.request(nil); rig.renderer.pump()
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 7, "An older consumed completion must not replay after another chat finishes")
+        XCTAssertFalse(rig.writesBeforeSnapshot)
+    }
+    func testCompletionWaveIsRateLimitedAndNewWorkCancelsIt() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.pump(); rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 1)
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2)
+        XCTAssertEqual(rig.frames.last?.first, CodexActivity.working.color)
+        XCTAssertTrue(rig.frames.last!.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
+        rig.clock += 20; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+    func testCompletionWaveDeadlineRestoresInsteadOfContinuingAfterDelay() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.pump()
+        rig.clock += CodexCompletionWave.maximumDuration
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 1)
+        XCTAssertNil(rig.saved)
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        XCTAssertFalse(rig.renderer.hasWork)
+    }
+
+    func testWaveCancelOrRejectedFrameStopsThePassAndRetainsVerifiedRestoration() {
+        for reject in [false, true] {
+            let rig = Rig(); rig.rejectFrame = reject
+            if !reject {
+                rig.beforeReply = { name in if name == "frame" { rig.renderer.request(nil) } }
+            }
+            rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+            rig.renderer.pump(); rig.beforeReply = nil
+            rig.renderer.pump()
+            XCTAssertEqual(rig.frames.count, 1)
+            XCTAssertNil(rig.saved)
+            rig.clock += 20; rig.renderer.pump()
+            XCTAssertEqual(rig.frames.count, 1)
+            XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+        }
     }
 
 }

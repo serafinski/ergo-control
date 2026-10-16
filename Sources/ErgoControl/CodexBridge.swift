@@ -17,6 +17,7 @@ final class CodexBridge: ObservableObject {
     private var timer: Timer?
     private var lastColor: DialColor?
     private var lastArea: CodexLightingArea = .macroColumn
+    private var lastCompletionID: String?
     private var lastActivities: [CodexActivity] = []
     private var lastExpiryRefresh = Date.distantPast
     private var nextHistoryRefresh = Date.distantPast
@@ -163,7 +164,7 @@ final class CodexBridge: ObservableObject {
     }
     private func advanceLightingTest() {
         guard let start = lightingTestStarted else { return }
-        let stage = CodexLightingTestStage.at(elapsed: uptime() - start)
+        let stage = CodexLightingTestStage.at(elapsed: uptime() - start, completionWave: settings.lightingArea == .completionWave)
         if stage != lightingTestStage {
             lightingTestStage = stage
             if stage == nil { lightingTestStarted = nil }
@@ -205,7 +206,8 @@ final class CodexBridge: ObservableObject {
         onLightingChange?(nil)
     }
     func activity(_ slot: CodexSlot) -> CodexActivity {
-        slot.threadID.flatMap { sessions[$0.lowercased()]?.activity(now: now()) } ?? .unknown
+        slot.threadID.flatMap { sessions[$0.lowercased()]?.activity(now: now(), completionDuration:
+            settings.lightingArea == .completionWave ? CodexCompletionWave.completionWindow : CodexSessionStatus.completionSignalDuration) } ?? .unknown
     }
     func poll() {
         advanceLightingTest()
@@ -262,18 +264,32 @@ final class CodexBridge: ObservableObject {
         let activities = displaySlots.map(activity)
         if activities != lastActivities { lastActivities = activities; objectWillChange.send() }
         let color = lightingColor
-        if color != lastColor || (color != nil && settings.lightingArea != lastArea) {
-            lastColor = color; lastArea = settings.lightingArea; onLightingChange?(color)
+        let completionID = lightingCompletionID
+        if color != lastColor || (color != nil && (settings.lightingArea != lastArea || completionID != lastCompletionID)) {
+            lastColor = color; lastArea = settings.lightingArea; lastCompletionID = completionID
+            onLightingChange?(color)
         }
     }
     var lightingColor: DialColor? {
         guard settings.enabled, settings.lighting else { return nil }
-        if let stage = lightingTestStage { return stage.activity?.color }
-        let state = CodexActivity.priority(displaySlots.map(activity))
+        let state = lightingActivity
         switch state {
         case .working, .attention, .finished: return state.color
         case .idle, .unknown: return nil
         }
+    }
+    private var lightingActivity: CodexActivity {
+        if let stage = lightingTestStage { return stage.activity ?? .idle }
+        return CodexActivity.priority(displaySlots.map(activity))
+    }
+    var lightingCompletionID: String? {
+        guard settings.enabled, settings.lighting, settings.lightingArea == .completionWave,
+              lightingActivity == .finished else { return nil }
+        if let start = lightingTestStarted { return "preview:\(start)" }
+        let event = displaySlots.filter { activity($0) == .finished }
+            .compactMap { $0.threadID.flatMap { sessions[$0.lowercased()]?.latest } }
+            .max { $0.time < $1.time }
+        return event.map { "\($0.sessionID):\($0.turnID ?? String($0.time.timeIntervalSinceReferenceDate))" }
     }
     func openSlot(_ number: Int) {
         guard settings.enabled else { message = "Enable the Codex connection first."; return }

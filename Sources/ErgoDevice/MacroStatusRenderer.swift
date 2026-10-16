@@ -2,7 +2,7 @@ import Foundation
 import ErgoCore
 
 /// Event-driven frames on the controller's existing acknowledged command queue.
-/// No second Bluetooth connection, timers, animation stream, or input capture.
+/// A completion wave shares the existing controller timer and command queue.
 final class MacroStatusRenderer {
     typealias Command = (BluetoothLightingLabCommand, UInt8, @escaping (Result<Data, Error>) -> Void) -> Void
     var desired: DialColor?
@@ -10,6 +10,12 @@ final class MacroStatusRenderer {
     private var rendered: DialColor?
     private var desiredArea: CodexLightingArea = .macroColumn
     private var renderedArea: CodexLightingArea?
+    private let uptime: () -> TimeInterval
+    private var completionID: String?
+    private var completedIDs: [String] = []
+    private var waveStarted: TimeInterval?
+    private var waveIndex = 0
+    private var nextWaveFrame: TimeInterval = 0
     private var selected = false
     private var failed = false
     private var retryAfter = Date.distantPast
@@ -20,20 +26,44 @@ final class MacroStatusRenderer {
     let message: (String) -> Void
     init(command: @escaping Command, load: @escaping () -> SavedMacroLighting?,
          persist: @escaping (SavedMacroLighting?) throws -> Void, allowed: @escaping () -> Bool,
-         message: @escaping (String) -> Void) {
+         message: @escaping (String) -> Void, uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.uptime = uptime
         self.command = command; self.load = load; self.persist = persist
         self.allowed = allowed; self.message = message
     }
-    func reset() { selected = false; rendered = nil; renderedArea = nil; failed = false; retryAfter = .distantPast }
-    func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn) {
-        desiredArea = area
-        if color == nil { desired = nil; reset() }
-        else if !failed { desired = color }
+    func reset() {
+        selected = false; rendered = nil; renderedArea = nil; failed = false; retryAfter = .distantPast
+        waveStarted = nil; waveIndex = 0; nextWaveFrame = 0
     }
-    var hasWork: Bool { !busy && Date() >= retryAfter && ((desired != nil && !failed && (desired != rendered || desiredArea != renderedArea)) || ((desired == nil || failed) && load() != nil)) }
+    private func consumeCompletion(_ id: String?) {
+        guard let id, !completedIDs.contains(id) else { return }
+        completedIDs.append(id)
+        if completedIDs.count > 32 { completedIDs.removeFirst() }
+    }
+    func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn, completionID id: String? = nil) {
+        let nextID = color != nil && area == .completionWave ? id : nil
+        if nextID != completionID { waveStarted = nil; waveIndex = 0; nextWaveFrame = 0 }
+        if color == nil {
+            consumeCompletion(completionID)
+            completionID = nil; desired = nil; desiredArea = area; reset()
+        } else if !failed {
+            desiredArea = area; completionID = nextID
+            desired = nextID.map { completedIDs.contains($0) } == true ? nil : color
+        }
+    }
+    var hasWork: Bool {
+        guard !busy, Date() >= retryAfter else { return false }
+        if (desired == nil || failed) && load() != nil { return true }
+        guard desired != nil, !failed else { return false }
+        if completionID != nil { return uptime() >= nextWaveFrame }
+        return desired != rendered || desiredArea != renderedArea
+    }
     func pump() {
         guard hasWork, allowed() else { return }
         busy = true
+        if let start = waveStarted, uptime() - start >= CodexCompletionWave.maximumDuration {
+            consumeCompletion(completionID); desired = nil; waveStarted = nil
+        }
         if desired == nil || failed { restore { _ in }; return }
         if let saved = load() {
             if selected { frame(region: saved.region) }
@@ -62,11 +92,25 @@ final class MacroStatusRenderer {
     private func frame(region: UInt8) {
         guard let color = desired else { busy = false; return }
         let area = desiredArea
-        step(.frame(MacroStatusFrame.colors(color, area: area)), region: region) { [weak self] _ in
-            self?.rendered = color; self?.renderedArea = area; self?.busy = false
-            self?.message(area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
+        let wave = completionID
+        if wave != nil && waveStarted == nil { waveStarted = uptime() }
+        let colors = wave != nil ? CodexCompletionWave.frame(waveIndex) : MacroStatusFrame.colors(color, area: area)
+        step(.frame(colors), region: region) { [weak self] _ in
+            guard let self else { return }
+            self.rendered = color; self.renderedArea = area; self.busy = false
+            if let wave, wave == self.completionID {
+                self.waveIndex += 1
+                self.nextWaveFrame = self.uptime() + CodexCompletionWave.minimumFrameInterval
+                if self.waveIndex == CodexCompletionWave.positions.count {
+                    self.consumeCompletion(wave); self.desired = nil; self.waveStarted = nil
+                    self.message("Completion wave finished · restoring previous effect")
+                } else { self.message("Completion wave · left to right") }
+            } else {
+                self.message(area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
+            }
         }
     }
+
     private func step(_ operation: BluetoothLightingLabCommand, region: UInt8, completion: @escaping (Data) -> Void) {
         guard allowed() else { busy = false; return }
         command(operation, region) { [weak self] result in

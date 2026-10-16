@@ -124,4 +124,13 @@ final class CodexIntegrationTests: XCTestCase {
         XCTAssertEqual(CodexActivity.finished.color, DialColor(red: 0, green: 255, blue: 0))
     }
 
+    func testCompletionWaveIsOneDirectionalPassAndPreviewLeavesTimeForAcknowledgements() {
+        let heads = (0..<6).map { index in CodexCompletionWave.frame(index).firstIndex(of: CodexActivity.finished.color)! }
+        XCTAssertEqual(heads, [0, 4, 8, 12, 16, 18])
+        XCTAssertTrue((0..<6).allSatisfy { CodexCompletionWave.frame($0).count == 19 })
+        XCTAssertEqual(CodexLightingTestStage.at(elapsed: 15.9, completionWave: true), .finished)
+        XCTAssertEqual(CodexLightingTestStage.at(elapsed: 16, completionWave: true), .restore)
+        XCTAssertNil(CodexLightingTestStage.at(elapsed: 20, completionWave: true))
+    }
+
 }

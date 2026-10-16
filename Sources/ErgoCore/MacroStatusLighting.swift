@@ -18,9 +18,15 @@ public struct SavedMacroLighting: Codable, Equatable {
 }
 
 public enum CodexLightingArea: String, Codable, CaseIterable, Identifiable {
-    case macroColumn, wholeKeyboard
+    case macroColumn, wholeKeyboard, completionWave
     public var id: String { rawValue }
-    public var label: String { self == .macroColumn ? "Macro column" : "Whole keyboard" }
+    public var label: String {
+        switch self {
+        case .macroColumn: return "Macro column"
+        case .wholeKeyboard: return "Whole keyboard · solid"
+        case .completionWave: return "Completion wave"
+        }
+    }
 }
 
 public enum MacroStatusFrame {
@@ -30,5 +36,22 @@ public enum MacroStatusFrame {
         var frame = Array(repeating: background, count: 19)
         frame[0] = signal
         return frame
+    }
+}
+
+/// One bounded pass over the recovered 19-zone row, with acknowledged frames.
+public enum CodexCompletionWave {
+    public static let positions = [0, 4, 8, 12, 16, 18]
+    public static let maximumDuration: TimeInterval = 6
+    public static let minimumFrameInterval: TimeInterval = 0.25
+    public static let completionWindow: TimeInterval = 8
+    public static func frame(_ index: Int) -> [DialColor] {
+        var colors = Array(repeating: MacroStatusFrame.background, count: 19)
+        guard positions.indices.contains(index) else { return colors }
+        let head = positions[index]
+        for trail in 0..<5 where head - trail >= 0 {
+            colors[head - trail] = DialColor(red: 0, green: UInt8(255 * (5 - trail) / 5), blue: 0)
+        }
+        return colors
     }
 }

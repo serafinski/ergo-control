@@ -125,3 +125,10 @@ Removed the 0.5.0 ChatGPT source after the user confirmed it opened a browser. T
 A Stop event now shows Turn ended / green for four seconds, then Idle. Idle and unknown chats release the lighting override; when no selected chat is working or awaiting approval, the original effect is restored and verified and the normal lighting controls unlock without turning off Codex or mappings. New work acquires a fresh snapshot, including any normal effect chosen while idle. Other active selected chats continue to take priority.
 
 The Codex Status lights panel adds Signal area: Macro column or Whole keyboard. Macro mode dims the background to RGB 16 for contrast; whole-keyboard mode applies one saturated status color across all 19 zones. Global brightness is preserved. The visual test now lasts 16 seconds: blue, amber, green, then restoration. All 133 tests pass, including completion expiry, concurrent chat priority, area-change coalescing, and repeated sessions restoring a newly chosen normal effect. Existing settings default to macro-column mode; the helper and hook configuration are unchanged. The revised hardware behavior awaits user verification.
+
+
+## Single completion wave (0.6.1)
+
+The user clarified that the whole-keyboard signal should be a one-time left-to-right wave after completion. **Codex → Status lights → Signal style → Completion wave** keeps working/approval on M1–M5 and runs one green sweep across the 19-zone row when finished, then restores the saved normal effect. Macro column and Whole keyboard · solid remain available.
+
+Six acknowledged frames use the existing queue/timer, with a bounded runtime and a completion identity to prevent looping. New work or stopping cancels the wave. The Wave preview lasts 20 seconds to allow transport acknowledgements; its rendering restores immediately after the pass. All 139 tests pass, including cancellation, rejection, deadline expiry, non-replay and distinct-completion behavior. No helper/hook reinstall is needed. Physical wave direction/appearance and idle restoration remain pending user confirmation.

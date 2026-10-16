@@ -23,10 +23,11 @@ final class CodexBridgeTests: XCTestCase {
         bridge.setSelection(.fixed)
         return bridge
     }
-    func enqueue(_ index: Int, name: String = "UserPromptSubmit", time: Date = Date()) throws -> String {
+    func enqueue(_ index: Int, name: String = "UserPromptSubmit", time: Date = Date(), turn: String? = nil) throws -> String {
         let id = String(format: "01a13698-ddb7-7381-9a6a-%012d", index)
-        let input = try JSONSerialization.data(withJSONObject: ["session_id": id, "cwd": "/private/project-\(index)",
-                                                               "hook_event_name": name])
+        var fields: [String: Any] = ["session_id": id, "cwd": "/private/project-\(index)", "hook_event_name": name]
+        if let turn { fields["turn_id"] = turn }
+        let input = try JSONSerialization.data(withJSONObject: fields)
         let event = try CodexHookEvent(input: input, time: time)
         try JSONEncoder().encode(event).write(to: folder.appendingPathComponent("events/\(UUID().uuidString).json"))
         return id
@@ -265,6 +266,32 @@ final class CodexBridgeTests: XCTestCase {
         time.addTimeInterval(1)
         _ = try enqueue(2, name: "Interrupt", time: time); bridge.poll()
         XCTAssertNil(bridge.lightingColor)
+        bridge.shutdown()
+    }
+
+    func testWaveCompletionIdentityTracksRealTurnsAndDoesNotColorWorkingAcrossWholeKeyboard() throws {
+        var time = Date()
+        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
+        bridge.setLightingArea(.completionWave)
+        _ = try enqueue(1, time: time, turn: "turn-a"); bridge.poll()
+        XCTAssertNil(bridge.lightingCompletionID)
+        time.addTimeInterval(1)
+        _ = try enqueue(1, name: "Stop", time: time, turn: "turn-a"); bridge.poll()
+        let first = bridge.lightingCompletionID
+        XCTAssertNotNil(first)
+        time.addTimeInterval(5); bridge.poll()
+        XCTAssertEqual(bridge.lightingCompletionID, first, "Give the acknowledged wave time to finish without retriggering it")
+        time.addTimeInterval(1)
+        _ = try enqueue(1, name: "Stop", time: time, turn: "turn-a"); bridge.poll()
+        XCTAssertEqual(bridge.lightingCompletionID, first, "Duplicate Stops from the same turn must not replay a wave")
+        time.addTimeInterval(1)
+        _ = try enqueue(1, name: "PreToolUse", time: time, turn: "turn-b"); bridge.poll()
+        time.addTimeInterval(1)
+        _ = try enqueue(1, name: "Stop", time: time, turn: "turn-b"); bridge.poll()
+        XCTAssertNotEqual(bridge.lightingCompletionID, first)
+        time.addTimeInterval(8); bridge.poll()
+        XCTAssertNil(bridge.lightingCompletionID); XCTAssertNil(bridge.lightingColor)
         bridge.shutdown()
     }
 

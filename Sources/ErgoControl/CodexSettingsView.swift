@@ -76,26 +76,30 @@ struct CodexSettingsView: View {
         GroupBox("Status lights") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Show Codex status lights", isOn: Binding(get: { model.codex.settings.lighting }, set: model.codex.setLighting))
-                Picker("Signal area", selection: Binding(get: { model.codex.settings.lightingArea }, set: model.codex.setLightingArea)) {
+                Picker("Signal style", selection: Binding(get: { model.codex.settings.lightingArea }, set: model.codex.setLightingArea)) {
                     ForEach(CodexLightingArea.allCases) { area in Text(area.label).tag(area) }
                 }
                 HStack(spacing: 18) {
                     statusKey(.working); statusKey(.attention); statusKey(.finished)
                 }
-                Text("Green lasts four seconds, then idle restores your previous effect and unlocks normal lighting settings. Another working chat or pending approval keeps its signal active. Macro column dims the other keys for contrast; Whole keyboard colors all zones. Keyboard brightness stays unchanged.")
+                Text(model.codex.settings.lightingArea == .completionWave
+                     ? "Working and approval stay on the macro column. On completion, one green wave sweeps left to right, then restores your previous effect. A new task cancels the wave. Brightness stays unchanged."
+                     : "Green lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     if let stage = model.codex.lightingTestStage {
                         Button("Stop test") { model.codex.cancelLightingTest() }
                         Text("Test: \(stage.label)").font(.callout)
                     } else {
-                        Button("Test status lights · 16 seconds") { model.codex.startLightingTest() }
+                        Button(model.codex.settings.lightingArea == .completionWave ? "Test status lights · 20 seconds" : "Test status lights · 16 seconds") { model.codex.startLightingTest() }
                             .disabled(!model.running || !model.codex.settings.lighting)
                         Text(model.running ? "Keep keyboard brightness above 0%." : "Enable mappings to test the lights.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text("The test shows blue → amber → green → your previous effect, for four seconds each. Live status resumes afterward. It does not change any chat’s status.")
+                Text(model.codex.settings.lightingArea == .completionWave
+                     ? "The test shows blue → amber → one completion wave → your previous effect. Live status resumes afterward; chat status is unchanged."
+                     : "The test shows blue → amber → green → your previous effect, for four seconds each. Live status resumes afterward; chat status is unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.bluetooth.macroStatusLightingMessage.isEmpty {
                     Text(model.bluetooth.macroStatusLightingMessage).font(.caption).textSelection(.enabled)

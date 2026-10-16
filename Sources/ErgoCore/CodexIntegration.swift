@@ -29,8 +29,10 @@ public enum CodexActivity: String, Codable, CaseIterable {
 public enum CodexLightingTestStage: Int, CaseIterable {
     case working, attention, finished, restore
     public static let duration: TimeInterval = 16
-    public static func at(elapsed: TimeInterval) -> Self? {
-        guard elapsed.isFinite, elapsed >= 0, elapsed < duration else { return nil }
+    public static func at(elapsed: TimeInterval, completionWave: Bool = false) -> Self? {
+        let end = completionWave ? 20.0 : duration
+        guard elapsed.isFinite, elapsed >= 0, elapsed < end else { return nil }
+        if completionWave && elapsed >= 8 { return elapsed < 16 ? .finished : .restore }
         return Self(rawValue: Int(elapsed / 4))
     }
     public var activity: CodexActivity? {
@@ -213,10 +215,10 @@ public struct CodexSessionStatus {
         latest = event
     }
     public static let completionSignalDuration: TimeInterval = 4
-    public func activity(now: Date) -> CodexActivity {
+    public func activity(now: Date, completionDuration: TimeInterval = Self.completionSignalDuration) -> CodexActivity {
         let age = now.timeIntervalSince(latest.time)
         guard age < 1800 else { return .unknown }
-        if latest.activity == .finished, age >= Self.completionSignalDuration { return .idle }
+        if latest.activity == .finished, age >= completionDuration { return .idle }
         return latest.activity
     }
 }
