@@ -51,7 +51,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>CFBundleShortVersionString</key><string>VERSION_PLACEHOLDER</string>
-<key>CFBundleVersion</key><string>54</string>
+<key>CFBundleVersion</key><string>55</string>
 <key>LSUIElement</key><true/>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSBluetoothAlwaysUsageDescription</key><string>Connect only to your paired PT Ergo to enable its extra controls, read battery status, adjust keyboard lighting and the dial indicator, and restore its saved mode when mappings stop.</string>

@@ -290,7 +290,7 @@ final class ActionEngineTests: XCTestCase {
         var output: [KeyboardOutput] = []
         var turns: [Int] = []
         var error: String?
-        let engine = ActionEngine { event, _ in output.append(event) }
+        let engine = ActionEngine(keyOutput: { event, _ in output.append(event) })
         engine.onBrightness = { turns.append($0) }
         engine.onError = { error = $0 }
         engine.perform(MappingAction(.keyboardBrightness, "up"), fromDial: true)
@@ -302,7 +302,7 @@ final class ActionEngineTests: XCTestCase {
     }
     func testDialSwitcherRenewsIdleTimerThenReleasesCommand() {
         var output: [KeyboardOutput] = []
-        let engine = ActionEngine { event, _ in output.append(event) }
+        let engine = ActionEngine(keyOutput: { event, _ in output.append(event) })
         engine.perform(MappingAction(.shortcut, "cmd+tab"), fromDial: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
         engine.perform(MappingAction(.shortcut, "cmd+shift+tab"), fromDial: true)
@@ -317,7 +317,7 @@ final class ActionEngineTests: XCTestCase {
 
     func testOrdinaryTypingEndsSwitcherBeforeForwardingKey() {
         var output: [KeyboardOutput] = []
-        let engine = ActionEngine { event, _ in output.append(event) }
+        let engine = ActionEngine(keyOutput: { event, _ in output.append(event) })
         engine.perform(MappingAction(.shortcut, "cmd+tab"), fromDial: true)
         engine.relay(44, pressed: true, owner: "extra:253")
         XCTAssertEqual(Array(output.suffix(2)), [
@@ -329,7 +329,7 @@ final class ActionEngineTests: XCTestCase {
 
     func testButtonShortcutIsStillOneShotAndStopReleasesDialCommand() {
         var output: [KeyboardOutput] = []
-        let engine = ActionEngine { event, _ in output.append(event) }
+        let engine = ActionEngine(keyOutput: { event, _ in output.append(event) })
         engine.perform(MappingAction(.shortcut, "cmd+tab"))
         XCTAssertEqual(output, [KeyboardOutput(43, pressed: true, modifiers: 8), KeyboardOutput(43, pressed: false, modifiers: 0)])
         engine.perform(MappingAction(.shortcut, "cmd+tab"), fromDial: true)
@@ -342,7 +342,7 @@ final class ActionEngineTests: XCTestCase {
 
     func testSplitSpaceRepeatsAndFirstHalfReleaseDoesNotStopIt() {
         var output: [(KeyboardOutput, Bool)] = []
-        let engine = ActionEngine { event, repeatEvent in output.append((event, repeatEvent)) }
+        let engine = ActionEngine(keyOutput: { event, repeatEvent in output.append((event, repeatEvent)) })
         engine.physicalModifiers = 2
         engine.relay(44, pressed: true)
         engine.relay(44, pressed: true, owner: "extra:253")

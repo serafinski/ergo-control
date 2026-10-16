@@ -253,7 +253,7 @@ enum LightingLabRunner {
             }
         }
         let initial = try read()
-        if let recovery {
+        if recovery != nil {
             try session.recovery.restore(connection: "bluetooth", identity: identity, apply: apply, read: read)
             session.log("restored"); print("Previous effect restored and verified."); return
         }

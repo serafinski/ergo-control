@@ -1,3 +1,5 @@
+Version 0.7.6 removes the lighting-tool unused-binding warning and explicitly labels test callbacks. Keyboard behavior is unchanged.
+
 The first GitHub build exposed an older Swift compiler limitation in a test expression. Version 0.7.5 simplifies that expression; keyboard behavior is unchanged from 0.7.4.
 
 Install by dragging Ergo Control to Applications, ejecting the DMG, then opening the Applications copy.
