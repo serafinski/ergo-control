@@ -284,3 +284,7 @@ Sidebar navigation and profile button labels now define a rectangular hit area a
 ## Sidebar focus and profile naming (0.7.9)
 
 Section buttons explicitly move keyboard focus to the selected destination, keeping focus and the displayed section aligned after a click while preserving keyboard navigation. The profile header uses a rounded-border text field with a visible Profile name label, an accessibility label and a rename/save hint. GitHub workflows remain manual-only.
+
+## Expandable headings and dial-color cleanup (0.7.10)
+
+Expandable sections in Settings share a disclosure style with a single full-width button covering the chevron, heading and padding. Keyboard activation and expanded/collapsed accessibility descriptions are preserved. Removed the repeated Command dial modes title and its color pickers/experimental indicator guidance. Profile/mode updates no longer call the physical indicator diagnostic path; on-screen mode popups remain. Persisted DialColor fields and isolated device research functions remain compatible with existing profiles and protocol documentation. Codex status colors and keyboard-lighting color controls are unaffected. GitHub workflows remain manual-only.

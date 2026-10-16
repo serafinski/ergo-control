@@ -50,8 +50,6 @@ final class ControlModel: ObservableObject {
     private var mediaReleaseTimer: Timer?
     private var extraDecoder = ExtraKeyDecoder()
     private var layerKeys: Set<String> = []
-    private struct IndicatorSelection: Equatable { let profile: UUID; let mode: UUID; let color: DialColor }
-    private var indicatedMode: IndicatorSelection?
     private var modeIndices: [UUID: Int] = [:]
     private var frontmostID: String?
     private var tick = 0
@@ -146,7 +144,6 @@ final class ControlModel: ObservableObject {
             guard let self else { return }
             if verified && self.preparing && self.relayOpened {
                 self.running = true; self.preparing = false
-                self.indicatedMode = nil
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.running else { return }
                     self.updateProfile()
@@ -322,19 +319,14 @@ final class ControlModel: ObservableObject {
             configuration.profiles[profileIndex].applicationIDs.append(id)
         }
     }
-    private func updateProfile(forceIndicator: Bool = false) {
+    private func updateProfile() {
         engine.endAppSwitcher()
         engine.functionKeys = configuration.functionKeys
-        let previousMode = indicatedMode
         activeProfileName = activeProfile.name
         let modes = activeProfile.dialModes.filter(\.enabled)
         let index = modeIndices[activeProfile.id, default: 0]
         let mode = modes.isEmpty ? nil : modes[index % modes.count]
         dialName = mode?.name ?? "No enabled dial modes"
-        indicatedMode = mode.map { IndicatorSelection(profile: activeProfile.id, mode: $0.id, color: $0.color) }
-        if running, inputAccessMode == .fullKeyboard, (forceIndicator || previousMode != indicatedMode), let mode {
-            bluetooth.flashDialIndicator(mode.color)
-        }
     }
     private func cycleDial() {
         guard inputAccessMode != .macroButtons else { status = "Custom dial modes need full keyboard control, which macOS denied."; return }
@@ -343,7 +335,7 @@ final class ControlModel: ObservableObject {
         guard count > 0 else { return }
         let backwards = engine.physicalModifiers & 0x22 != 0
         modeIndices[id] = (modeIndices[id, default: 0] + (backwards ? count - 1 : 1)) % count
-        updateProfile(forceIndicator: true)
+        updateProfile()
         logs.record("Command dial: \(dialName)", category: "Keyboard")
         controlIndicator.showDial(mode: dialName, profile: activeProfileName)
     }

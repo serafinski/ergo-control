@@ -1,3 +1,5 @@
+Version 0.7.10 makes expandable section headings clickable across the arrow, text and empty row space. Removed the unsupported physical dial-indicator color pickers, experimental guidance and automatic diagnostics; mode changes continue to show an on-screen popup. Existing saved mode settings remain compatible.
+
 Version 0.7.9 moves sidebar keyboard focus to the section being opened, so the previous Keyboard row no longer retains its focus outline after navigation. Profile names now use a visibly bordered text field with a Profile name label.
 
 Version 0.7.8 makes the entire sidebar navigation and profile rows clickable, including their padding and empty space. GitHub test and DMG workflows now run only when manually dispatched; pushing commits or tags does not start builds.

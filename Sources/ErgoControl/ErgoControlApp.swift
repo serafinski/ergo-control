@@ -330,25 +330,16 @@ struct ControlSettingsView: View {
                         }
                         DisclosureGroup("Command dial modes", isExpanded: $showDialModes) {
                             VStack(alignment: .leading, spacing: 14) {
-                        HStack { Text("Command dial modes").font(.title2.bold()); Spacer(); Button("Add mode") {
+                        HStack { Spacer(); Button("Add mode") {
                             model.configuration.profiles[index].dialModes.append(DialMode(name: "Custom mode", clockwise: MappingAction(.shortcut, "cmd+equal"), counterclockwise: MappingAction(.shortcut, "cmd+minus")))
                         } }
-                        Text("Click the left dial to cycle enabled modes. The physical mode indicator needs keyboard brightness above 0%. Color control is experimental.").foregroundStyle(.secondary)
+                        Text("Click the left dial to cycle enabled modes. The current mode appears briefly on screen.").foregroundStyle(.secondary)
                         ForEach(model.configuration.profiles[index].dialModes) { mode in
                             let modeBinding = dialBinding(mode)
                             GroupBox {
                                 VStack(alignment: .leading, spacing: 14) {
                                     HStack {
                                         Toggle("", isOn: modeBinding.enabled).labelsHidden().toggleStyle(.switch)
-                                        ColorPicker("Indicator color", selection: Binding(get: {
-                                            let c = modeBinding.wrappedValue.color
-                                            return Color(red: Double(c.red) / 255, green: Double(c.green) / 255, blue: Double(c.blue) / 255)
-                                        }, set: { value in
-                                            if let rgb = NSColor(value).usingColorSpace(.deviceRGB) {
-                                                modeBinding.wrappedValue.color = DialColor(red: UInt8((rgb.redComponent * 255).rounded()),
-                                                    green: UInt8((rgb.greenComponent * 255).rounded()), blue: UInt8((rgb.blueComponent * 255).rounded()))
-                                            }
-                                        }), supportsOpacity: false).labelsHidden()
                                         TextField("Mode name", text: modeBinding.name).font(.headline)
                                         Button { model.configuration.profiles[index].dialModes.removeAll { $0.id == mode.id } } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
                                     }
@@ -384,6 +375,7 @@ struct ControlSettingsView: View {
                 }.padding(22).frame(width: 300).background(.background.secondary)
             }
         }.frame(minWidth: 1180, minHeight: 760)
+            .disclosureGroupStyle(WholeRowDisclosureStyle())
     }
 
     private func sectionButton(_ title: String, icon: String, destination: Section) -> some View {
@@ -496,5 +488,34 @@ struct ActionEditor: View {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false
         if action.kind == .application || action.kind == .toggleApplication { panel.allowedContentTypes = [.applicationBundle] }
         if panel.runModal() == .OK, let url = panel.url { action.value = url.path }
+    }
+}
+
+/// Keep the disclosure label and its empty row space inside the same button.
+private struct WholeRowDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                configuration.isExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                    configuration.label
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(configuration.isExpanded ? "Collapse section" : "Expand section")
+            if configuration.isExpanded {
+                configuration.content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 20)
+            }
+        }
     }
 }
