@@ -31,7 +31,7 @@ Durations must be 2–30 seconds. For throughput, the duration applies to each o
 | Name | Output | Connection |
 | --- | --- | --- |
 | `throughput` | Current serial path, queued verified frames, isolated vendor-style stream; measured rates | Bluetooth lab only |
-| `native-wave` | Fixed native Wave with a blue/black palette; requires visual confirmation | Bluetooth lab only |
+| `native-wave` | Fixed native Wave palette probe; observed rainbow despite blue/black parameters | Bluetooth lab only |
 | `presets` | Red/green/blue static, one-color/two-color/random breathing, spectrum, Wave left/right | Bluetooth or experimental USB |
 | `macro-solid` | Cyan shared M1–M5 column; other zones dark | USB / Bluetooth lab |
 | `macro-pulse` | Gentle two-second pulse on the shared macro column | USB / Bluetooth lab; observed on both |
@@ -93,4 +93,4 @@ The throughput test keeps every ATT write acknowledged. Its final phase follows 
 
 A five-second-per-stage comparison on 16 October 2026 measured serial 2.55 fps (13 frames; median 466 ms), queued-with-command-verification 2.15 fps (11; 470 ms), and streaming 2.01 fps (11; 521 ms). All 11 streamed frames had successful zero-payload keyboard replies by the drain boundary, and the original effect was restored and verified. This sample shows no speed improvement from queueing/streaming; it does not establish an absolute Bluetooth/hardware ceiling.
 
-The native-wave experiment uses the existing common effect envelope with exactly [4,2,40,2,0,120,255,0,0,0] at profile 0 / reported region 5. The keyboard acknowledged it and returned that exact payload, then restored its original effect. This proves parameter acceptance/readback only; a physical blue/black moving wave remains unconfirmed. The regular effect picker still refuses Wave palettes until that visual behavior is established.
+The native-wave experiment uses the existing common effect envelope with exactly [4,2,40,2,0,120,255,0,0,0] at profile 0 / reported region 5. The keyboard acknowledged it and returned that exact payload, then restored its original effect. The user subsequently confirmed a **rainbow moving right to left**, rather than blue/black motion. This tested native Wave ignores the supplied palette despite successful readback; it does not establish that every possible colored firmware animation is unsupported. The regular effect picker continues to refuse Wave palettes. Retain this probe for reproducibility, not as a supported colored effect.
