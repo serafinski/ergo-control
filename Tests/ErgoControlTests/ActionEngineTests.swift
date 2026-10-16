@@ -39,9 +39,9 @@ final class ActionEngineTests: XCTestCase {
         engine.relay(68, pressed: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.15))
         engine.relay(68, pressed: false)
-        XCTAssertEqual(steps, [1,1], "F11 raises the Ergo backlight, including when held")
+        XCTAssertEqual(steps, [-1,-1], "F11 lowers the Ergo backlight, including when held")
         engine.relay(69, pressed: true); engine.relay(69, pressed: false)
-        XCTAssertEqual(steps, [1,1,-1], "F12 lowers the Ergo backlight")
+        XCTAssertEqual(steps, [-1,-1,1], "F12 raises the Ergo backlight")
         let count = steps.count
         RunLoop.main.run(until: Date().addingTimeInterval(0.25))
         XCTAssertEqual(steps.count, count)

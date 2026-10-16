@@ -52,8 +52,8 @@ public enum NativeFunctionKeys {
         case 62: return .dictation      // F5
         case 63: return .emoji          // F6
         case 67: return .lockScreen     // F10
-        case 68: return .keyboardBrightnessUp   // F11, user-selected direction
-        case 69: return .keyboardBrightnessDown // F12
+        case 68: return .keyboardBrightnessDown // F11
+        case 69: return .keyboardBrightnessUp   // F12
         default: return nil
         }
     }
