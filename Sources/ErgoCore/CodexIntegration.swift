@@ -25,6 +25,34 @@ public enum CodexActivity: String, Codable, CaseIterable {
     }
 }
 
+/// A bounded visual test; it never creates hook events or changes chat status.
+public enum CodexLightingTestStage: Int, CaseIterable {
+    case working, attention, finished, idle, restore
+    public static let duration: TimeInterval = 20
+    public static func at(elapsed: TimeInterval) -> Self? {
+        guard elapsed.isFinite, elapsed >= 0, elapsed < duration else { return nil }
+        return Self(rawValue: Int(elapsed / 4))
+    }
+    public var activity: CodexActivity? {
+        switch self {
+        case .working: return .working
+        case .attention: return .attention
+        case .finished: return .finished
+        case .idle: return .idle
+        case .restore: return nil
+        }
+    }
+    public var label: String {
+        switch self {
+        case .working: return "Working · blue"
+        case .attention: return "Approval requested · amber"
+        case .finished: return "Turn ended · green"
+        case .idle: return "Idle · white"
+        case .restore: return "Restoring previous keyboard effect"
+        }
+    }
+}
+
 /// The only fields retained from a hook. Prompt, tool arguments/results, model,
 /// transcript path, and full working directory never enter the event queue.
 public struct CodexHookEvent: Codable, Equatable {
@@ -78,30 +106,6 @@ public struct CodexSlot: Codable, Equatable, Identifiable {
     }
 }
 
-public enum ChatSource: String, Codable, CaseIterable, Identifiable {
-    case codex, chatgpt
-    public var id: String { rawValue }
-    public var label: String { self == .codex ? "Codex" : "ChatGPT" }
-    public var selections: [CodexSelectionMode] { self == .codex ? [.recent, .pinned, .fixed] : [.pinned, .fixed] }
-    public var linkPlaceholder: String { self == .codex ? "codex://threads/…" : "https://chatgpt.com/c/…" }
-    public func threadID(from link: String) -> String? {
-        if self == .codex { return CodexSlot.threadID(from: link) }
-        let value = link.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id = UUID(uuidString: value) { return id.uuidString.lowercased() }
-        guard let url = URLComponents(string: value), url.scheme == "https", url.host == "chatgpt.com",
-              url.query == nil, url.fragment == nil, url.user == nil, url.password == nil, url.port == nil,
-              url.percentEncodedPath == url.path else { return nil }
-        let parts = url.path.components(separatedBy: "/")
-        guard parts.count == 3, parts[0].isEmpty, parts[1] == "c",
-              let id = UUID(uuidString: parts[2]) else { return nil }
-        return id.uuidString.lowercased()
-    }
-    public func url(for slot: CodexSlot) -> URL? {
-        guard let raw = slot.threadID, let id = UUID(uuidString: raw)?.uuidString.lowercased() else { return nil }
-        return URL(string: self == .codex ? "codex://threads/\(id)" : "https://chatgpt.com/c/\(id)")
-    }
-}
-
 public enum CodexSelectionMode: String, Codable, CaseIterable, Identifiable {
     case recent, pinned, fixed
     public var id: String { rawValue }
@@ -118,35 +122,24 @@ public struct CodexSettings: Codable, Equatable {
     public var enabled = false
     public var lighting = false
     public var selection: CodexSelectionMode = .recent
-    public var source: ChatSource = .codex
-    public var chatgptSelection: CodexSelectionMode = .pinned
-    public var chatgptSlots = (1...5).map(CodexSlot.init)
-    public var activeSelection: CodexSelectionMode { source == .codex ? selection : chatgptSelection }
-    public var fixedSlots: [CodexSlot] { source == .codex ? slots : chatgptSlots }
     public var useUnmappedMacroKeys = true
     public var slots = (1...5).map(CodexSlot.init)
     public init() {}
-    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, source, chatgptSelection, chatgptSlots }
+    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
         lighting = try c.decode(Bool.self, forKey: .lighting)
         slots = try c.decode([CodexSlot].self, forKey: .slots)
         selection = try c.decodeIfPresent(CodexSelectionMode.self, forKey: .selection) ?? .recent
-        source = try c.decodeIfPresent(ChatSource.self, forKey: .source) ?? .codex
-        chatgptSelection = try c.decodeIfPresent(CodexSelectionMode.self, forKey: .chatgptSelection) ?? .pinned
-        chatgptSlots = try c.decodeIfPresent([CodexSlot].self, forKey: .chatgptSlots) ?? (1...5).map(CodexSlot.init)
         useUnmappedMacroKeys = try c.decodeIfPresent(Bool.self, forKey: .useUnmappedMacroKeys) ?? true
     }
     public func validate() throws {
-        guard chatgptSelection != .recent else { throw CodexIntegrationError.invalidSettings }
-        for assignments in [slots, chatgptSlots] {
-            guard assignments.map(\.id) == Array(1...5), assignments.allSatisfy({
-                $0.name.count <= 80 && ($0.threadID == nil || UUID(uuidString: $0.threadID!) != nil)
-            }) else { throw CodexIntegrationError.invalidSettings }
-            let assigned = assignments.compactMap(\.threadID).map { $0.lowercased() }
-            guard Set(assigned).count == assigned.count else { throw CodexIntegrationError.duplicateSlot }
-        }
+        guard slots.map(\.id) == Array(1...5), slots.allSatisfy({
+            $0.name.count <= 80 && ($0.threadID == nil || UUID(uuidString: $0.threadID!) != nil)
+        }) else { throw CodexIntegrationError.invalidSettings }
+        let assigned = slots.compactMap(\.threadID).map { $0.lowercased() }
+        guard Set(assigned).count == assigned.count else { throw CodexIntegrationError.duplicateSlot }
     }
 }
 

@@ -7,6 +7,7 @@ final class MacroStatusRendererTests: XCTestCase {
         let effect = try! KeyboardEffect(kind: .wave)
         var saved: SavedMacroLighting?
         var operations: [String] = []
+        var frames: [[DialColor]] = []
         var writesBeforeSnapshot = false
         var allowed = true
         var saveFails = false
@@ -21,6 +22,7 @@ final class MacroStatusRendererTests: XCTestCase {
             case .selectCustom: name = "custom"; response = Data()
             case .frame(let colors):
                 name = "frame"; response = Data()
+                frames.append(colors)
                 XCTAssertEqual(colors.count, 19)
             case .restore: name = "restore"; response = Data()
             }
@@ -125,4 +127,19 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(restored.macroLighting, mode.macroLighting)
         XCTAssertEqual(restored.peripheral, id)
     }
+    func testStatusSequenceChangesOnlyMacroZoneAndRestoresOriginalEffect() {
+        let rig = Rig()
+        let states: [CodexActivity] = [.working, .attention, .finished, .idle]
+        for state in states {
+            rig.renderer.request(state.color); rig.renderer.pump()
+        }
+        XCTAssertEqual(rig.frames.map { $0[0] }, states.map(\.color))
+        XCTAssertTrue(rig.frames.allSatisfy { frame in
+            frame.count == 19 && frame.dropFirst().allSatisfy { $0 == DialColor(red: 160, green: 160, blue: 160) }
+        })
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
+
 }

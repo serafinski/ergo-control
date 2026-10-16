@@ -311,6 +311,7 @@ final class ControlModel: ObservableObject {
         batteryPopupTicket = nil
         controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
+        codex.cancelLightingTest()
         sessionDeadline = nil
         relay.stop(); relayOpened = false; engine.stop()
         mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = ConsumerKeyState()

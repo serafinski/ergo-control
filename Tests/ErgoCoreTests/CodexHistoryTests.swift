@@ -56,4 +56,17 @@ final class CodexHistoryTests: XCTestCase {
         XCTAssertEqual(p["cursor"] as? String, "next")
         XCTAssertNil(p["isPinned"], "This client version silently ignores isPinned; use its actual section API")
     }
+    func testRemovedChatGPTSourceMigratesToCodexWithoutUsingChatGPTAssignments() throws {
+        var settings = CodexSettings(); settings.enabled = true; settings.selection = .pinned
+        settings.slots[0].threadID = id; settings.slots[0].name = "Saved Codex"
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as! [String: Any]
+        json["source"] = "chatgpt"; json["chatgptSelection"] = "fixed"
+        json["chatgptSlots"] = [["id": 1, "name": "Old ChatGPT", "threadID": UUID().uuidString]]
+        let migrated = try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: json))
+        try migrated.validate()
+        XCTAssertEqual(migrated, settings)
+        let encoded = String(decoding: try JSONEncoder().encode(migrated), as: UTF8.self)
+        XCTAssertFalse(encoded.contains("chatgpt"))
+    }
+
 }

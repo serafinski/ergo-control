@@ -100,4 +100,15 @@ final class CodexIntegrationTests: XCTestCase {
         let saved = try SavedMacroLighting(region: 5, effect: KeyboardEffect(kind: .wave))
         XCTAssertEqual(try saved.validatedEffect().kind, .wave)
     }
+    func testLightingPreviewHasBoundedMonotonicStages() {
+        for (elapsed, stage) in [(0.0, CodexLightingTestStage.working), (3.9, .working), (4, .attention),
+                                  (8, .finished), (12, .idle), (16, .restore), (19.9, .restore)] {
+            XCTAssertEqual(CodexLightingTestStage.at(elapsed: elapsed), stage)
+        }
+        for elapsed in [-1.0, 20, 1_000_000, .infinity, .nan] {
+            XCTAssertNil(CodexLightingTestStage.at(elapsed: elapsed))
+        }
+        XCTAssertNil(CodexLightingTestStage.restore.activity)
+    }
+
 }
