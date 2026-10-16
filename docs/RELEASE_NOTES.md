@@ -4,6 +4,8 @@ Install by dragging Ergo Control to Applications, ejecting the DMG, then opening
 
 Early development installations with a conflicting bundled-helper registration now offer Repair helper startup under Keyboard → Full dial control. Complete the updated helper installer to migrate to the separate local service; existing profiles are preserved.
 
+Startup now connects to complete saved keyboard recovery before activating mappings; a pending recovery record no longer blocks its own connection.
+
 App → Startup offers launch at login and automatic activation of saved mappings. Profiles and Codex choices survive app updates.
 
 Requires macOS 14 or later. Includes Apple Silicon and Intel binaries; hardware validation to date is on Apple Silicon. Mapping support is Bluetooth only. The physical dial's colored mode indicator remains unresolved. Custom Codex status waves over Bluetooth are slower than the native rainbow effect.

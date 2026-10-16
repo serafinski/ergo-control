@@ -31,12 +31,15 @@ final class BatteryRefreshScheduleTests: XCTestCase {
         XCTAssertEqual(poll(&schedule, at: 320, owed: true, driver: true), .read)
     }
 
-    func testBatteryPollNeverCompetesWithDisconnectedRestoration() {
+    func testDisconnectedRecoveryConnectsButDoesNotReadBatteryUntilRestored() {
         var schedule = BatteryRefreshSchedule()
-        XCTAssertNil(poll(&schedule, at: 0, ready: false, owed: true))
+        XCTAssertEqual(poll(&schedule, at: 0, ready: false, owed: true), .connect)
+        XCTAssertNil(poll(&schedule, at: 5, ready: false, owed: true))
+        XCTAssertNil(poll(&schedule, at: 10, owed: true), "The controller must finish recovery before reading battery")
         XCTAssertNil(poll(&schedule, at: 60, ready: false, owed: true, driver: true))
-        XCTAssertEqual(poll(&schedule, at: 61, ready: false), .connect)
-        XCTAssertEqual(poll(&schedule, at: 62), .read)
+        XCTAssertEqual(poll(&schedule, at: 61, ready: false, owed: true), .connect)
+        XCTAssertNil(poll(&schedule, at: 62, owed: true))
+        XCTAssertEqual(poll(&schedule, at: 63), .read)
         XCTAssertEqual(poll(&schedule, at: 121, ready: false), .connect)
         XCTAssertEqual(poll(&schedule, at: 122), .read) // Fresh value after reconnection.
     }

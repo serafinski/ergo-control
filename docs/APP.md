@@ -212,3 +212,12 @@ After the final Applications-copy update, a manual app relaunch used the saved a
 An old bundled SMAppService daemon could override the separately installed helper after reboot and request Input Monitoring for its developer-folder path. The GUI now detects this in local builds and offers Keyboard → Full dial control → Repair helper startup. Complete Installer, then refresh helper status. The repair unregisters the old bundled service first and installs the existing executable under a separate local launchd label, retaining its executable path, input permission identity and XPC endpoint. The installer never re-enables the old bundled label.
 
 The first migration attempt failed in postinstall because the old/new jobs shared a label; the revised 0.2.3 package separates them. The helper binary is unchanged for this local update. All 166 tests and package content/ordering/privilege checks pass. Revised installation and reboot verification are pending the user's hardware test; no success is claimed solely from the tests.
+
+
+## Startup recovery connection (0.7.2)
+
+A subsequent reboot confirmed login launch and the repaired local helper definition persisted: the old bundled job was absent and the local job used the fixed /Library executable. The GUI nevertheless waited indefinitely for saved-mode recovery because background polling refused to connect while restoration was owed, while automatic activation correctly waited for recovery to finish. This was a separate connection-scheduling deadlock.
+
+The scheduler now permits a throttled connection when a recovery journal exists. BluetoothController still verifies the exact saved keyboard and restores it before battery reads or mapping activation. Busy, preparing and verified-active-driver guards remain. The journal is retained until readback verifies restoration. All 166 tests pass, including reconnect while recovery is pending and suppression of battery reads until it finishes.
+
+On the hardware, Connect keyboard cleared the pending record through original_mode_restored/readback, followed by fullKeyboard/result 0 and verified driver-mode renewals through the corrected local helper after reboot. Automatic recovery initiation with the rebuilt app remains the final reboot check; no helper reinstall or permission changes are needed for this update.
