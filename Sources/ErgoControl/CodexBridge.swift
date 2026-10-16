@@ -6,10 +6,15 @@ final class CodexBridge: ObservableObject {
     @Published private(set) var settings = CodexSettings()
     @Published private(set) var sessions: [String: CodexSessionStatus] = [:]
     @Published private(set) var message = "Enable the connection, then install the Codex status hooks."
+    @Published private(set) var historyMessage = ""
+    @Published private(set) var recentSlots = (1...5).map(CodexSlot.init)
+    @Published private(set) var pinnedSlots = (1...5).map(CodexSlot.init)
     var onLightingChange: ((DialColor?) -> Void)?
     private var timer: Timer?
     private var lastColor: DialColor?
     private var lastExpiryRefresh = Date.distantPast
+    private var nextHistoryRefresh = Date.distantPast
+    private let history: CodexHistorySource?
     static var defaultFolder: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ErgoControl/Codex", isDirectory: true)
@@ -25,8 +30,9 @@ final class CodexBridge: ObservableObject {
     }
     var hooksURL: URL { codexHome.appendingPathComponent("hooks.json") }
 
-    init(folder: URL = CodexBridge.defaultFolder, startTimer: Bool = true) {
+    init(folder: URL = CodexBridge.defaultFolder, startTimer: Bool = true, history: CodexHistorySource? = nil) {
         self.folder = folder
+        self.history = history ?? (startTimer ? CodexHistoryReader() : nil)
         do {
             try FileManager.default.createDirectory(at: queue, withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
@@ -37,6 +43,35 @@ final class CodexBridge: ObservableObject {
             }
             try updateReceiver()
         } catch { message = error.localizedDescription }
+        self.history?.onRecent = { [weak self] slots in
+            guard let self else { return }
+            if self.recentSlots != slots { self.recentSlots = slots }
+            if self.settings.selection == .recent && self.historyMessage != "Recent chats synced from ChatGPT." {
+                self.historyMessage = "Recent chats synced from ChatGPT."
+            }
+            self.updateLighting()
+        }
+        self.history?.onPinned = { [weak self] slots in
+            guard let self else { return }
+            if self.pinnedSlots != slots { self.pinnedSlots = slots }
+            if self.settings.selection == .pinned && self.historyMessage != "Pinned chats synced from ChatGPT." {
+                self.historyMessage = "Pinned chats synced from ChatGPT."
+            }
+            self.updateLighting()
+        }
+        self.history?.onProblem = { [weak self] issue in
+            guard let self else { return }
+            switch issue {
+            case .unavailable(let message):
+                self.recentSlots = (1...5).map(CodexSlot.init); self.pinnedSlots = self.recentSlots
+                self.historyMessage = message
+            case .pinnedUnavailable:
+                self.pinnedSlots = (1...5).map(CodexSlot.init)
+                self.historyMessage = "Recent chats synced; pinned selection is unavailable in this ChatGPT version."
+            }
+            self.updateLighting()
+        }
+        if settings.enabled && settings.selection != .fixed { refreshHistory() }
         if startTimer {
             let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.poll() }
             self.timer = timer; RunLoop.main.add(timer, forMode: .common)
@@ -47,8 +82,42 @@ final class CodexBridge: ObservableObject {
         var value = settings; value.enabled = enabled
         guard save(value) else { return }
         do { try updateReceiver() } catch { message = error.localizedDescription }
-        if !enabled { sessions = [:]; updateLighting() }
-        else { message = "Waiting for Codex events. Install hooks and review them in Codex; existing chats appear after new activity." }
+        if !enabled {
+            history?.stop(); sessions = [:]
+            recentSlots = (1...5).map(CodexSlot.init); pinnedSlots = recentSlots
+            updateLighting()
+        } else {
+            message = "Connected to Codex. Status updates arrive from trusted hooks during desktop activity."
+            if settings.selection != .fixed { refreshHistory() }
+        }
+    }
+    var displaySlots: [CodexSlot] {
+        switch settings.selection {
+        case .recent: return recentSlots
+        case .pinned: return pinnedSlots
+        case .fixed: return settings.slots
+        }
+    }
+    func setSelection(_ mode: CodexSelectionMode) {
+        var value = settings; value.selection = mode
+        guard save(value) else { return }
+        if mode == .fixed { history?.stop() }
+        else if settings.enabled { refreshHistory() }
+        updateLighting()
+    }
+    func setUseUnmappedMacroKeys(_ enabled: Bool) {
+        var value = settings; value.useUnmappedMacroKeys = enabled
+        _ = save(value)
+    }
+    func defaultAction(for control: String) -> MappingAction? {
+        guard settings.enabled, settings.useUnmappedMacroKeys,
+              control.hasPrefix("extra:"), let key = Int(control.dropFirst(6)), (32...36).contains(key) else { return nil }
+        return MappingAction(.codexChat, String(key - 31))
+    }
+    func refreshHistory() {
+        guard settings.enabled, settings.selection != .fixed else { return }
+        nextHistoryRefresh = Date().addingTimeInterval(10)
+        history?.refresh()
     }
     func setLighting(_ enabled: Bool) {
         var value = settings; value.lighting = enabled
@@ -71,8 +140,7 @@ final class CodexBridge: ObservableObject {
             try JSONEncoder().encode(value).write(to: settingsURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
             settings = value
-            let assigned = Set(value.slots.compactMap(\.threadID).map { $0.lowercased() })
-            sessions = sessions.filter { assigned.contains($0.key) }
+            pruneSessions()
             return true
         } catch { message = error.localizedDescription; return false }
     }
@@ -84,6 +152,7 @@ final class CodexBridge: ObservableObject {
     }
     func shutdown() {
         timer?.invalidate(); timer = nil
+        history?.stop()
         try? FileManager.default.removeItem(at: receiverURL)
         onLightingChange?(nil)
     }
@@ -91,6 +160,7 @@ final class CodexBridge: ObservableObject {
         slot.threadID.flatMap { sessions[$0.lowercased()]?.activity(now: Date()) } ?? .unknown
     }
     func poll() {
+        if settings.enabled, settings.selection != .fixed, Date() >= nextHistoryRefresh { refreshHistory() }
         guard let files = try? FileManager.default.contentsOfDirectory(at: queue, includingPropertiesForKeys: nil) else { return }
         var events: [CodexHookEvent] = []
         for url in files.prefix(256) where url.pathExtension == "json" {
@@ -104,16 +174,19 @@ final class CodexBridge: ObservableObject {
         for event in events.sorted(by: { $0.time < $1.time }) {
             if var state = sessions[event.sessionID] { state.receive(event); sessions[event.sessionID] = state }
             else {
-                // Keep only five assigned sessions: no transcript or growing history.
-                if !settings.slots.contains(where: { $0.threadID?.lowercased() == event.sessionID }),
+                if settings.selection == .fixed,
+                   !settings.slots.contains(where: { $0.threadID?.lowercased() == event.sessionID }),
                    let index = settings.slots.firstIndex(where: { $0.threadID == nil }) {
                     var value = settings
                     value.slots[index].threadID = event.sessionID
                     value.slots[index].name = event.project.isEmpty ? "Chat \(index + 1)" : event.project
                     guard save(value) else { continue }
                 }
-                guard settings.slots.contains(where: { $0.threadID?.lowercased() == event.sessionID }) else { continue }
+                if settings.selection == .fixed && !settings.slots.contains(where: { $0.threadID?.lowercased() == event.sessionID }) { continue }
                 sessions[event.sessionID] = CodexSessionStatus(event)
+            }
+            if ["UserPromptSubmit", "Stop", "SessionEnd"].contains(event.event) {
+                nextHistoryRefresh = min(nextHistoryRefresh, Date().addingTimeInterval(1))
             }
             message = "Connected · latest event: \(event.event). Status is observed activity, not unread state."
         }
@@ -122,20 +195,33 @@ final class CodexBridge: ObservableObject {
         }
         // Also refresh time-based expiry when no new event has arrived.
         updateLighting()
+        pruneSessions()
+    }
+    private func pruneSessions() {
+        // Bounded transient state allows a recent chat to become a pinned slot
+        // without losing its already observed status. Never persist activity.
+        if settings.selection == .fixed {
+            let fixed = Set(settings.slots.compactMap(\.threadID))
+            let retained = sessions.filter { fixed.contains($0.key) }
+            if retained.count != sessions.count { sessions = retained }
+        } else if sessions.count > 100 {
+            let keep = Set(sessions.sorted { $0.value.latest.time > $1.value.latest.time }.prefix(100).map(\.key))
+            sessions = sessions.filter { keep.contains($0.key) }
+        }
     }
     private func updateLighting() {
-        let state = CodexActivity.priority(settings.slots.map(activity))
+        let state = CodexActivity.priority(displaySlots.map(activity))
         let color = settings.enabled && settings.lighting && state != .unknown ? state.color : nil
         if color != lastColor { lastColor = color; onLightingChange?(color) }
     }
     var lightingColor: DialColor? {
-        let state = CodexActivity.priority(settings.slots.map(activity))
+        let state = CodexActivity.priority(displaySlots.map(activity))
         return settings.enabled && settings.lighting && state != .unknown ? state.color : nil
     }
     func openSlot(_ number: Int) {
         guard settings.enabled else { message = "Enable the Codex connection first."; return }
-        guard let slot = settings.slots.first(where: { $0.id == number }), let url = slot.url else {
-            message = "M\(number) has no chat yet. Start a Codex turn or assign a chat link."; return
+        guard let slot = displaySlots.first(where: { $0.id == number }), let url = slot.url else {
+            message = "M\(number) has no chat in \(settings.selection.label)."; return
         }
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") else {
             message = "Codex desktop could not be found."; return

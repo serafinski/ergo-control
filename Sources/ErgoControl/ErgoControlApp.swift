@@ -16,6 +16,7 @@ struct ErgoControlApp: App {
     @NSApplicationDelegateAdaptor(ControlAppDelegate.self) var delegate
     @StateObject private var model = ControlModel()
     init() {
+        if CommandLine.arguments.contains("--codex-history-check") { CodexHistoryReader.checkCommandLine() }
         if CommandLine.arguments.dropFirst().first == "--lighting-lab" {
             LightingLabRunner.runCommandLine(Array(CommandLine.arguments.dropFirst(2)))
         }
@@ -57,7 +58,8 @@ struct ControlMenu: View {
         Button("Refresh battery") { model.refreshBattery() }
         if model.codex.settings.enabled {
             Divider()
-            ForEach(model.codex.settings.slots) { slot in
+            Text(model.codex.settings.selection.label)
+            ForEach(model.codex.displaySlots) { slot in
                 Button("M\(slot.id) · \(slot.name) · \(model.codex.activity(slot).label)") { model.codex.openSlot(slot.id) }
                     .disabled(slot.url == nil)
             }
@@ -403,7 +405,7 @@ struct ActionEditor: View {
                     ForEach(1...5, id: \.self) { number in Text("M\(number) · Slot \(number)").tag(String(number)) }
                 }
                 Text("Opens the assigned Codex chat. Enable the Codex connection in settings first.").font(.caption).foregroundStyle(.secondary)
-            case .standard: Text("Use the normal action, or the current dial mode.").font(.caption).foregroundStyle(.secondary)
+            case .standard: Text("Use the normal action or current dial mode. When connected to Codex, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)
             case .layer: Text("Other controls use this profile’s alternate layer while this button is held.").font(.caption).foregroundStyle(.secondary)
             case .cycleDial: Text("Switch to the next enabled command-dial mode.").font(.caption).foregroundStyle(.secondary)
             case .battery: Text("Show the current keyboard battery percentage in a brief on-screen popup.").font(.caption).foregroundStyle(.secondary)

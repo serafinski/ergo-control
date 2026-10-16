@@ -8,9 +8,26 @@ struct CodexSettingsView: View {
         GroupBox("Codex · five chat slots") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Connect to Codex", isOn: Binding(get: { model.codex.settings.enabled }, set: model.codex.setEnabled))
-                Text("Open assigned chats with M1–M5. Empty slots fill from the first five chats observed after hooks are installed. Slots stay in place until you edit them.")
+                Text("M1–M5 follow your five most recent chats by default. Choose Pinned chats to follow your pinned order, or Fixed assignments to choose chats yourself.")
                     .font(.caption).foregroundStyle(.secondary)
                 if model.codex.settings.enabled {
+                    Picker("Chat selection", selection: Binding(get: { model.codex.settings.selection }, set: model.codex.setSelection)) {
+                        ForEach(CodexSelectionMode.allCases) { mode in Text(mode.label).tag(mode) }
+                    }
+                    Toggle("Use unmapped M1–M5 for Codex chats", isOn: Binding(get: { model.codex.settings.useUnmappedMacroKeys }, set: model.codex.setUseUnmappedMacroKeys))
+                    Text("With mappings enabled, macro keys set to Default open their current chat slot. Your explicit mappings and alternate-layer actions take precedence.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if model.codex.settings.selection != .fixed {
+                        HStack {
+                            Text(model.codex.historyMessage.isEmpty ? "Reading ChatGPT chats…" : model.codex.historyMessage).font(.caption)
+                            Spacer()
+                            Button("Refresh chats") { model.codex.refreshHistory() }
+                        }
+                        Text("The list refreshes automatically, including while the menu is closed. A key always opens the chat currently shown for its slot.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text("Lists local Codex chats from ChatGPT. Ordinary ChatGPT conversations and remote-only chats are not included.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     HStack {
                         Button("Install status hooks") { model.codex.installHooks() }
                         Button("Review hooks file") { NSWorkspace.shared.open(model.codex.hooksURL) }
@@ -18,14 +35,24 @@ struct CodexSettingsView: View {
                     }
                     Text("Review and trust ErgoCodexHook if ChatGPT asks. Once accepted, keep using the desktop app normally. Events report working, approval requested, and turn ended; they do not report unread messages or every question.")
                         .font(.caption).foregroundStyle(.secondary)
-                    ForEach(model.codex.settings.slots) { slot in
-                        CodexSlotEditor(slot: slot, activity: model.codex.activity(slot)) { name, link in
-                            model.codex.assign(slot.id - 1, name: name, link: link)
-                        } open: { model.codex.openSlot(slot.id) }
+                    ForEach(model.codex.displaySlots) { slot in
+                        if model.codex.settings.selection == .fixed {
+                            CodexSlotEditor(slot: slot, activity: model.codex.activity(slot)) { name, link in
+                                model.codex.assign(slot.id - 1, name: name, link: link)
+                            } open: { model.codex.openSlot(slot.id) }
+                        } else {
+                            HStack {
+                                Text("M\(slot.id)").bold()
+                                Text(slot.threadID == nil ? "No chat" : slot.name).lineLimit(1)
+                                Spacer()
+                                Text(model.codex.activity(slot).label).font(.caption).foregroundStyle(.secondary)
+                                Button("Open chat") { model.codex.openSlot(slot.id) }.disabled(slot.url == nil)
+                            }
+                        }
                     }
                     HStack {
                         Button("Create Codex mappings profile") { model.createCodexProfile() }
-                        Text("Select that profile and choose Use selected as default to use M1–M5 from other apps.")
+                        Text("Optional: replace all five actions in a separate profile. Existing profiles are preserved.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Toggle("Show Codex status on the macro column", isOn: Binding(get: { model.codex.settings.lighting }, set: model.codex.setLighting))

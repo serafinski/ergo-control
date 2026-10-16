@@ -3,12 +3,26 @@ import ErgoCore
 @testable import ErgoControl
 
 final class CodexBridgeTests: XCTestCase {
+    final class History: CodexHistorySource {
+        var onRecent: (([CodexSlot]) -> Void)?
+        var onPinned: (([CodexSlot]) -> Void)?
+        var onProblem: ((CodexHistoryIssue) -> Void)?
+        var refreshes = 0
+        var stops = 0
+        func refresh() { refreshes += 1 }
+        func stop() { stops += 1 }
+    }
     var folder: URL!
     override func setUpWithError() throws {
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("ergo-codex-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: folder) }
+    func fixedBridge() -> CodexBridge {
+        let bridge = CodexBridge(folder: folder, startTimer: false)
+        bridge.setSelection(.fixed)
+        return bridge
+    }
     func enqueue(_ index: Int, name: String = "UserPromptSubmit") throws -> String {
         let id = String(format: "01a13698-ddb7-7381-9a6a-%012d", index)
         let input = try JSONSerialization.data(withJSONObject: ["session_id": id, "cwd": "/private/project-\(index)",
@@ -18,7 +32,7 @@ final class CodexBridgeTests: XCTestCase {
         return id
     }
     func testOptInAndShutdownControlSenderPresence() throws {
-        let bridge = CodexBridge(folder: folder, startTimer: false)
+        let bridge = fixedBridge()
         let marker = folder.appendingPathComponent("receiver.pid")
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
         _ = try enqueue(1); bridge.poll()
@@ -31,7 +45,7 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
     }
     func testFiveSlotsDoNotReorderOrEvictExistingAssignments() throws {
-        let bridge = CodexBridge(folder: folder, startTimer: false); bridge.setEnabled(true)
+        let bridge = fixedBridge(); bridge.setEnabled(true)
         var ids: [String] = []
         for index in 1...6 { ids.append(try enqueue(index)); bridge.poll() }
         XCTAssertEqual(bridge.settings.slots.compactMap(\.threadID), Array(ids.prefix(5)))
@@ -45,7 +59,7 @@ final class CodexBridgeTests: XCTestCase {
         saved.shutdown(); bridge.shutdown()
     }
     func testLightingIsOptInAndPriorityUsesOnlyAssignedChats() throws {
-        let bridge = CodexBridge(folder: folder, startTimer: false); bridge.setEnabled(true)
+        let bridge = fixedBridge(); bridge.setEnabled(true)
         var colors: [DialColor?] = []
         bridge.onLightingChange = { colors.append($0) }
         _ = try enqueue(1); bridge.poll()
@@ -61,7 +75,7 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertTrue(bridge.sessions.isEmpty)
     }
     func testManualAssignmentRejectsUnsafeLinksAndDuplicates() throws {
-        let bridge = CodexBridge(folder: folder, startTimer: false); bridge.setEnabled(true)
+        let bridge = fixedBridge(); bridge.setEnabled(true)
         let id = try enqueue(1); bridge.poll()
         bridge.assign(1, name: "duplicate", link: id)
         XCTAssertNil(bridge.settings.slots[1].threadID)
@@ -81,5 +95,87 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertEqual(slots, [1,2,3,4,5])
         XCTAssertTrue(keys.isEmpty)
         engine.stop()
+    }
+    func testRecentChatsFollowHistoryUpdatesAndPinnedIsOptional() throws {
+        let source = History()
+        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        XCTAssertEqual(bridge.settings.selection, .recent)
+        XCTAssertEqual(source.refreshes, 0)
+        bridge.setEnabled(true)
+        XCTAssertEqual(source.refreshes, 1)
+        var a = CodexSlot(1); a.name = "Recent A"; a.threadID = UUID().uuidString.lowercased()
+        var b = CodexSlot(1); b.name = "Recent B"; b.threadID = UUID().uuidString.lowercased()
+        source.onRecent?([a])
+        XCTAssertEqual(bridge.displaySlots[0], a)
+        source.onRecent?([b])
+        XCTAssertEqual(bridge.displaySlots[0], b, "M1 must follow the current list without manual reassignment")
+        source.onPinned?([a])
+        XCTAssertEqual(bridge.displaySlots[0], b, "Receiving pinned metadata must not make it the default")
+        bridge.setSelection(.pinned)
+        XCTAssertEqual(bridge.displaySlots[0], a)
+        bridge.setSelection(.recent)
+        XCTAssertEqual(bridge.displaySlots[0], b)
+        XCTAssertTrue(bridge.settings.slots.allSatisfy { $0.threadID == nil }, "Automatic lists must not overwrite fixed assignments")
+        bridge.shutdown()
+    }
+    func testFixedAssignmentsSurviveModeChangesAndHistoryStopsWhenDisabled() throws {
+        let source = History()
+        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        bridge.setEnabled(true)
+        let id = UUID().uuidString.lowercased()
+        bridge.assign(0, name: "Keep this", link: id)
+        bridge.setSelection(.fixed)
+        XCTAssertEqual(source.stops, 1)
+        XCTAssertEqual(bridge.displaySlots[0].threadID, id)
+        bridge.setSelection(.recent)
+        bridge.setSelection(.fixed)
+        XCTAssertEqual(bridge.displaySlots[0].name, "Keep this")
+        bridge.setEnabled(false)
+        XCTAssertGreaterThanOrEqual(source.stops, 2)
+        bridge.shutdown()
+    }
+    func testUnavailableHistoryClearsAutomaticTargetsButKeepsFixedSettings() {
+        let source = History()
+        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        bridge.setEnabled(true)
+        var chat = CodexSlot(1); chat.threadID = UUID().uuidString.lowercased()
+        source.onRecent?([chat]); source.onPinned?([chat])
+        source.onProblem?(.pinnedUnavailable)
+        XCTAssertNotNil(bridge.displaySlots[0].threadID)
+        bridge.setSelection(.pinned)
+        XCTAssertTrue(bridge.displaySlots.allSatisfy { $0.threadID == nil })
+        source.onProblem?(.unavailable("offline"))
+        bridge.setSelection(.recent)
+        XCTAssertTrue(bridge.displaySlots.allSatisfy { $0.threadID == nil })
+        bridge.shutdown()
+    }
+    func testUnmappedMacroDefaultsNeedNoPerKeyConfigurationAndStayInScope() {
+        let bridge = CodexBridge(folder: folder, startTimer: false)
+        XCTAssertNil(bridge.defaultAction(for: "extra:32"))
+        bridge.setEnabled(true)
+        for slot in 1...5 {
+            XCTAssertEqual(bridge.defaultAction(for: "extra:\(slot + 31)"), MappingAction(.codexChat, String(slot)))
+        }
+        for control in ["extra:31", "extra:37", "extra:65", "extra:247", "key:32", "leftCW"] {
+            XCTAssertNil(bridge.defaultAction(for: control))
+        }
+        bridge.setUseUnmappedMacroKeys(false)
+        XCTAssertNil(bridge.defaultAction(for: "extra:32"))
+        bridge.shutdown()
+    }
+    func testDynamicLightingFollowsVisibleSlotsAndRetainsObservedStateAcrossReordering() throws {
+        let source = History()
+        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        bridge.setEnabled(true); bridge.setLighting(true)
+        let id = try enqueue(1, name: "PermissionRequest"); bridge.poll()
+        XCTAssertNil(bridge.lightingColor, "Unlisted activity must not color the column")
+        var slot = CodexSlot(1); slot.threadID = id
+        source.onRecent?([slot])
+        XCTAssertEqual(bridge.lightingColor, CodexActivity.attention.color)
+        source.onPinned?([]); bridge.setSelection(.pinned)
+        XCTAssertNil(bridge.lightingColor)
+        bridge.setSelection(.recent)
+        XCTAssertEqual(bridge.activity(slot), .attention)
+        bridge.shutdown()
     }
 }

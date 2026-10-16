@@ -107,3 +107,7 @@ For GUI-only development changes with an existing valid bundle, `ERGO_REUSE_HELP
 ## Codex connection (0.3.0)
 
 The optional Codex panel adds five assigned chat slots, per-slot lifecycle status, a dedicated mappings profile, and shared macro-column status lighting. See [Codex setup](CODEX_SETUP.md) for installation, Codex hook review, data handling, recovery, and first-use checks. Existing profiles and the installed input helper are preserved.
+
+## Dynamic Codex selection (0.4.0)
+
+Most recent chats is now the default. Pinned chats and Fixed assignments are optional modes; unmapped M1–M5 controls use the current list without separate edits. Existing explicit mappings take precedence. The background metadata reader uses the installed ChatGPT app's CLI and a restricted set of list requests; live status continues to use the already-approved hooks. See [Codex setup](CODEX_SETUP.md). No helper or hook reinstall is needed for this update.

@@ -1,6 +1,6 @@
 # Chroma value and a five-key Codex companion
 
-Research completed 16 October 2026. This report records the feasibility investigation; the subsequent opt-in 0.3.0 implementation is documented in [Codex setup](CODEX_SETUP.md). No Codex settings, hooks, app files, permissions, or hardware identities were changed for this research.
+Research completed 16 October 2026. This report records the feasibility investigation; the subsequent opt-in 0.4.0 implementation is documented in [Codex setup](CODEX_SETUP.md). No Codex settings, hooks, app files, permissions, or hardware identities were changed for this research.
 
 ## Recommendation
 
@@ -59,7 +59,7 @@ Codex's [documented hooks](https://learn.chatgpt.com/docs/hooks) can deliver lif
 
 Suggested coarse mapping: submission/activity → working; an actual permission request → attention; turn stop → finished/idle; interruption/end → idle. Avoid treating every recoverable tool error as a failed chat. A permission hook does not cover every arbitrary user question. Hooks alone do not establish app unread flags, selected/pinned order, cloud-chat coverage, or the exact Micro error/attention semantics. Event ordering, stale events, subagents sharing the parent session ID, and stop hooks that can continue a turn need deliberate handling and runtime validation.
 
-The [App Server reference](https://learn.chatgpt.com/docs/app-server) documents thread status notifications and approval/input requests on an owned connection. That is another possible adapter for sessions our integration actually observes. Starting a second server must not be assumed to mirror every loaded thread in the desktop app. Shared desktop-server attachment, authentication, subscriptions, cloud/remote coverage, and unread state remain unverified; the documented server/transport is experimental. The agent's current app-tools connector is not a public background API that Swift can simply call outside an agent turn.
+The [App Server reference](https://learn.chatgpt.com/docs/app-server) documents thread status notifications and approval/input requests on an owned connection. That is another possible adapter for sessions our integration actually observes. Starting a second server must not be assumed to mirror every loaded thread in the desktop app. The later 0.4.0 adapter verifies saved local catalog reads for recent/pinned selection, without using a second server for runtime status. Shared desktop-server attachment, authentication, subscriptions, cloud/remote coverage, and unread state remain unverified; the documented server/transport is experimental. The agent's current app-tools connector is not a public background API that Swift can simply call outside an agent turn.
 
 A renderer can use white for idle, blue for working, green for a completed update, amber for attention, red for a verified error, and off/unknown when disconnected. With one bank, choose either the selected slot or a documented priority rule. Display all five slot states separately in a menu/HUD. Do not claim an unread update when the chosen source only tells us a turn stopped.
 

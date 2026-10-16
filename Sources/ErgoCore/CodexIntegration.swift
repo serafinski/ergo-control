@@ -78,17 +78,99 @@ public struct CodexSlot: Codable, Equatable, Identifiable {
     }
 }
 
+public enum CodexSelectionMode: String, Codable, CaseIterable, Identifiable {
+    case recent, pinned, fixed
+    public var id: String { rawValue }
+    public var label: String {
+        switch self {
+        case .recent: return "Most recent chats"
+        case .pinned: return "Pinned chats"
+        case .fixed: return "Fixed assignments"
+        }
+    }
+}
+
 public struct CodexSettings: Codable, Equatable {
     public var enabled = false
     public var lighting = false
+    public var selection: CodexSelectionMode = .recent
+    public var useUnmappedMacroKeys = true
     public var slots = (1...5).map(CodexSlot.init)
     public init() {}
+    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        lighting = try c.decode(Bool.self, forKey: .lighting)
+        slots = try c.decode([CodexSlot].self, forKey: .slots)
+        selection = try c.decodeIfPresent(CodexSelectionMode.self, forKey: .selection) ?? .recent
+        useUnmappedMacroKeys = try c.decodeIfPresent(Bool.self, forKey: .useUnmappedMacroKeys) ?? true
+    }
     public func validate() throws {
         guard slots.map(\.id) == Array(1...5), slots.allSatisfy({
             $0.name.count <= 80 && ($0.threadID == nil || UUID(uuidString: $0.threadID!) != nil)
         }) else { throw CodexIntegrationError.invalidSettings }
         let assigned = slots.compactMap(\.threadID).map { $0.lowercased() }
         guard Set(assigned).count == assigned.count else { throw CodexIntegrationError.duplicateSlot }
+    }
+}
+
+/// Decode only metadata used by the selector. The server's preview, turns,
+/// full paths, and all other response fields are deliberately ignored.
+public struct CodexThreadSummary: Decodable, Equatable {
+    public let id: String
+    public let name: String
+    private enum CodingKeys: String, CodingKey { case id, name, ephemeral, parentThreadId }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let id = try c.decode(String.self, forKey: .id)
+        guard UUID(uuidString: id) != nil,
+              try c.decodeIfPresent(Bool.self, forKey: .ephemeral) != true,
+              try c.decodeIfPresent(String.self, forKey: .parentThreadId) == nil else { throw CodexIntegrationError.invalidEvent }
+        self.id = id.lowercased()
+        let name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Untitled chat"
+        self.name = String(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.prefix(160))
+    }
+    public static func list(from data: Data) throws -> (threads: [Self], cursor: String?) {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = root["data"] as? [[String: Any]], rows.count <= 100 else { throw CodexIntegrationError.invalidEvent }
+        let decoder = JSONDecoder()
+        let threads = rows.compactMap { row -> Self? in
+            guard let raw = try? JSONSerialization.data(withJSONObject: row) else { return nil }
+            return try? decoder.decode(Self.self, from: raw)
+        }
+        return (threads, root["nextCursor"] as? String)
+    }
+    public static func slots(_ threads: [Self]) -> [CodexSlot] {
+        var seen = Set<String>()
+        let unique = threads.filter { seen.insert($0.id).inserted }.prefix(5)
+        var slots = (1...5).map(CodexSlot.init)
+        for (index, chat) in unique.enumerated() { slots[index].threadID = chat.id; slots[index].name = chat.name }
+        return slots
+    }
+}
+
+/// This adapter can initialize and list metadata only. No thread/turn start,
+/// resume, content read, approval response, or mutation method is available.
+public enum CodexHistoryRequest {
+    case initialize, initialized, sections, recent(String?), pinned(section: String, cursor: String?)
+    public func data(id: Int) throws -> Data {
+        var object: [String: Any]
+        switch self {
+        case .initialize:
+            object = ["id": id, "method": "initialize", "params": ["clientInfo": ["name": "ergo_control_metadata", "version": "0.4.0"]]]
+        case .initialized: object = ["method": "initialized", "params": [:]]
+        case .sections: object = ["id": id, "method": "threadSection/list", "params": ["limit": 100]]
+        case .recent(let cursor), .pinned(_, let cursor):
+            var params: [String: Any] = ["limit": 20, "archived": false, "useStateDbOnly": true,
+                                       "sourceKinds": ["cli", "vscode", "appServer", "unknown"]]
+            if let cursor { params["cursor"] = cursor }
+            if case .pinned(let section, _) = self {
+                params["sectionId"] = section; params["sortKey"] = "section_position"; params["sortDirection"] = "asc"
+            } else { params["sortKey"] = "recency_at"; params["sortDirection"] = "desc" }
+            object = ["id": id, "method": "thread/list", "params": params]
+        }
+        return try JSONSerialization.data(withJSONObject: object) + Data([10])
     }
 }
 

@@ -329,6 +329,7 @@ final class ControlModel: ObservableObject {
         let profile = activeProfile
         if layerActive, let action = profile.alternate[control], action.kind != .standard { return action }
         if let action = profile.mappings[control], action.kind != .standard { return action }
+        if let action = codex.defaultAction(for: control) { return action }
         if control == "extra:96" { return MappingAction(.cycleDial) }
         if control == "extra:65" { return MappingAction(.battery) }
         if control == "leftCW" || control == "leftCCW" {
