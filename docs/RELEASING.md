@@ -52,8 +52,8 @@ The workflow imports the persistent identity into an ephemeral keychain, selects
 Update `VERSION` and `docs/RELEASE_NOTES.md`, commit, then create a matching tag:
 
 ```sh
-git tag v0.7.4
-git push origin v0.7.4
+git tag v0.7.5
+git push origin v0.7.5
 ```
 
 `.github/workflows/release.yml` tests, builds Apple Silicon + Intel app/hook/helper binaries, signs them, verifies the helper's accepted-client requirement, packages/verifies the DMG and writes a SHA-256 checksum. It creates a **draft** release with the DMG and checksum. You can also run it manually against an existing matching tag. It refuses a tag that disagrees with `VERSION` and never overwrites an existing release. Remove an unsuccessful draft deliberately before rerunning final release creation.

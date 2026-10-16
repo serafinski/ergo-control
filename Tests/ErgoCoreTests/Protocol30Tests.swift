@@ -61,8 +61,10 @@ final class Protocol30Tests: XCTestCase {
 
     func testTransactionsWrapAndRejectReservedZero() throws {
         var sequence = TransactionSequence()
-        XCTAssertEqual((0..<64).map { _ in sequence.next() },
-                       Array(1...31).map(UInt8.init) + Array(1...31).map(UInt8.init) + [1, 2])
+        let actual: [UInt8] = (0..<64).map { _ in sequence.next() }
+        let cycle: [UInt8] = (1...31).map { UInt8($0) }
+        let expected: [UInt8] = cycle + cycle + [1, 2]
+        XCTAssertEqual(actual, expected)
         for id: UInt8 in [0, 32, 255] {
             XCTAssertThrowsError(try Protocol30Request.readDeviceMode(transaction: id))
             XCTAssertThrowsError(try Protocol30ResponseAssembler(transaction: id))

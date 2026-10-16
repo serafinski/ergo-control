@@ -1,3 +1,5 @@
+The first GitHub build exposed an older Swift compiler limitation in a test expression. Version 0.7.5 simplifies that expression; keyboard behavior is unchanged from 0.7.4.
+
 Install by dragging Ergo Control to Applications, ejecting the DMG, then opening the Applications copy.
 
 **This release is self-signed and is not Apple-notarized.** macOS may require Privacy & Security → Open Anyway for the app and its optional helper installer. See Read me first.txt in the disk image. Input Monitoring and Accessibility are also required for mappings; the optional full-control helper has its own Input Monitoring permission.
