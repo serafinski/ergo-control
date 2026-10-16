@@ -20,7 +20,7 @@ final class ControlModel: ObservableObject {
     @Published var error: String?
     @Published var dirty = false
     @Published var inputAccessMode: InputAccessMode?
-    let bluetooth = BluetoothController()
+    let bluetooth = BluetoothController(liveDiagnostics: false)
     let fullControlHelper = FullControlHelper()
     let codex = CodexBridge()
     let startup = StartupSettings()
@@ -73,7 +73,9 @@ final class ControlModel: ObservableObject {
             } catch { self.error = "Saved settings could not be loaded. The original file has been preserved." }
         }
         frontmostID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        bluetooth.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        bluetooth.objectWillChange
+            .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
@@ -83,7 +85,7 @@ final class ControlModel: ObservableObject {
         codex.onLightingChange = { [weak self] color in
             guard let self else { return }
             self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                allowCompletionToFinish: self.running && self.codex.allowsCompletionToFinish)
+                allowCompletionToFinish: self.running && self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed)
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
@@ -149,7 +151,7 @@ final class ControlModel: ObservableObject {
                     guard let self, self.running else { return }
                     self.updateProfile()
                     self.bluetooth.setMacroStatusColor(self.codex.lightingColor, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                        allowCompletionToFinish: self.codex.allowsCompletionToFinish)
+                        allowCompletionToFinish: self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed)
                 }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."

@@ -4,7 +4,7 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.8.0**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.8.1**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
 
 ## Current settings layout (0.8.0)
 
@@ -310,3 +310,13 @@ Split the previous long Keyboard page into the five task tabs described above. T
 The 0.8.0 local build passed all 188 regression tests with no compiler warnings. Its helper reuse/self-check and signed app verification pass. The installed helper is unchanged; no helper or hook update is required for the settings reorganization.
 
 The Applications copy of 0.8.0 passed signature and matching-helper checks and activated mappings automatically after launch. Native UI access briefly recovered: the Buttons page was visually inspected, showing the five task tabs, grouped cards, compact status and separate Setup & diagnostics entry. Clicking M1 opened the focused action sheet; Cancel returned with Saved status and Save changes disabled, without modifying a mapping. The app-control connection failed again during the subsequent Dials navigation attempt, so detailed interaction/appearance of the remaining pages still needs user confirmation. Mappings remained active in the app log.
+
+## Wave performance and speed choice (0.8.1)
+
+Read-only logs from the 0.8.0 session contained 29 completed frame exchanges, with median request-to-last-response timing around 481.5 ms and approximately 14.1 ms before the next frame. Earlier 0.7.x sessions measured roughly 1,138–1,139 ms/frame and 81–92 ms gaps. These are observations under different runtime/radio conditions, not a controlled attribution of the gain to UI changes or a hardware ceiling. The earlier queued/streaming experiment did not improve speed and remains outside the production writer.
+
+Added Quick/Smooth wave speed. Quick is the migration default when no preference exists, using 3 forward frames or 5 out-and-back frames with a wider trail; Smooth retains 4/7. Existing explicit preferences round-trip. Both reach macro and right endpoints, approval bounces without an endpoint pause, green restores after its final acknowledgement, and blue settles on the macro column. At the same per-frame cost, frame counts fall 25% for blue and 29% for green; live timing/appearance remains to be measured after installation.
+
+Packet formatting and disk append run on a serial utility queue in the main app. Packet timestamps/uptime are captured at enqueue. Main-app packet logging no longer mutates Published diagnostic rows; the separate Ergo Bluetooth app retains its live rows. UI-only controller change notifications are coalesced at 100 ms and identical animation messages are suppressed. Input and protocol callbacks retain their immediate path. Recovery journal writes, frame chunks, command serialization, full acknowledgements and transport timeouts are unchanged. Diagnostics flush only after input restoration at normal quit.
+
+All 195 tests pass, including ordered asynchronous log writes, original timestamp/data encoding, a single reported log-write failure, Quick endpoints, indefinite bounce, blue hold, completion deduplication/restoration and speed-preference migration/persistence. No input helper or hook reinstall is needed. GitHub workflows remain manual-only.

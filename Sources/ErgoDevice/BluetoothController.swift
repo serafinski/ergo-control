@@ -25,6 +25,7 @@ struct SavedDialLight: Codable {
 
 private final class PendingCommand {
     let request: Protocol30Request
+    let started = ProcessInfo.processInfo.systemUptime
     var exchange: Protocol30Exchange
     var nextWrite = 0
     let completion: (Result<Protocol30Response, Error>) -> Void
@@ -95,7 +96,9 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }, allowed: { [weak self] in
         guard let self else { return false }
         return self.ready && self.driverModeVerified && !self.restoreRequested && !self.restorationChain && !self.closing
-    }, message: { [weak self] in self?.macroStatusLightingMessage = $0 })
+    }, message: { [weak self] message in
+        if self?.macroStatusLightingMessage != message { self?.macroStatusLightingMessage = message }
+    })
     private var brightnessSteps = BrightnessSteps()
     private var lightingRegion: UInt8?
     private var lightingTimer: Timer?
@@ -125,6 +128,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private var restorationChain = false
     private var closing = false
     private var logfile: FileHandle?
+    private var packetLog: BluetoothPacketLog?
     private let serviceUUID = CBUUID(string: ErgoTarget.service)
     private let writeUUID = CBUUID(string: "52401524-F97C-7F90-0E7F-6C6F4E36DB1C")
     private let notifyUUID = CBUUID(string: ErgoTarget.notify)
@@ -137,7 +141,9 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private var connectionWanted = false
     private var connectionInProgress = false
 
-    public override init() {
+    public override convenience init() { self.init(liveDiagnostics: true) }
+
+    public init(liveDiagnostics: Bool) {
         super.init()
         do {
             try FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true,
@@ -145,7 +151,13 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             let url = Self.folder.appendingPathComponent("bluetooth-\(UUID().uuidString).jsonl")
             guard FileManager.default.createFile(atPath: url.path, contents: nil,
                                                  attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
-            logfile = try FileHandle(forWritingTo: url)
+            let file = try FileHandle(forWritingTo: url)
+            if liveDiagnostics { logfile = file }
+            else {
+                packetLog = BluetoothPacketLog(file: file, onFailure: { [weak self] in
+                    self?.status = "Diagnostic log write failed"
+                })
+            }
             logURL = url
         } catch { status = "Cannot create diagnostic log: \(error.localizedDescription)" }
         if let data = try? Data(contentsOf: recoveryURL), let saved = try? JSONDecoder().decode(SavedMode.self, from: data) {
@@ -165,6 +177,8 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     private func log(_ kind: String, _ fields: [String: Any] = [:]) {
+        if let packetLog { packetLog.append(kind, fields: fields); return }
+        let fields = BluetoothPacketLog.normalized(fields)
         var object = fields
         object["kind"] = kind
         object["time"] = ISO8601DateFormatter().string(from: Date())
@@ -326,7 +340,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         do { pending = try PendingCommand(request, queueWrites: queueWrites, completion: completion) }
         catch { completion(.failure(error)); return }
         busy = true
-        log("command", ["header": request.header.hex, "payload": request.payload.hex])
+        log("command", ["header": request.header, "payload": request.payload])
         commandTimeout = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
             self?.complete(.failure(BluetoothFailure.message("The keyboard did not return a complete response within five seconds")))
         }
@@ -337,7 +351,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         guard let pending, let target, let writeCharacteristic else { return }
         while let chunk = pending.exchange.nextWrite() {
             pending.nextWrite += 1
-            log("write", ["chunk": pending.nextWrite, "hex": chunk.hex])
+            log("write", ["chunk": pending.nextWrite, "hex": chunk])
             target.writeValue(chunk, for: writeCharacteristic, type: .withResponse)
         }
     }
@@ -355,7 +369,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         guard peripheral == target, characteristic.uuid == notifyUUID else { return }
         if let error { if pending != nil { complete(.failure(error)) }; return }
         guard let data = characteristic.value else { return }
-        log("response_fragment", ["hex": data.hex])
+        log("response_fragment", ["hex": data])
         guard let pending else { return }
         do {
             try pending.exchange.receive(data)
@@ -372,6 +386,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         guard let command = pending else { return }
         pending = nil
         busy = false
+        let duration = (ProcessInfo.processInfo.systemUptime - command.started) * 1000
+        log("command_completed", ["class": command.request.header[4], "id": command.request.header[5],
+                                  "durationMs": duration, "writes": command.nextWrite,
+                                  "success": { if case .success = result { return true }; return false }()])
         commandTimeout?.invalidate(); commandTimeout = nil
         if case .failure(let error) = result {
             log("command_failed", ["error": error.localizedDescription])
@@ -1023,10 +1041,13 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         retryTimer?.invalidate(); retryTimer = nil
         try? FileManager.default.removeItem(at: recoveryURL)
         log("restoration_completed")
-        if closing { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
+        if closing {
+            packetLog?.flush()
+            NSApplication.shared.reply(toApplicationShouldTerminate: true)
+        }
     }
 
-    public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn, signalID: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false) {
+    public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn, signalID: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth) {
         if color != nil {
             let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("ErgoControl/LightingLab/pending-lighting.json")
@@ -1037,7 +1058,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
         // Only an active mapping lease can own custom status lighting.
         macroRenderer.request(driverModeVerified ? color : nil, area: area, signalID: signalID, activity: activity,
-                              allowCompletionToFinish: driverModeVerified && allowCompletionToFinish)
+                              allowCompletionToFinish: driverModeVerified && allowCompletionToFinish, speed: speed)
         if macroRenderer.hasWork { startLightingTimer(); pumpLighting() }
     }
 
@@ -1071,7 +1092,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public func requestTermination() -> NSApplication.TerminateReply {
         log("termination_requested", ["restorationPending": restoreOwed, "ready": ready, "busy": busy])
-        guard restoreOwed else { return .terminateNow }
+        guard restoreOwed else { packetLog?.flush(); return .terminateNow }
         closing = true
         restore()
         return .terminateLater

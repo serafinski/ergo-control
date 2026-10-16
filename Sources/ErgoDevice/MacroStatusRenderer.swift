@@ -13,6 +13,7 @@ final class MacroStatusRenderer {
     private let uptime: () -> TimeInterval
     private var signalID: String?
     private var waveActivity: CodexActivity?
+    private var waveSpeed: CodexWaveSpeed = .smooth
     private var completedIDs: [String] = []
     private var waveStarted: TimeInterval?
     private var waveIndex = 0
@@ -42,14 +43,14 @@ final class MacroStatusRenderer {
         if completedIDs.count > 32 { completedIDs.removeFirst() }
     }
     func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn,
-                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false) {
+                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth) {
         // A chat becoming idle must not truncate an acknowledged return sweep.
         // Explicit disable/stop and new activity still supersede it immediately.
         if color == nil, allowCompletionToFinish, area == .completionWave,
            waveActivity == .finished, let signalID, !completedIDs.contains(signalID), !failed { return }
         let animate = color != nil && area == .completionWave && id != nil
             && activity.map { [.working, .attention, .finished].contains($0) } == true
-        let nextID = animate ? id : nil
+        let nextID = animate ? id.map { "\($0):\(speed.rawValue)" } : nil
         let nextActivity = animate ? activity : nil
         if nextID != signalID || nextActivity != waveActivity {
             if waveActivity != .attention { consumeSignal(signalID) }
@@ -59,7 +60,7 @@ final class MacroStatusRenderer {
             if waveActivity != .attention { consumeSignal(signalID) }
             signalID = nil; waveActivity = nil; desired = nil; desiredArea = area; reset()
         } else if !failed {
-            desiredArea = area; signalID = nextID; waveActivity = nextActivity
+            desiredArea = area; signalID = nextID; waveActivity = nextActivity; waveSpeed = speed
             let consumed = nextActivity != .attention && nextID.map { completedIDs.contains($0) } == true
             if consumed && nextActivity == .working {
                 desiredArea = .macroColumn
@@ -112,7 +113,7 @@ final class MacroStatusRenderer {
         let state = waveActivity
         if wave != nil && waveStarted == nil { waveStarted = uptime() }
         let colors: [DialColor]
-        if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state) }
+        if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed) }
         else { colors = MacroStatusFrame.colors(color, area: area) }
         step(.frame(colors), region: region) { [weak self] _ in
             guard let self else { return }
@@ -120,7 +121,7 @@ final class MacroStatusRenderer {
             if let wave, let state, wave == self.signalID, state == self.waveActivity {
                 self.waveIndex += 1
                 self.nextWaveFrame = self.uptime() + CodexStatusWave.minimumFrameInterval
-                if self.waveIndex == CodexStatusWave.positions(for: state).count {
+                if self.waveIndex == CodexStatusWave.positions(for: state, speed: self.waveSpeed).count {
                     if state == .attention {
                         // The last frame is already at the macro-side endpoint.
                         // Advance toward the right immediately, without duplicating it.

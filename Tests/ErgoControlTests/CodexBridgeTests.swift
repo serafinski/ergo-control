@@ -179,6 +179,19 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertEqual(bridge.activity(slot), .attention)
         bridge.shutdown()
     }
+    func testSpeedChoicePersistsAndNotifiesEvenWithSameWorkingColor() throws {
+        let bridge = fixedBridge(); bridge.setEnabled(true); bridge.setLighting(true); bridge.setLightingArea(.completionWave)
+        _ = try enqueue(1); bridge.poll()
+        var colors: [DialColor?] = []
+        bridge.onLightingChange = { colors.append($0) }
+        bridge.setWaveSpeed(.smooth)
+        XCTAssertEqual(colors, [CodexActivity.working.color])
+        bridge.shutdown()
+        let reopened = fixedBridge()
+        XCTAssertEqual(reopened.settings.waveSpeed, .smooth)
+        reopened.shutdown()
+    }
+
     func testLightingPreviewRunsThroughProductionColorsAndResumesRealStatus() throws {
         var clock: TimeInterval = 100
         let bridge = CodexBridge(folder: folder, startTimer: false, uptime: { clock })

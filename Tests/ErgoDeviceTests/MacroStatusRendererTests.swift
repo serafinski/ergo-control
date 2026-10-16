@@ -172,6 +172,34 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
     }
 
+    func testQuickCompletionRestoresOnlyAfterMacroEndpointAndDoesNotReplay() {
+        let rig = Rig()
+        for _ in 0..<5 {
+            rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "quick-done", activity: .finished, speed: .quick)
+            rig.renderer.pump(); rig.clock += 0.5
+            XCTAssertNotNil(rig.saved)
+        }
+        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.finished.color)! }, [0, 9, 18, 9, 0])
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "quick-done", activity: .finished, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 5)
+    }
+    func testQuickApprovalBouncesAndWorkingSettlesOnMacroBlue() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.attention.color, area: .completionWave, signalID: "quick-approval", activity: .attention, speed: .quick)
+        for _ in 0..<9 { rig.renderer.pump(); rig.clock += 0.5 }
+        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.attention.color)! }, [0, 9, 18, 9, 0, 9, 18, 9, 0])
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "quick-work", activity: .working, speed: .quick)
+        for _ in 0..<3 { rig.renderer.pump(); rig.clock += 0.5 }
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.suffix(4).dropLast().map { $0.firstIndex(of: CodexActivity.working.color)! }, [0, 9, 18])
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+
     func testCompletionWavePlaysOnceAndRestoresEvenBeforeStatusExpires() {
         let rig = Rig()
         rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)

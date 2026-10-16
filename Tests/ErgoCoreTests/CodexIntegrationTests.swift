@@ -124,6 +124,26 @@ final class CodexIntegrationTests: XCTestCase {
         XCTAssertEqual(CodexActivity.finished.color, DialColor(red: 0, green: 255, blue: 0))
     }
 
+    func testQuickWavesUseFewerFramesAndStillReachBothEdges() {
+        XCTAssertEqual(CodexStatusWave.positions(for: .working, speed: .quick), [0, 9, 18])
+        for activity in [CodexActivity.attention, .finished] {
+            let frames = (0..<5).map { CodexStatusWave.frame($0, activity: activity, speed: .quick) }
+            XCTAssertEqual(frames.map { $0.firstIndex(of: activity.color)! }, [0, 9, 18, 9, 0])
+            XCTAssertTrue(frames.allSatisfy { $0.count == 19 })
+            XCTAssertEqual(frames[1][0], DialColor(red: UInt8(Int(activity.color.red) / 10),
+                                                 green: UInt8(Int(activity.color.green) / 10),
+                                                 blue: UInt8(Int(activity.color.blue) / 10)))
+        }
+    }
+    func testWaveSpeedMigratesToQuickAndSmoothChoiceRoundTrips() throws {
+        var value = CodexSettings()
+        var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+        old.removeValue(forKey: "waveSpeed")
+        XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: old)).waveSpeed, .quick)
+        value.waveSpeed = .smooth
+        XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONEncoder().encode(value)), value)
+    }
+
     func testStatusWavePathsStartAtMacrosAndCompletionReturnsToMacros() {
         let heads = (0..<7).map { index in CodexStatusWave.frame(index, activity: .finished).firstIndex(of: CodexActivity.finished.color)! }
         XCTAssertEqual(heads, [0, 6, 12, 18, 12, 6, 0])

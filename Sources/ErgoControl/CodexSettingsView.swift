@@ -81,6 +81,13 @@ struct CodexSettingsView: View {
                 Picker("Signal style", selection: Binding(get: { model.codex.settings.lightingArea }, set: model.codex.setLightingArea)) {
                     ForEach(CodexLightingArea.allCases) { area in Text(area.label).tag(area) }
                 }
+                if model.codex.settings.lightingArea == .completionWave {
+                    Picker("Wave speed", selection: Binding(get: { model.codex.settings.waveSpeed }, set: model.codex.setWaveSpeed)) {
+                        ForEach(CodexWaveSpeed.allCases) { speed in Text(speed.label).tag(speed) }
+                    }.pickerStyle(.segmented)
+                    Text("Quick makes shorter sweeps with wider steps. Smooth uses more steps.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 HStack(spacing: 18) {
                     statusKey(.working); statusKey(.attention); statusKey(.finished)
                 }

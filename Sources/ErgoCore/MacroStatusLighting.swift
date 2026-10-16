@@ -30,6 +30,12 @@ public enum CodexLightingArea: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+public enum CodexWaveSpeed: String, Codable, CaseIterable, Identifiable {
+    case smooth, quick
+    public var id: String { rawValue }
+    public var label: String { self == .quick ? "Quick" : "Smooth" }
+}
+
 public enum MacroStatusFrame {
     public static let background = DialColor(red: 16, green: 16, blue: 16)
     public static func colors(_ signal: DialColor, area: CodexLightingArea = .macroColumn) -> [DialColor] {
@@ -47,26 +53,34 @@ public enum CodexStatusWave {
     public static let maximumDuration: TimeInterval = 6
     public static let minimumFrameInterval: TimeInterval = 0
     public static let completionWindow: TimeInterval = 8
-    public static func positions(for activity: CodexActivity) -> [Int] {
+    public static func positions(for activity: CodexActivity, speed: CodexWaveSpeed = .smooth) -> [Int] {
+        if speed == .quick {
+            switch activity {
+            case .working: return [0, 9, 18]
+            case .attention, .finished: return [0, 9, 18, 9, 0]
+            default: return []
+            }
+        }
         switch activity {
         case .working: return [0, 6, 12, 18]
         case .attention, .finished: return [0, 6, 12, 18, 12, 6, 0]
         default: return []
         }
     }
-    public static func frame(_ index: Int, activity: CodexActivity) -> [DialColor] {
+    public static func frame(_ index: Int, activity: CodexActivity, speed: CodexWaveSpeed = .smooth) -> [DialColor] {
         var colors = Array(repeating: MacroStatusFrame.background, count: 19)
-        let positions = positions(for: activity)
+        let positions = positions(for: activity, speed: speed)
         guard positions.indices.contains(index) else { return colors }
         let head = positions[index]
         let direction = index > 0 && head < positions[index - 1] ? -1 : 1
         let color = activity.color
-        for trail in 0..<7 {
+        let width = speed == .quick ? 10 : 7
+        for trail in 0..<width {
             let column = head - direction * trail
             guard (0..<19).contains(column) else { continue }
-            colors[column] = DialColor(red: UInt8(Int(color.red) * (7 - trail) / 7),
-                                      green: UInt8(Int(color.green) * (7 - trail) / 7),
-                                      blue: UInt8(Int(color.blue) * (7 - trail) / 7))
+            colors[column] = DialColor(red: UInt8(Int(color.red) * (width - trail) / width),
+                                      green: UInt8(Int(color.green) * (width - trail) / width),
+                                      blue: UInt8(Int(color.blue) * (width - trail) / width))
         }
         return colors
     }
