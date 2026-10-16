@@ -152,8 +152,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             guard FileManager.default.createFile(atPath: url.path, contents: nil,
                                                  attributes: [.posixPermissions: 0o600]) else { throw CocoaError(.fileWriteUnknown) }
             let file = try FileHandle(forWritingTo: url)
-            if liveDiagnostics { logfile = file }
-            else {
+            // Keep the diagnostic sink available to the activation guard; only
+            // its writer/UI publication policy changes in the main app.
+            logfile = file
+            if !liveDiagnostics {
                 packetLog = BluetoothPacketLog(file: file, onFailure: { [weak self] in
                     self?.status = "Diagnostic log write failed"
                 })
