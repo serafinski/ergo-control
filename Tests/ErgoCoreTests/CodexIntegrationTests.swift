@@ -65,14 +65,14 @@ final class CodexIntegrationTests: XCTestCase {
         value.slots.removeLast()
         XCTAssertThrowsError(try value.validate())
     }
-    func testSharedColumnPriorityAndWhiteBackground() {
+    func testSharedColumnPriorityAndContrastingBackground() {
         XCTAssertEqual(CodexActivity.priority([.finished, .working, .attention]), .attention)
         XCTAssertEqual(CodexActivity.priority([.finished, .working]), .working)
         XCTAssertEqual(CodexActivity.priority([.unknown]), .unknown)
         let colors = MacroStatusFrame.colors(CodexActivity.attention.color)
         XCTAssertEqual(colors.count, 19)
         XCTAssertEqual(colors[0], CodexActivity.attention.color)
-        XCTAssertTrue(colors.dropFirst().allSatisfy { $0 == DialColor(red: 160, green: 160, blue: 160) })
+        XCTAssertTrue(colors.dropFirst().allSatisfy { $0 == DialColor(red: 16, green: 16, blue: 16) })
     }
     func testHookInstallMergeIsIdempotentAndRemovalKeepsForeignHandlers() throws {
         let foreign: [String: Any] = ["description": "keep me", "extra": ["value": 42],
@@ -102,13 +102,26 @@ final class CodexIntegrationTests: XCTestCase {
     }
     func testLightingPreviewHasBoundedMonotonicStages() {
         for (elapsed, stage) in [(0.0, CodexLightingTestStage.working), (3.9, .working), (4, .attention),
-                                  (8, .finished), (12, .idle), (16, .restore), (19.9, .restore)] {
+                                  (8, .finished), (12, .restore), (15.9, .restore)] {
             XCTAssertEqual(CodexLightingTestStage.at(elapsed: elapsed), stage)
         }
-        for elapsed in [-1.0, 20, 1_000_000, .infinity, .nan] {
+        for elapsed in [-1.0, 16, 20, 1_000_000, .infinity, .nan] {
             XCTAssertNil(CodexLightingTestStage.at(elapsed: elapsed))
         }
         XCTAssertNil(CodexLightingTestStage.restore.activity)
+    }
+
+    func testCompletionBecomesIdleAfterFourSecondsWithoutExpiringWorkingOrApproval() throws {
+        let finished = CodexSessionStatus(try event("Stop", time: 100))
+        XCTAssertEqual(finished.activity(now: Date(timeIntervalSince1970: 103.9)), .finished)
+        XCTAssertEqual(finished.activity(now: Date(timeIntervalSince1970: 104)), .idle)
+        XCTAssertEqual(finished.activity(now: Date(timeIntervalSince1970: 200)), .idle)
+        XCTAssertEqual(CodexSessionStatus(try event("PreToolUse")).activity(now: Date(timeIntervalSince1970: 104)), .working)
+        XCTAssertEqual(CodexSessionStatus(try event("PermissionRequest")).activity(now: Date(timeIntervalSince1970: 104)), .attention)
+        let full = MacroStatusFrame.colors(CodexActivity.finished.color, area: .wholeKeyboard)
+        XCTAssertEqual(full.count, 19)
+        XCTAssertTrue(full.allSatisfy { $0 == CodexActivity.finished.color })
+        XCTAssertEqual(CodexActivity.finished.color, DialColor(red: 0, green: 255, blue: 0))
     }
 
 }

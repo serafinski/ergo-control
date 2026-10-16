@@ -394,6 +394,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
 
     public var canTryDriverMode: Bool { ready && !busy && !keyboardEffectBusy && !restoreOwed && currentMode?.0 == 0 }
 
+    public var statusLightingActive: Bool {
+        macroRenderer.desired != nil || original?.macroLighting != nil || macroRenderer.busy
+    }
+
     public var canEditKeyboardLighting: Bool {
         ready && !keyboardEffectBusy && !closing && !restoreRequested
             && !restorationChain && (!restoreOwed || driverModeVerified)
@@ -985,7 +989,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         if closing { NSApplication.shared.reply(toApplicationShouldTerminate: true) }
     }
 
-    public func setMacroStatusColor(_ color: DialColor?) {
+    public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn) {
         if color != nil {
             let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("ErgoControl/LightingLab/pending-lighting.json")
@@ -995,7 +999,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             }
         }
         // Only an active mapping lease can own custom status lighting.
-        macroRenderer.request(driverModeVerified ? color : nil)
+        macroRenderer.request(driverModeVerified ? color : nil, area: area)
         if macroRenderer.hasWork { startLightingTimer(); pumpLighting() }
     }
 

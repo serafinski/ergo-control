@@ -57,6 +57,10 @@ struct KeyboardLightingView: View {
                     Button("Apply lighting") { apply() }
                         .disabled(!available)
                 }
+                if device.statusLightingActive {
+                    Text("Codex status is using the backlight. These controls return when all selected chats are idle, four seconds after the last completion signal.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Text(device.keyboardEffectStatus).font(.callout).textSelection(.enabled)
                 Text("Works with mappings on or off. Lighting applies to every profile. Keep keyboard brightness above 0% to see the effect.")
                     .font(.caption).foregroundStyle(.secondary)

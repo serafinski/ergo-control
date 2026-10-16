@@ -23,11 +23,11 @@ final class CodexBridgeTests: XCTestCase {
         bridge.setSelection(.fixed)
         return bridge
     }
-    func enqueue(_ index: Int, name: String = "UserPromptSubmit") throws -> String {
+    func enqueue(_ index: Int, name: String = "UserPromptSubmit", time: Date = Date()) throws -> String {
         let id = String(format: "01a13698-ddb7-7381-9a6a-%012d", index)
         let input = try JSONSerialization.data(withJSONObject: ["session_id": id, "cwd": "/private/project-\(index)",
                                                                "hook_event_name": name])
-        let event = try CodexHookEvent(input: input)
+        let event = try CodexHookEvent(input: input, time: time)
         try JSONEncoder().encode(event).write(to: folder.appendingPathComponent("events/\(UUID().uuidString).json"))
         return id
     }
@@ -196,15 +196,13 @@ final class CodexBridgeTests: XCTestCase {
         clock = 108; bridge.poll()
         XCTAssertEqual(bridge.lightingColor, CodexActivity.finished.color)
         clock = 112; bridge.poll()
-        XCTAssertEqual(bridge.lightingColor, CodexActivity.idle.color)
-        clock = 116; bridge.poll()
         XCTAssertEqual(bridge.lightingTestStage, .restore)
         XCTAssertNil(bridge.lightingColor, "The normal renderer must restore the saved effect during this stage")
-        clock = 120; bridge.poll()
+        clock = 116; bridge.poll()
         XCTAssertNil(bridge.lightingTestStage)
         XCTAssertEqual(bridge.lightingColor, CodexActivity.finished.color)
         XCTAssertEqual(colors, [CodexActivity.attention.color, CodexActivity.finished.color,
-                                CodexActivity.idle.color, nil, CodexActivity.finished.color])
+                                nil, CodexActivity.finished.color])
         bridge.shutdown()
     }
     func testLightingPreviewRequiresOptInAndCancellationCannotRestartIt() throws {
@@ -222,6 +220,52 @@ final class CodexBridgeTests: XCTestCase {
         XCTAssertNil(bridge.lightingTestStage); XCTAssertNil(bridge.lightingColor)
         bridge.setEnabled(true); bridge.startLightingTest(); bridge.shutdown()
         XCTAssertNil(bridge.lightingTestStage)
+    }
+
+    func testRealCompletionReleasesLightingWhileEnabledAndNewWorkReacquiresIt() throws {
+        var time = Date()
+        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
+        var colors: [DialColor?] = []
+        bridge.onLightingChange = { colors.append($0) }
+        _ = try enqueue(1, time: time); bridge.poll()
+        time.addTimeInterval(1)
+        _ = try enqueue(1, name: "Stop", time: time); bridge.poll()
+        XCTAssertEqual(bridge.lightingColor, CodexActivity.finished.color)
+        time.addTimeInterval(3.9); bridge.poll()
+        XCTAssertEqual(bridge.activity(bridge.displaySlots[0]), .finished)
+        time.addTimeInterval(0.2); bridge.poll()
+        XCTAssertEqual(bridge.activity(bridge.displaySlots[0]), .idle)
+        XCTAssertNil(bridge.lightingColor)
+        XCTAssertNil(colors.last!)
+        XCTAssertTrue(bridge.settings.lighting, "Idle must release the renderer without disabling future status updates")
+        bridge.setLightingArea(.wholeKeyboard)
+        XCTAssertNil(bridge.lightingColor, "Changing area must not revive old green")
+        _ = try enqueue(1, name: "PreToolUse", time: time); bridge.poll()
+        XCTAssertEqual(bridge.lightingColor, CodexActivity.working.color)
+        let count = colors.count
+        bridge.setLightingArea(.macroColumn)
+        XCTAssertEqual(colors.count, count + 1, "Area changes must send a new frame even when color is unchanged")
+        bridge.shutdown()
+        let restored = CodexBridge(folder: folder, startTimer: false)
+        XCTAssertEqual(restored.settings.lightingArea, .macroColumn)
+        restored.shutdown()
+    }
+    func testIdleDoesNotClearAnotherWorkingOrApprovalChat() throws {
+        var time = Date()
+        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
+        _ = try enqueue(1, name: "Stop", time: time); bridge.poll()
+        _ = try enqueue(2, name: "PreToolUse", time: time); bridge.poll()
+        time.addTimeInterval(5); bridge.poll()
+        XCTAssertEqual(bridge.activity(bridge.displaySlots[0]), .idle)
+        XCTAssertEqual(bridge.lightingColor, CodexActivity.working.color)
+        _ = try enqueue(2, name: "PermissionRequest", time: time); bridge.poll()
+        XCTAssertEqual(bridge.lightingColor, CodexActivity.attention.color)
+        time.addTimeInterval(1)
+        _ = try enqueue(2, name: "Interrupt", time: time); bridge.poll()
+        XCTAssertNil(bridge.lightingColor)
+        bridge.shutdown()
     }
 
 }

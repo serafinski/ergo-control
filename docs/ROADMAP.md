@@ -8,7 +8,7 @@ Version 0.4.0 implements recent chats by default, optional pinned/fixed selectio
 
 ## Codex section and status-light validation
 
-Version 0.5.1 removes ordinary ChatGPT selection after browser-only navigation failed the user's check. Codex has its own settings section and a 20-second visual status-light test. The user confirmed the visual status-color/restoration test with mappings enabled. Real hook activity and live working-blue to turn-ended-green are now user-confirmed. Genuine approval-to-amber, multiple-chat priority, and long-running recovery still need separate live validation. Ordinary ChatGPT support and native Micro parity remain deferred. See [setup](CODEX_SETUP.md).
+Version 0.5.1 removes ordinary ChatGPT selection after browser-only navigation failed the user's check. Codex has its own settings section. Version 0.6.0 adds a 16-second visual test, four-second completion-to-idle restoration, and macro-column/whole-keyboard signal areas; these revised behaviors need a hardware check. The user confirmed the visual status-color/restoration test with mappings enabled. Real hook activity and live working-blue to turn-ended-green are now user-confirmed. Genuine approval-to-amber, multiple-chat priority, and long-running recovery still need separate live validation. Ordinary ChatGPT support and native Micro parity remain deferred. See [setup](CODEX_SETUP.md).
 
 ## Remaining hardware validation
 

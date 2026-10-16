@@ -15,9 +15,9 @@ public enum CodexActivity: String, Codable, CaseIterable {
         switch self {
         case .unknown: return DialColor(red: 50, green: 50, blue: 50)
         case .idle: return DialColor(red: 140, green: 140, blue: 140)
-        case .working: return DialColor(red: 0, green: 90, blue: 255)
-        case .attention: return DialColor(red: 255, green: 140, blue: 0)
-        case .finished: return DialColor(red: 0, green: 210, blue: 65)
+        case .working: return DialColor(red: 0, green: 120, blue: 255)
+        case .attention: return DialColor(red: 255, green: 100, blue: 0)
+        case .finished: return DialColor(red: 0, green: 255, blue: 0)
         }
     }
     public static func priority(_ states: [Self]) -> Self {
@@ -27,8 +27,8 @@ public enum CodexActivity: String, Codable, CaseIterable {
 
 /// A bounded visual test; it never creates hook events or changes chat status.
 public enum CodexLightingTestStage: Int, CaseIterable {
-    case working, attention, finished, idle, restore
-    public static let duration: TimeInterval = 20
+    case working, attention, finished, restore
+    public static let duration: TimeInterval = 16
     public static func at(elapsed: TimeInterval) -> Self? {
         guard elapsed.isFinite, elapsed >= 0, elapsed < duration else { return nil }
         return Self(rawValue: Int(elapsed / 4))
@@ -38,7 +38,6 @@ public enum CodexLightingTestStage: Int, CaseIterable {
         case .working: return .working
         case .attention: return .attention
         case .finished: return .finished
-        case .idle: return .idle
         case .restore: return nil
         }
     }
@@ -47,7 +46,6 @@ public enum CodexLightingTestStage: Int, CaseIterable {
         case .working: return "Working · blue"
         case .attention: return "Approval requested · amber"
         case .finished: return "Turn ended · green"
-        case .idle: return "Idle · white"
         case .restore: return "Restoring previous keyboard effect"
         }
     }
@@ -122,16 +120,18 @@ public struct CodexSettings: Codable, Equatable {
     public var enabled = false
     public var lighting = false
     public var selection: CodexSelectionMode = .recent
+    public var lightingArea: CodexLightingArea = .macroColumn
     public var useUnmappedMacroKeys = true
     public var slots = (1...5).map(CodexSlot.init)
     public init() {}
-    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys }
+    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
         lighting = try c.decode(Bool.self, forKey: .lighting)
         slots = try c.decode([CodexSlot].self, forKey: .slots)
         selection = try c.decodeIfPresent(CodexSelectionMode.self, forKey: .selection) ?? .recent
+        lightingArea = try c.decodeIfPresent(CodexLightingArea.self, forKey: .lightingArea) ?? .macroColumn
         useUnmappedMacroKeys = try c.decodeIfPresent(Bool.self, forKey: .useUnmappedMacroKeys) ?? true
     }
     public func validate() throws {
@@ -212,8 +212,12 @@ public struct CodexSessionStatus {
            let current = latest.turnID, turn != current { return }
         latest = event
     }
+    public static let completionSignalDuration: TimeInterval = 4
     public func activity(now: Date) -> CodexActivity {
-        now.timeIntervalSince(latest.time) < 1800 ? latest.activity : .unknown
+        let age = now.timeIntervalSince(latest.time)
+        guard age < 1800 else { return .unknown }
+        if latest.activity == .finished, age >= Self.completionSignalDuration { return .idle }
+        return latest.activity
     }
 }
 

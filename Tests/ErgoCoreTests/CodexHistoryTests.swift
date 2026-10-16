@@ -6,11 +6,12 @@ final class CodexHistoryTests: XCTestCase {
     func testRecentIsTheDefaultIncludingUpgradeFromFixedOnlyVersion() throws {
         XCTAssertEqual(CodexSettings().selection, .recent)
         var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(CodexSettings())) as! [String: Any]
-        old.removeValue(forKey: "selection"); old.removeValue(forKey: "useUnmappedMacroKeys")
+        old.removeValue(forKey: "selection"); old.removeValue(forKey: "useUnmappedMacroKeys"); old.removeValue(forKey: "lightingArea")
         var slots = old["slots"] as! [[String: Any]]; slots[0]["threadID"] = id; old["slots"] = slots
         let saved = try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: old))
         XCTAssertEqual(saved.selection, .recent)
         XCTAssertTrue(saved.useUnmappedMacroKeys)
+        XCTAssertEqual(saved.lightingArea, .macroColumn)
         XCTAssertEqual(saved.slots[0].threadID, id, "Keep fixed assignments available when selecting Fixed later")
     }
     func testMetadataParsingIgnoresContentAndInvalidSubagentOrEphemeralRows() throws {

@@ -7,7 +7,7 @@ struct CodexSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("Codex").font(.largeTitle.bold())
-            Text("M1–M5 open your chats. The macro column can show their activity.").foregroundStyle(.secondary)
+            Text("M1–M5 open your chats. The keyboard can show their activity.").foregroundStyle(.secondary)
             Toggle("Connect to Codex", isOn: Binding(get: { model.codex.settings.enabled }, set: model.codex.setEnabled))
                 .toggleStyle(.switch)
             if !model.running { Text(model.status).font(.callout).foregroundStyle(.secondary) }
@@ -75,24 +75,27 @@ struct CodexSettingsView: View {
     private var statusLights: some View {
         GroupBox("Status lights") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("Show Codex status on the macro column", isOn: Binding(get: { model.codex.settings.lighting }, set: model.codex.setLighting))
-                HStack(spacing: 18) {
-                    statusKey(.working); statusKey(.attention); statusKey(.finished); statusKey(.idle)
+                Toggle("Show Codex status lights", isOn: Binding(get: { model.codex.settings.lighting }, set: model.codex.setLighting))
+                Picker("Signal area", selection: Binding(get: { model.codex.settings.lightingArea }, set: model.codex.setLightingArea)) {
+                    ForEach(CodexLightingArea.allCases) { area in Text(area.label).tag(area) }
                 }
-                Text("M1–M5 share one color; approval takes priority over working, then turn ended and idle. Other keys stay white. Stopping mappings or switching this off restores your previous effect.")
+                HStack(spacing: 18) {
+                    statusKey(.working); statusKey(.attention); statusKey(.finished)
+                }
+                Text("Green lasts four seconds, then idle restores your previous effect and unlocks normal lighting settings. Another working chat or pending approval keeps its signal active. Macro column dims the other keys for contrast; Whole keyboard colors all zones. Keyboard brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     if let stage = model.codex.lightingTestStage {
                         Button("Stop test") { model.codex.cancelLightingTest() }
                         Text("Test: \(stage.label)").font(.callout)
                     } else {
-                        Button("Test status lights · 20 seconds") { model.codex.startLightingTest() }
+                        Button("Test status lights · 16 seconds") { model.codex.startLightingTest() }
                             .disabled(!model.running || !model.codex.settings.lighting)
                         Text(model.running ? "Keep keyboard brightness above 0%." : "Enable mappings to test the lights.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text("The test shows blue → amber → green → white, then your previous effect, for four seconds each. Live status resumes afterward. It does not change any chat’s status.")
+                Text("The test shows blue → amber → green → your previous effect, for four seconds each. Live status resumes afterward. It does not change any chat’s status.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.bluetooth.macroStatusLightingMessage.isEmpty {
                     Text(model.bluetooth.macroStatusLightingMessage).font(.caption).textSelection(.enabled)

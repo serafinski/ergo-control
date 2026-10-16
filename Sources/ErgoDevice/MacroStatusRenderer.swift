@@ -8,6 +8,8 @@ final class MacroStatusRenderer {
     var desired: DialColor?
     private(set) var busy = false
     private var rendered: DialColor?
+    private var desiredArea: CodexLightingArea = .macroColumn
+    private var renderedArea: CodexLightingArea?
     private var selected = false
     private var failed = false
     private var retryAfter = Date.distantPast
@@ -22,12 +24,13 @@ final class MacroStatusRenderer {
         self.command = command; self.load = load; self.persist = persist
         self.allowed = allowed; self.message = message
     }
-    func reset() { selected = false; rendered = nil; failed = false; retryAfter = .distantPast }
-    func request(_ color: DialColor?) {
+    func reset() { selected = false; rendered = nil; renderedArea = nil; failed = false; retryAfter = .distantPast }
+    func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn) {
+        desiredArea = area
         if color == nil { desired = nil; reset() }
         else if !failed { desired = color }
     }
-    var hasWork: Bool { !busy && Date() >= retryAfter && ((desired != nil && !failed && desired != rendered) || ((desired == nil || failed) && load() != nil)) }
+    var hasWork: Bool { !busy && Date() >= retryAfter && ((desired != nil && !failed && (desired != rendered || desiredArea != renderedArea)) || ((desired == nil || failed) && load() != nil)) }
     func pump() {
         guard hasWork, allowed() else { return }
         busy = true
@@ -58,9 +61,10 @@ final class MacroStatusRenderer {
     }
     private func frame(region: UInt8) {
         guard let color = desired else { busy = false; return }
-        step(.frame(MacroStatusFrame.colors(color)), region: region) { [weak self] _ in
-            self?.rendered = color; self?.busy = false
-            self?.message("Macro column shows Codex status · other keys white")
+        let area = desiredArea
+        step(.frame(MacroStatusFrame.colors(color, area: area)), region: region) { [weak self] _ in
+            self?.rendered = color; self?.renderedArea = area; self?.busy = false
+            self?.message(area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
         }
     }
     private func step(_ operation: BluetoothLightingLabCommand, region: UInt8, completion: @escaping (Data) -> Void) {
@@ -104,7 +108,7 @@ final class MacroStatusRenderer {
                 }
                 do {
                     try self.persist(nil)
-                    self.selected = false; self.rendered = nil
+                    self.selected = false; self.rendered = nil; self.renderedArea = nil
                     self.message("Previous keyboard lighting restored and verified")
                     completion(true)
                 } catch { self.retryAfter = Date().addingTimeInterval(5); self.message("Could not update lighting recovery record; retained for retry."); completion(false) }

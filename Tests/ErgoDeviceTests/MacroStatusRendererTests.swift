@@ -4,7 +4,7 @@ import ErgoCore
 
 final class MacroStatusRendererTests: XCTestCase {
     final class Rig {
-        let effect = try! KeyboardEffect(kind: .wave)
+        var effect = try! KeyboardEffect(kind: .wave)
         var saved: SavedMacroLighting?
         var operations: [String] = []
         var frames: [[DialColor]] = []
@@ -135,8 +135,34 @@ final class MacroStatusRendererTests: XCTestCase {
         }
         XCTAssertEqual(rig.frames.map { $0[0] }, states.map(\.color))
         XCTAssertTrue(rig.frames.allSatisfy { frame in
-            frame.count == 19 && frame.dropFirst().allSatisfy { $0 == DialColor(red: 160, green: 160, blue: 160) }
+            frame.count == 19 && frame.dropFirst().allSatisfy { $0 == DialColor(red: 16, green: 16, blue: 16) }
         })
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
+
+    func testAreaSwitchRepaintsSameColorAndKeepsOriginalRestorable() {
+        let rig = Rig()
+        let color = CodexActivity.attention.color
+        rig.renderer.request(color); rig.renderer.pump()
+        XCTAssertEqual(rig.frames[0].filter { $0 == color }.count, 1)
+        rig.renderer.request(color, area: .wholeKeyboard); rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2)
+        XCTAssertTrue(rig.frames[1].allSatisfy { $0 == color })
+        rig.renderer.pump(); XCTAssertEqual(rig.frames.count, 2, "Unchanged whole-keyboard color must coalesce")
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
+    func testAfterIdleNextStatusRestoresNewlyChosenNormalEffect() throws {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.finished.color); rig.renderer.pump()
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        rig.effect = try KeyboardEffect(kind: .breathing, colors: [DialColor(red: 200, green: 0, blue: 200)])
+        rig.renderer.request(CodexActivity.working.color, area: .wholeKeyboard); rig.renderer.pump()
+        XCTAssertEqual(try rig.saved?.validatedEffect(), rig.effect)
         rig.renderer.request(nil); rig.renderer.pump()
         XCTAssertNil(rig.saved)
         XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])

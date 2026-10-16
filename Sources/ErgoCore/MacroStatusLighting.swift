@@ -17,10 +17,18 @@ public struct SavedMacroLighting: Codable, Equatable {
     }
 }
 
+public enum CodexLightingArea: String, Codable, CaseIterable, Identifiable {
+    case macroColumn, wholeKeyboard
+    public var id: String { rawValue }
+    public var label: String { self == .macroColumn ? "Macro column" : "Whole keyboard" }
+}
+
 public enum MacroStatusFrame {
-    public static func colors(_ macro: DialColor) -> [DialColor] {
-        var frame = Array(repeating: DialColor(red: 160, green: 160, blue: 160), count: 19)
-        frame[0] = macro
+    public static let background = DialColor(red: 16, green: 16, blue: 16)
+    public static func colors(_ signal: DialColor, area: CodexLightingArea = .macroColumn) -> [DialColor] {
+        if area == .wholeKeyboard { return Array(repeating: signal, count: 19) }
+        var frame = Array(repeating: background, count: 19)
+        frame[0] = signal
         return frame
     }
 }

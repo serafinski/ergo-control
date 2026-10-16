@@ -1,6 +1,6 @@
 # Macro-key lighting investigation
 
-Investigated 15 October 2026. **Razer exposes M1–M5 as one shared lighting zone, not five individually addressable colors.** Independent colors for individual macro buttons are not exposed by that map. The optional Lighting Lab now sends custom zone frames over USB and Bluetooth. The user confirmed that **only M1–M5 pulse together while all other keys stay dark on both connections**, and confirmed a moving cyan line over USB. Saved-effect restoration was read-back verified. Regular mapping sessions do not send custom zone frames.
+Investigated 15 October 2026. **Razer exposes M1–M5 as one shared lighting zone, not five individually addressable colors.** Independent colors for individual macro buttons are not exposed by that map. The optional Lighting Lab now sends custom zone frames over USB and Bluetooth. The user confirmed that **only M1–M5 pulse together while all other keys stay dark on both connections**, and confirmed a moving cyan line over USB. Saved-effect restoration was read-back verified. Regular mapping sessions now use the journaled Codex status renderer for opt-in macro-column or whole-keyboard signals; idle restores the previous effect.
 
 ## Device-specific evidence
 
@@ -32,7 +32,7 @@ The Bluetooth configuration uses `rzDevice30`. The manifest flags limit what Raz
 
 Chroma provides useful device-specific mapping/protocol evidence. It cannot provide five separate macro colors through a map that exposes one shared target. The standalone Lighting Lab implements USB and Bluetooth custom frames with independently written codecs and no Chroma dependency. It restores the previous effect after a test. Its macro-only patterns deliberately turn the other 18 zones off; preserving an existing animated background would require additional rendering/state work. USB/receiver mappings remain outside the app's current support.
 
-The optional [Lighting Lab](LIGHTING_LAB.md) provides temporary whole-column and 19-zone pattern experiments, with exact-device/region restoration records and verified effect recovery. Macro-column isolation is now confirmed over USB and Bluetooth; the remaining generated patterns and interruption recovery still need observation. No Codex status source has been selected. Individual M1–M5 status lights should not be promised on this device based on the supported map.
+The optional [Lighting Lab](LIGHTING_LAB.md) provides temporary whole-column and 19-zone pattern experiments, with exact-device/region restoration records and verified effect recovery. Macro-column isolation is now confirmed over USB and Bluetooth; the remaining generated patterns and interruption recovery still need observation. The optional Codex adapter now uses lifecycle hooks and a journaled status renderer; see [setup](CODEX_SETUP.md). Individual M1–M5 status lights should not be promised on this device based on the supported map.
 
 ## Reproducibility and provenance
 

@@ -13,8 +13,11 @@ final class CodexBridge: ObservableObject {
     @Published private(set) var lightingTestStage: CodexLightingTestStage?
     private var lightingTestStarted: TimeInterval?
     private let uptime: () -> TimeInterval
+    private let now: () -> Date
     private var timer: Timer?
     private var lastColor: DialColor?
+    private var lastArea: CodexLightingArea = .macroColumn
+    private var lastActivities: [CodexActivity] = []
     private var lastExpiryRefresh = Date.distantPast
     private var nextHistoryRefresh = Date.distantPast
     private let history: CodexHistorySource?
@@ -33,7 +36,8 @@ final class CodexBridge: ObservableObject {
     }
     var hooksURL: URL { codexHome.appendingPathComponent("hooks.json") }
 
-    init(folder: URL = CodexBridge.defaultFolder, startTimer: Bool = true, history: CodexHistorySource? = nil, uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    init(folder: URL = CodexBridge.defaultFolder, startTimer: Bool = true, history: CodexHistorySource? = nil, uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, now: @escaping () -> Date = Date.init) {
+        self.now = now
         self.uptime = uptime
         self.folder = folder
         self.history = history ?? (startTimer ? CodexHistoryReader() : nil)
@@ -133,7 +137,7 @@ final class CodexBridge: ObservableObject {
     }
     func refreshHistory() {
         guard settings.enabled, settings.selection != .fixed else { return }
-        nextHistoryRefresh = Date().addingTimeInterval(10)
+        nextHistoryRefresh = now().addingTimeInterval(10)
         history?.refresh()
     }
     func setLighting(_ enabled: Bool) {
@@ -142,6 +146,10 @@ final class CodexBridge: ObservableObject {
             if !enabled { cancelLightingTest() }
             updateLighting()
         }
+    }
+    func setLightingArea(_ area: CodexLightingArea) {
+        var value = settings; value.lightingArea = area
+        if save(value) { updateLighting() }
     }
     func startLightingTest() {
         guard settings.enabled, settings.lighting else { return }
@@ -197,11 +205,11 @@ final class CodexBridge: ObservableObject {
         onLightingChange?(nil)
     }
     func activity(_ slot: CodexSlot) -> CodexActivity {
-        slot.threadID.flatMap { sessions[$0.lowercased()]?.activity(now: Date()) } ?? .unknown
+        slot.threadID.flatMap { sessions[$0.lowercased()]?.activity(now: now()) } ?? .unknown
     }
     func poll() {
         advanceLightingTest()
-        if settings.enabled, settings.selection != .fixed, Date() >= nextHistoryRefresh { refreshHistory() }
+        if settings.enabled, settings.selection != .fixed, now() >= nextHistoryRefresh { refreshHistory() }
         guard let files = try? FileManager.default.contentsOfDirectory(at: queue, includingPropertiesForKeys: nil) else { return }
         var events: [CodexHookEvent] = []
         for url in files.prefix(256) where url.pathExtension == "json" {
@@ -209,7 +217,7 @@ final class CodexBridge: ObservableObject {
             guard settings.enabled,
                   let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 4096,
                   let data = try? Data(contentsOf: url),
-                  let event = try? JSONDecoder().decode(CodexHookEvent.self, from: data), event.validate(now: Date()) else { continue }
+                  let event = try? JSONDecoder().decode(CodexHookEvent.self, from: data), event.validate(now: now()) else { continue }
             events.append(event)
         }
         for event in events.sorted(by: { $0.time < $1.time }) {
@@ -227,12 +235,12 @@ final class CodexBridge: ObservableObject {
                 sessions[event.sessionID] = CodexSessionStatus(event)
             }
             if ["UserPromptSubmit", "Stop", "SessionEnd"].contains(event.event) {
-                nextHistoryRefresh = min(nextHistoryRefresh, Date().addingTimeInterval(1))
+                nextHistoryRefresh = min(nextHistoryRefresh, now().addingTimeInterval(1))
             }
             message = "Connected · latest event: \(event.event). Status is observed activity, not unread state."
         }
-        if !events.isEmpty || Date().timeIntervalSince(lastExpiryRefresh) >= 30 {
-            lastExpiryRefresh = Date(); objectWillChange.send()
+        if !events.isEmpty || now().timeIntervalSince(lastExpiryRefresh) >= 30 {
+            lastExpiryRefresh = now(); objectWillChange.send()
         }
         // Also refresh time-based expiry when no new event has arrived.
         updateLighting()
@@ -251,14 +259,21 @@ final class CodexBridge: ObservableObject {
         }
     }
     private func updateLighting() {
+        let activities = displaySlots.map(activity)
+        if activities != lastActivities { lastActivities = activities; objectWillChange.send() }
         let color = lightingColor
-        if color != lastColor { lastColor = color; onLightingChange?(color) }
+        if color != lastColor || (color != nil && settings.lightingArea != lastArea) {
+            lastColor = color; lastArea = settings.lightingArea; onLightingChange?(color)
+        }
     }
     var lightingColor: DialColor? {
         guard settings.enabled, settings.lighting else { return nil }
         if let stage = lightingTestStage { return stage.activity?.color }
         let state = CodexActivity.priority(displaySlots.map(activity))
-        return state != .unknown ? state.color : nil
+        switch state {
+        case .working, .attention, .finished: return state.color
+        case .idle, .unknown: return nil
+        }
     }
     func openSlot(_ number: Int) {
         guard settings.enabled else { message = "Enable the Codex connection first."; return }
