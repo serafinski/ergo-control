@@ -4,6 +4,41 @@ import ErgoCore
 
 /// Exercise the real engine with an output sink; never post input to the Mac.
 final class ActionEngineTests: XCTestCase {
+    func testLettersAndReturnDiscardInheritedFnKeypadAndUnheldModifiers() throws {
+        for usage: UInt8 in [7,8,40,42,44,224,226] {
+            let event = try XCTUnwrap(CGEvent(keyboardEventSource: CGEventSource(stateID: .privateState),
+                virtualKey: MacKeys.codes[usage]!, keyDown: true))
+            // Reproduce a source contaminated by preceding navigation events.
+            event.flags = [.maskSecondaryFn,.maskNumericPad,.maskCommand,.maskShift]
+            event.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+            MacKeys.configure(event, usage: usage, repeated: false, modifiers: 0, capsLock: false)
+            XCTAssertEqual(event.flags, [], "Unexpected flags on HID usage \(usage)")
+            XCTAssertEqual(event.getIntegerValueField(.keyboardEventAutorepeat), 0)
+            MacKeys.configure(event, usage: usage, repeated: false, modifiers: 5, capsLock: false)
+            XCTAssertTrue(event.flags.contains([.maskControl,.maskAlternate]))
+            XCTAssertFalse(event.flags.contains(.maskSecondaryFn))
+            XCTAssertFalse(event.flags.contains(.maskNumericPad))
+            XCTAssertFalse(event.flags.contains(.maskCommand))
+        }
+    }
+
+    func testControlOptionReturnRemainsDistinctFromKeypadEnter() throws {
+        let source = CGEventSource(stateID: .privateState)
+        for pressed in [true,false] {
+            _ = MacKeys.event(usage: 80, pressed: pressed, repeated: false,
+                              modifiers: 5, capsLock: false, source: source)
+            let main = try XCTUnwrap(MacKeys.event(usage: 40, pressed: pressed, repeated: false,
+                modifiers: 5, capsLock: false, source: source))
+            XCTAssertEqual(main.getIntegerValueField(.keyboardEventKeycode), 36)
+            XCTAssertEqual(main.flags, MacKeys.flags(5))
+            let keypad = try XCTUnwrap(MacKeys.event(usage: 88, pressed: pressed, repeated: false,
+                modifiers: 5, capsLock: false, source: source))
+            XCTAssertEqual(keypad.getIntegerValueField(.keyboardEventKeycode), 76)
+            XCTAssertEqual(keypad.flags, MacKeys.flags(5).union(.maskNumericPad))
+            XCTAssertFalse(keypad.flags.contains(.maskSecondaryFn))
+        }
+    }
+
     func testArrowEventsKeepNativeMetadataAndBothModifierSides() throws {
         for usage: UInt8 in 79...82 {
             for mods: UInt8 in [0x05,0x50] {

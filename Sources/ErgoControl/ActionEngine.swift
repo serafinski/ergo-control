@@ -37,14 +37,28 @@ enum MacKeys {
                       capsLock: Bool, source: CGEventSource?) -> CGEvent? {
         guard let code = codes[usage],
               let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: pressed) else { return nil }
-        // CGEvent adds the native keypad/function flags to arrow keys. Preserve
-        // that metadata instead of replacing every flag with the modifier mask.
-        let intrinsic = event.flags.intersection([.maskNumericPad, .maskSecondaryFn])
-        if usage >= 224 || usage == 57 { event.type = .flagsChanged }
-        event.flags = intrinsic.union(flags(modifiers))
-        if capsLock { event.flags.insert(.maskAlphaShift) }
-        if repeated { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
+        configure(event, usage: usage, repeated: repeated, modifiers: modifiers, capsLock: capsLock)
         return event
+    }
+
+    static func intrinsicFlags(for usage: UInt8) -> CGEventFlags {
+        // Derive key identity from the HID usage, never the event source's
+        // current flags: it may still contain Fn/keypad state from an arrow.
+        switch usage {
+        case 79...82: return [.maskNumericPad, .maskSecondaryFn]
+        case 73: return [.maskSecondaryFn, .maskHelp] // Insert / Help
+        case 58...72, 74...78, 83, 104...110: return .maskSecondaryFn
+        case 84...99, 103: return .maskNumericPad
+        default: return []
+        }
+    }
+
+    static func configure(_ event: CGEvent, usage: UInt8, repeated: Bool,
+                          modifiers: UInt8, capsLock: Bool) {
+        if usage >= 224 || usage == 57 { event.type = .flagsChanged }
+        event.flags = intrinsicFlags(for: usage).union(flags(modifiers))
+        if capsLock { event.flags.insert(.maskAlphaShift) }
+        event.setIntegerValueField(.keyboardEventAutorepeat, value: repeated ? 1 : 0)
     }
 }
 
