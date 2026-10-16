@@ -73,7 +73,7 @@ final class ControlModel: ObservableObject {
         codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         codex.onLightingChange = { [weak self] color in
             guard let self else { return }
-            self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, completionID: self.codex.lightingCompletionID)
+            self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity)
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
@@ -115,7 +115,7 @@ final class ControlModel: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.running else { return }
                     self.updateProfile()
-                    self.bluetooth.setMacroStatusColor(self.codex.lightingColor, area: self.codex.settings.lightingArea, completionID: self.codex.lightingCompletionID)
+                    self.bluetooth.setMacroStatusColor(self.codex.lightingColor, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity)
                 }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."

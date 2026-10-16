@@ -124,13 +124,28 @@ final class CodexIntegrationTests: XCTestCase {
         XCTAssertEqual(CodexActivity.finished.color, DialColor(red: 0, green: 255, blue: 0))
     }
 
-    func testCompletionWaveIsOneDirectionalPassAndPreviewLeavesTimeForAcknowledgements() {
-        let heads = (0..<6).map { index in CodexCompletionWave.frame(index).firstIndex(of: CodexActivity.finished.color)! }
-        XCTAssertEqual(heads, [0, 4, 8, 12, 16, 18])
-        XCTAssertTrue((0..<6).allSatisfy { CodexCompletionWave.frame($0).count == 19 })
+    func testStatusWavePathsStartAtMacrosAndCompletionReturnsToMacros() {
+        let heads = (0..<7).map { index in CodexStatusWave.frame(index, activity: .finished).firstIndex(of: CodexActivity.finished.color)! }
+        XCTAssertEqual(heads, [0, 6, 12, 18, 12, 6, 0])
+        XCTAssertEqual(CodexStatusWave.positions(for: .working), [0, 6, 12, 18])
+        XCTAssertEqual(CodexStatusWave.positions(for: .attention), [0, 6, 12, 18])
+        XCTAssertTrue((0..<7).allSatisfy { CodexStatusWave.frame($0, activity: .finished).count == 19 })
         XCTAssertEqual(CodexLightingTestStage.at(elapsed: 15.9, completionWave: true), .finished)
-        XCTAssertEqual(CodexLightingTestStage.at(elapsed: 16, completionWave: true), .restore)
-        XCTAssertNil(CodexLightingTestStage.at(elapsed: 20, completionWave: true))
+        XCTAssertEqual(CodexLightingTestStage.at(elapsed: 20, completionWave: true), .restore)
+        XCTAssertNil(CodexLightingTestStage.at(elapsed: 24, completionWave: true))
+    }
+
+    func testWorkingPhaseOnlyChangesForNewWorkOrApprovalResumption() throws {
+        var state = CodexSessionStatus(try event("UserPromptSubmit", time: 100))
+        state.receive(try event("PreToolUse", time: 101))
+        XCTAssertEqual(state.workingSince, Date(timeIntervalSince1970: 100))
+        state.receive(try event("PermissionRequest", time: 102))
+        state.receive(try event("PreToolUse", time: 103))
+        XCTAssertEqual(state.workingSince, Date(timeIntervalSince1970: 103))
+        state.receive(try event("PostToolUse", time: 104))
+        XCTAssertEqual(state.workingSince, Date(timeIntervalSince1970: 103))
+        state.receive(try event("UserPromptSubmit", turn: "turn-b", time: 105))
+        XCTAssertEqual(state.workingSince, Date(timeIntervalSince1970: 105))
     }
 
 }

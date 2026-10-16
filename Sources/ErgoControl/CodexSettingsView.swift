@@ -83,7 +83,7 @@ struct CodexSettingsView: View {
                     statusKey(.working); statusKey(.attention); statusKey(.finished)
                 }
                 Text(model.codex.settings.lightingArea == .completionWave
-                     ? "Working and approval stay on the macro column. On completion, one green wave sweeps left to right, then restores your previous effect. A new task cancels the wave. Brightness stays unchanged."
+                     ? "Blue sweeps once from M1–M5 to the right when work starts. Amber repeats that sweep while approval is pending. Green travels right and back once when the turn ends. One-shot waves restore your normal effect; brightness stays unchanged."
                      : "Green lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -91,14 +91,14 @@ struct CodexSettingsView: View {
                         Button("Stop test") { model.codex.cancelLightingTest() }
                         Text("Test: \(stage.label)").font(.callout)
                     } else {
-                        Button(model.codex.settings.lightingArea == .completionWave ? "Test status lights · 20 seconds" : "Test status lights · 16 seconds") { model.codex.startLightingTest() }
+                        Button(model.codex.settings.lightingArea == .completionWave ? "Test status waves · 24 seconds" : "Test status lights · 16 seconds") { model.codex.startLightingTest() }
                             .disabled(!model.running || !model.codex.settings.lighting)
                         Text(model.running ? "Keep keyboard brightness above 0%." : "Enable mappings to test the lights.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Text(model.codex.settings.lightingArea == .completionWave
-                     ? "The test shows blue → amber → one completion wave → your previous effect. Live status resumes afterward; chat status is unchanged."
+                     ? "The test shows a blue sweep, repeating amber sweeps, then one green out-and-back sweep and your previous effect. Live status resumes afterward; chat status is unchanged."
                      : "The test shows blue → amber → green → your previous effect, for four seconds each. Live status resumes afterward; chat status is unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.bluetooth.macroStatusLightingMessage.isEmpty {

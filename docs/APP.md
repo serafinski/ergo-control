@@ -132,3 +132,10 @@ The Codex Status lights panel adds Signal area: Macro column or Whole keyboard. 
 The user clarified that the whole-keyboard signal should be a one-time left-to-right wave after completion. **Codex → Status lights → Signal style → Completion wave** keeps working/approval on M1–M5 and runs one green sweep across the 19-zone row when finished, then restores the saved normal effect. Macro column and Whole keyboard · solid remain available.
 
 Six acknowledged frames use the existing queue/timer, with a bounded runtime and a completion identity to prevent looping. New work or stopping cancels the wave. The Wave preview lasts 20 seconds to allow transport acknowledgements; its rendering restores immediately after the pass. All 139 tests pass, including cancellation, rejection, deadline expiry, non-replay and distinct-completion behavior. No helper/hook reinstall is needed. Physical wave direction/appearance and idle restoration remain pending user confirmation.
+
+
+## Waves for every active status (0.6.2)
+
+Renamed Completion wave to **Status waves**, preserving its saved setting. Working sends one blue wave from M1–M5 to the right, approval sends repeated amber waves until its status changes, and completion sends one green wave right and back to M1–M5. One-shot passes restore the previous effect immediately; approval retains lighting ownership while pending. Work resuming after approval gets a new start sweep; repeated tool hooks do not retrigger it. Older acknowledgement callbacks cannot restart an interrupted approval loop.
+
+Forward passes use four broad frames; completion uses seven for its round trip. Removed the added inter-frame delay; Bluetooth acknowledgements still determine throughput. The preview now lasts 24 seconds to show repeated approval passes. All 143 tests pass. No helper/hook reinstall is needed; physical speed/direction and real approval transitions remain pending verification.

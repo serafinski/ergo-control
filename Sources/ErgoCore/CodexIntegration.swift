@@ -30,9 +30,13 @@ public enum CodexLightingTestStage: Int, CaseIterable {
     case working, attention, finished, restore
     public static let duration: TimeInterval = 16
     public static func at(elapsed: TimeInterval, completionWave: Bool = false) -> Self? {
-        let end = completionWave ? 20.0 : duration
+        let end = completionWave ? 24.0 : duration
         guard elapsed.isFinite, elapsed >= 0, elapsed < end else { return nil }
-        if completionWave && elapsed >= 8 { return elapsed < 16 ? .finished : .restore }
+        if completionWave {
+            if elapsed < 6 { return .working }
+            if elapsed < 12 { return .attention }
+            return elapsed < 20 ? .finished : .restore
+        }
         return Self(rawValue: Int(elapsed / 4))
     }
     public var activity: CodexActivity? {
@@ -206,12 +210,17 @@ public enum CodexHistoryRequest {
 
 public struct CodexSessionStatus {
     public private(set) var latest: CodexHookEvent
-    public init(_ event: CodexHookEvent) { latest = event }
+    public private(set) var workingSince: Date
+    public init(_ event: CodexHookEvent) { latest = event; workingSince = event.time }
     public mutating func receive(_ event: CodexHookEvent) {
         guard event.sessionID == latest.sessionID, event.time > latest.time else { return }
         // A delayed terminal event from an earlier turn must not finish a newer one.
         if ["Stop", "Interrupt"].contains(event.event), let turn = event.turnID,
            let current = latest.turnID, turn != current { return }
+        if event.activity == .working {
+            let newTurn = event.turnID != nil && latest.turnID != nil && event.turnID != latest.turnID
+            if latest.activity != .working || newTurn || event.event == "UserPromptSubmit" { workingSince = event.time }
+        }
         latest = event
     }
     public static let completionSignalDuration: TimeInterval = 4

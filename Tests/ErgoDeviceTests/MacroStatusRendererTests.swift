@@ -171,51 +171,51 @@ final class MacroStatusRendererTests: XCTestCase {
 
     func testCompletionWavePlaysOnceAndRestoresEvenBeforeStatusExpires() {
         let rig = Rig()
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
-        for _ in CodexCompletionWave.positions {
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
+        for _ in CodexStatusWave.positions(for: .finished) {
             rig.renderer.pump(); rig.clock += 0.3
         }
-        XCTAssertEqual(rig.frames.count, CodexCompletionWave.positions.count)
-        XCTAssertEqual(rig.frames, (0..<6).map(CodexCompletionWave.frame))
+        XCTAssertEqual(rig.frames.count, CodexStatusWave.positions(for: .finished).count)
+        XCTAssertEqual(rig.frames, (0..<7).map { CodexStatusWave.frame($0, activity: .finished) })
         XCTAssertNil(rig.renderer.desired)
         rig.renderer.pump()
         XCTAssertNil(rig.saved)
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
         rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 6, "An unchanged completion must never loop")
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-b")
+        XCTAssertEqual(rig.frames.count, 7, "An unchanged completion must never loop")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-b", activity: .finished)
         rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 7, "A distinct completion can start a new pass")
+        XCTAssertEqual(rig.frames.count, 8, "A distinct completion can start a new pass")
         rig.renderer.request(nil); rig.renderer.pump()
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
         rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 7, "An older consumed completion must not replay after another chat finishes")
+        XCTAssertEqual(rig.frames.count, 8, "An older consumed completion must not replay after another chat finishes")
         XCTAssertFalse(rig.writesBeforeSnapshot)
     }
-    func testCompletionWaveIsRateLimitedAndNewWorkCancelsIt() {
+    func testCompletionWaveIsSerializedAndNewWorkCancelsIt() {
         let rig = Rig()
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
         rig.renderer.pump(); rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 1)
-        rig.renderer.request(CodexActivity.working.color, area: .completionWave)
-        rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, 2)
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-a", activity: .working)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 3)
         XCTAssertEqual(rig.frames.last?.first, CodexActivity.working.color)
         XCTAssertTrue(rig.frames.last!.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
         rig.clock += 20; rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 2)
+        XCTAssertEqual(rig.frames.count, 3)
         rig.renderer.request(nil); rig.renderer.pump()
         XCTAssertNil(rig.saved)
     }
     func testCompletionWaveDeadlineRestoresInsteadOfContinuingAfterDelay() {
         let rig = Rig()
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
         rig.renderer.pump()
-        rig.clock += CodexCompletionWave.maximumDuration
+        rig.clock += CodexStatusWave.maximumDuration
         rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, 1)
         XCTAssertNil(rig.saved)
-        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
         XCTAssertFalse(rig.renderer.hasWork)
     }
 
@@ -225,7 +225,7 @@ final class MacroStatusRendererTests: XCTestCase {
             if !reject {
                 rig.beforeReply = { name in if name == "frame" { rig.renderer.request(nil) } }
             }
-            rig.renderer.request(CodexActivity.finished.color, area: .completionWave, completionID: "turn-a")
+            rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "turn-a", activity: .finished)
             rig.renderer.pump(); rig.beforeReply = nil
             rig.renderer.pump()
             XCTAssertEqual(rig.frames.count, 1)
@@ -234,6 +234,59 @@ final class MacroStatusRendererTests: XCTestCase {
             XCTAssertEqual(rig.frames.count, 1)
             XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
         }
+    }
+
+    func testWorkingSweepsOncePerPhaseAndRestoresDuringOngoingWork() {
+        let rig = Rig()
+        for _ in 0..<4 {
+            rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-a", activity: .working)
+            rig.renderer.pump(); rig.clock += 0.1
+        }
+        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.working.color)! }, [0, 6, 12, 18])
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-a", activity: .working)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 4, "Ordinary tool hooks cannot repeat the working sweep")
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-after-approval", activity: .working)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 5)
+        XCTAssertFalse(rig.writesBeforeSnapshot)
+    }
+    func testApprovalSweepsRepeatUntilWorkResumesThenRestore() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.attention.color, area: .completionWave, signalID: "approval-a", activity: .attention)
+        for _ in 0..<12 { rig.renderer.pump(); rig.clock += 0.6 }
+        XCTAssertEqual(rig.frames.count, 12)
+        XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.attention.color)! }, [0, 6, 12, 18, 0, 6, 12, 18, 0, 6, 12, 18])
+        XCTAssertNotNil(rig.saved)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 13)
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-resumed", activity: .working)
+        for _ in 0..<4 { rig.renderer.pump(); rig.clock += 0.1 }
+        XCTAssertTrue(rig.frames.suffix(4).allSatisfy { $0.contains(CodexActivity.working.color) })
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        let count = rig.frames.count
+        rig.clock += 30; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, count)
+    }
+    func testLateApprovalAcknowledgementCannotRestartRepeatingWaveAfterCompletion() {
+        let rig = Rig()
+        rig.beforeReply = { name in
+            if name == "frame" {
+                rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "done-a", activity: .finished)
+            }
+        }
+        rig.renderer.request(CodexActivity.attention.color, area: .completionWave, signalID: "approval-a", activity: .attention)
+        rig.renderer.pump(); rig.beforeReply = nil
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2)
+        XCTAssertEqual(rig.frames.last?.first, CodexActivity.finished.color)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        rig.clock += 30; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2)
     }
 
 }
