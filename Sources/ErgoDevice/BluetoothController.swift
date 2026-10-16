@@ -86,7 +86,12 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         guard let self else { return }
         do {
             let request = try operation.request(transaction: self.transactions.next(), region: region)
-            self.send(request) { result in completion(result.map(\.payload)) }
+            // CoreBluetooth serializes with-response writes. Queue all pieces
+            // of a frame together so app/UI callback latency cannot stall its
+            // later chunks. Completion still needs every ACK and the full reply.
+            let queueFrame: Bool
+            if case .frame = operation { queueFrame = true } else { queueFrame = false }
+            self.send(request, queueWrites: queueFrame) { result in completion(result.map(\.payload)) }
         } catch { completion(.failure(error)) }
     }, load: { [weak self] in self?.original?.macroLighting }, persist: { [weak self] light in
         guard let self, var saved = self.original else { throw LightingLabError.message("No mapping recovery session is active.") }
@@ -342,7 +347,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         do { pending = try PendingCommand(request, queueWrites: queueWrites, completion: completion) }
         catch { completion(.failure(error)); return }
         busy = true
-        log("command", ["header": request.header, "payload": request.payload])
+        log("command", ["header": request.header, "payload": request.payload, "queuedWrites": queueWrites])
         commandTimeout = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
             self?.complete(.failure(BluetoothFailure.message("The keyboard did not return a complete response within five seconds")))
         }

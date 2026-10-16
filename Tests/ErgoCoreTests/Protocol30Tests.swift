@@ -19,6 +19,21 @@ final class Protocol30Tests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(exchange.completedResponse).succeeded)
         XCTAssertThrowsError(try exchange.acknowledgeWrite())
     }
+    func testQueuedFrameKeepsSmallChunksAndWaitsForLastAckAfterEarlySuccess() throws {
+        let request = try BluetoothLightingLabCommand.frame(Array(repeating: .defaultColor(for: "Zoom"), count: 19))
+            .request(transaction: 4, region: 5)
+        XCTAssertEqual(request.writeChunks.map(\.count), [8, 20, 20, 20, 2])
+        var exchange = try Protocol30Exchange(request: request, queueWrites: true)
+        while exchange.nextWrite() != nil {}
+        try exchange.receive(header())
+        for _ in 0..<4 {
+            try exchange.acknowledgeWrite()
+            XCTAssertNil(exchange.completedResponse)
+        }
+        try exchange.acknowledgeWrite()
+        XCTAssertTrue(try XCTUnwrap(exchange.completedResponse).succeeded)
+    }
+
     func testEarlyRejectedQueuedFrameCannotCompleteBeforeEveryWriteAcknowledgement() throws {
         let request = try Protocol30Request(transaction: 4, commandClass: 16, commandID: 4, payload: Data(repeating: 0, count: 62))
         var exchange = try Protocol30Exchange(request: request, queueWrites: true)
