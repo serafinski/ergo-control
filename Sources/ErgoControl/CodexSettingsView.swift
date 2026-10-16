@@ -83,7 +83,7 @@ struct CodexSettingsView: View {
                     statusKey(.working); statusKey(.attention); statusKey(.finished)
                 }
                 Text(model.codex.settings.lightingArea == .completionWave
-                     ? "Blue sweeps once from M1–M5 to the right when work starts. Amber bounces continuously right and left while approval is pending. Green travels right and back once when the turn ends. One-shot waves restore your normal effect; brightness stays unchanged."
+                     ? "Blue sweeps once from M1–M5 to the right when work starts, then the macro keys stay blue while working. Amber bounces continuously right and left while approval is pending. Green travels right and back once when the turn ends, then restores your normal effect. Brightness stays unchanged."
                      : "Green lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {

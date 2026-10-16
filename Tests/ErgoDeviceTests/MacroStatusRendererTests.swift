@@ -203,7 +203,8 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(rig.frames.last?.first, CodexActivity.working.color)
         XCTAssertTrue(rig.frames.last!.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
         rig.clock += 20; rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 3)
+        XCTAssertEqual(rig.frames.count, 4)
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
         rig.renderer.request(nil); rig.renderer.pump()
         XCTAssertNil(rig.saved)
     }
@@ -236,7 +237,7 @@ final class MacroStatusRendererTests: XCTestCase {
         }
     }
 
-    func testWorkingSweepsOncePerPhaseAndRestoresDuringOngoingWork() {
+    func testWorkingSweepsOncePerPhaseThenHoldsBlueUntilIdle() {
         let rig = Rig()
         for _ in 0..<4 {
             rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-a", activity: .working)
@@ -244,13 +245,19 @@ final class MacroStatusRendererTests: XCTestCase {
         }
         XCTAssertEqual(rig.frames.map { $0.firstIndex(of: CodexActivity.working.color)! }, [0, 6, 12, 18])
         rig.renderer.pump()
-        XCTAssertNil(rig.saved)
+        XCTAssertNotNil(rig.saved, "Keep the normal effect snapshot until work ends")
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
         rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-a", activity: .working)
         rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 4, "Ordinary tool hooks cannot repeat the working sweep")
+        XCTAssertEqual(rig.frames.count, 5, "Ordinary tool hooks cannot repeat the working sweep or static frame")
+        rig.clock += 60; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 5, "Holding blue requires no animation stream")
         rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "work-after-approval", activity: .working)
         rig.renderer.pump()
-        XCTAssertEqual(rig.frames.count, 5)
+        XCTAssertEqual(rig.frames.count, 6)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
         XCTAssertFalse(rig.writesBeforeSnapshot)
     }
     func testApprovalBouncesWithoutEndpointPauseUntilWorkResumesThenRestore() {
@@ -269,10 +276,27 @@ final class MacroStatusRendererTests: XCTestCase {
         for _ in 0..<4 { rig.renderer.pump(); rig.clock += 0.1 }
         XCTAssertTrue(rig.frames.suffix(4).allSatisfy { $0.contains(CodexActivity.working.color) })
         rig.renderer.pump()
-        XCTAssertNil(rig.saved)
+        XCTAssertNotNil(rig.saved)
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
         let count = rig.frames.count
         rig.clock += 30; rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, count)
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "done-after-approval", activity: .finished)
+        for _ in 0..<7 { rig.renderer.pump(); rig.clock += 0.1 }
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+    func testDelayedWorkingSweepSettlesOnBlueWithoutDroppingRecovery() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "slow-work", activity: .working)
+        rig.renderer.pump(); rig.clock += CodexStatusWave.maximumDuration
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
+        XCTAssertNotNil(rig.saved)
+        rig.renderer.request(CodexActivity.working.color, area: .completionWave, signalID: "slow-work", activity: .working)
+        XCTAssertFalse(rig.renderer.hasWork)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
     }
     func testLateApprovalAcknowledgementCannotRestartRepeatingWaveAfterCompletion() {
         let rig = Rig()

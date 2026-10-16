@@ -57,21 +57,24 @@ final class MacroStatusRenderer {
         } else if !failed {
             desiredArea = area; signalID = nextID; waveActivity = nextActivity
             let consumed = nextActivity != .attention && nextID.map { completedIDs.contains($0) } == true
-            desired = consumed ? nil : color
+            if consumed && nextActivity == .working {
+                desiredArea = .macroColumn
+                desired = color
+            } else { desired = consumed ? nil : color }
         }
     }
     var hasWork: Bool {
         guard !busy, Date() >= retryAfter else { return false }
         if (desired == nil || failed) && load() != nil { return true }
         guard desired != nil, !failed else { return false }
-        if signalID != nil { return uptime() >= nextWaveFrame }
+        if let signalID, !completedIDs.contains(signalID) { return uptime() >= nextWaveFrame }
         return desired != rendered || desiredArea != renderedArea
     }
     func pump() {
         guard hasWork, allowed() else { return }
         busy = true
         if waveActivity != .attention, let start = waveStarted, uptime() - start >= CodexStatusWave.maximumDuration {
-            consumeSignal(signalID); desired = nil; waveStarted = nil
+            finishWave()
         }
         if desired == nil || failed { restore { _ in }; return }
         if let saved = load() {
@@ -101,7 +104,7 @@ final class MacroStatusRenderer {
     private func frame(region: UInt8) {
         guard let color = desired else { busy = false; return }
         let area = desiredArea
-        let wave = signalID
+        let wave = signalID.flatMap { completedIDs.contains($0) ? nil : $0 }
         let state = waveActivity
         if wave != nil && waveStarted == nil { waveStarted = uptime() }
         let colors: [DialColor]
@@ -120,14 +123,20 @@ final class MacroStatusRenderer {
                         self.waveIndex = 1; self.waveStarted = nil
                         self.message("Approval wave bounces while approval is pending")
                     } else {
-                        self.consumeSignal(wave); self.desired = nil; self.waveStarted = nil
-                        self.message("Status wave finished · restoring previous effect")
+                        self.finishWave()
+                        self.message(state == .working ? "Starting wave finished · keeping macro keys blue" : "Status wave finished · restoring previous effect")
                     }
                 } else { self.message(state == .finished ? "Completion wave · out and back" : "Status wave · macro column to the right") }
             } else {
                 self.message(area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
             }
         }
+    }
+
+    private func finishWave() {
+        consumeSignal(signalID); waveStarted = nil
+        if waveActivity == .working { desiredArea = .macroColumn }
+        else { desired = nil }
     }
 
     private func step(_ operation: BluetoothLightingLabCommand, region: UInt8, completion: @escaping (Data) -> Void) {

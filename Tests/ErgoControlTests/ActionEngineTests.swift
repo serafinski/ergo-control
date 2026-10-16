@@ -1,9 +1,61 @@
 import XCTest
+import AppKit
 import ErgoCore
 @testable import ErgoControl
 
 /// Exercise the real engine with an output sink; never post input to the Mac.
 final class ActionEngineTests: XCTestCase {
+    func testDefaultF1F2RelayBrightnessAndReleaseOnStopWhileShortcutsStayFunctionKeys() {
+        var keys: [KeyboardOutput] = []
+        var media: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { media.append(ConsumerKeyEvent($0, pressed: $1)) },
+                                  keyOutput: { keys.append($0); _ = $1 })
+        engine.relay(58, pressed: true); engine.relay(58, pressed: false)
+        engine.relay(59, pressed: true)
+        engine.perform(MappingAction(.shortcut, "ctrl+f1"))
+        engine.perform(MappingAction(.shortcut, "f2"))
+        XCTAssertEqual(media, [.init(0x70, pressed: true), .init(0x70, pressed: false), .init(0x6f, pressed: true)])
+        XCTAssertEqual(keys, [KeyboardOutput(58, pressed: true, modifiers: 1), KeyboardOutput(58, pressed: false, modifiers: 0),
+                              KeyboardOutput(59, pressed: true, modifiers: 0), KeyboardOutput(59, pressed: false, modifiers: 0)])
+        engine.stop()
+        XCTAssertEqual(media.last, ConsumerKeyEvent(0x6f, pressed: false))
+    }
+
+    func testHeldBrightnessUsesRepeatTimingAndStopsRepeatingOnRelease() {
+        var media: [ConsumerKeyEvent] = []
+        var keys: [KeyboardOutput] = []
+        let engine = ActionEngine(mediaOutput: { media.append(ConsumerKeyEvent($0, pressed: $1)) },
+                                  repeatTiming: { NativeKeyboardTiming(delay: 0.4, interval: 0.4) },
+                                  keyOutput: { keys.append($0); _ = $1 })
+        engine.relay(58, pressed: true)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        XCTAssertEqual(media.count, 1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+        XCTAssertEqual(media, Array(repeating: ConsumerKeyEvent(0x70, pressed: true), count: 2))
+        engine.relay(58, pressed: false)
+        let count = media.count
+        RunLoop.main.run(until: Date().addingTimeInterval(0.45))
+        XCTAssertEqual(media.count, count)
+        XCTAssertEqual(media.last, ConsumerKeyEvent(0x70, pressed: false))
+        XCTAssertTrue(keys.isEmpty, "Brightness repeats must never leak raw F1 presses")
+        engine.stop()
+    }
+
+    func testBrightnessSystemEventsKeepIdentityRepeatAndModifierFlags() throws {
+        for (usage, code) in [(UInt16(0x6f), 2), (0x70, 3)] {
+            for (pressed, repeated, state) in [(true, false, 0xa00), (true, true, 0xa01), (false, false, 0xb00)] {
+                let event = try XCTUnwrap(MacMediaKeys.event(usage: usage, pressed: pressed, repeated: repeated, modifiers: 6))
+                let native = try XCTUnwrap(NSEvent(cgEvent: event))
+                XCTAssertEqual(native.type, .systemDefined)
+                XCTAssertEqual(native.subtype.rawValue, 8)
+                XCTAssertEqual(native.data1, (code << 16) | state)
+                XCTAssertTrue(native.modifierFlags.contains([.shift, .option]))
+                XCTAssertFalse(native.modifierFlags.contains(.function))
+            }
+        }
+        XCTAssertNil(MacMediaKeys.event(usage: 0xffff, pressed: true))
+    }
+
     func testLettersAndReturnDiscardInheritedFnKeypadAndUnheldModifiers() throws {
         for usage: UInt8 in [7,8,40,42,44,224,226] {
             let event = try XCTUnwrap(CGEvent(keyboardEventSource: CGEventSource(stateID: .privateState),

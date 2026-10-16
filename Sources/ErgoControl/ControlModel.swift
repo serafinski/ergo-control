@@ -366,6 +366,7 @@ final class ControlModel: ObservableObject {
                 engine.physicalModifiers = transition.modifiers
                 let mapping: MappingAction
                 if transition.pressed {
+                    if (58...69).contains(usage) { lastControl = ControlCatalog.label("key:\(usage)") }
                     mapping = running ? action(for: "key:\(usage)") : MappingAction()
                     keyActions[usage] = mapping
                 } else { mapping = keyActions.removeValue(forKey: usage) ?? MappingAction() }

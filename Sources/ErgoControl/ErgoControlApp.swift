@@ -333,7 +333,7 @@ struct ControlSettingsView: View {
                     Text(ControlCatalog.label(model.selectedControl)).font(.title.bold())
                     Text(model.alternateEditing ? "Alternate layer" : "Standard layer").foregroundStyle(.secondary)
                     Divider()
-                    ActionEditor(action: mapping)
+                    ActionEditor(action: mapping, control: model.selectedControl)
                         .disabled(model.inputAccessMode == .macroButtons && !InputAccessMode.macroButtons.supports(control: model.selectedControl))
                     if model.alternateEditing {
                         Text("Assign Hold alternate layer to a button in the standard layer first.").font(.caption).foregroundStyle(.secondary)
@@ -385,6 +385,7 @@ struct ControlSettingsView: View {
 
 struct ActionEditor: View {
     @Binding var action: MappingAction
+    var control: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Action", selection: Binding(get: { action.kind }, set: { kind in
@@ -421,6 +422,7 @@ struct ActionEditor: View {
                 Picker("Media", selection: $action.value) {
                     Text("Play / pause").tag("playPause"); Text("Next track").tag("next"); Text("Previous track").tag("previous")
                     Text("Volume up").tag("volumeUp"); Text("Volume down").tag("volumeDown"); Text("Mute").tag("mute")
+                    Text("Screen brightness up").tag("displayBrightnessUp"); Text("Screen brightness down").tag("displayBrightnessDown")
                 }
             case .keyboardBrightness:
                 Picker("Brightness", selection: $action.value) {
@@ -432,7 +434,12 @@ struct ActionEditor: View {
                     ForEach(1...5, id: \.self) { number in Text("M\(number) · Slot \(number)").tag(String(number)) }
                 }
                 Text("Opens the current Codex slot. Enable the connection in the Codex section first.").font(.caption).foregroundStyle(.secondary)
-            case .standard: Text("Use the normal action or current dial mode. With chat keys enabled, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)
+            case .standard:
+                if control == "key:58" || control == "key:59" {
+                    Text("F1/F2 adjust screen brightness by default. Choose Shortcut and enter f1 or f2 to send the function key instead.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Use the normal action or current dial mode. With chat keys enabled, unmapped M1–M5 can open their current chat slots.").font(.caption).foregroundStyle(.secondary)
+                }
             case .layer: Text("Other controls use this profile’s alternate layer while this button is held.").font(.caption).foregroundStyle(.secondary)
             case .cycleDial: Text("Switch to the next enabled command-dial mode.").font(.caption).foregroundStyle(.secondary)
             case .battery: Text("Show the current keyboard battery percentage in a brief on-screen popup.").font(.caption).foregroundStyle(.secondary)

@@ -62,6 +62,18 @@ enum MacKeys {
     }
 }
 
+enum MacMediaKeys {
+    static func event(usage: UInt16, pressed: Bool, repeated: Bool = false,
+                      modifiers: UInt8 = 0) -> CGEvent? {
+        let codes: [UInt16: Int] = [0xe9:0,0xea:1,0x6f:2,0x70:3,0xe2:7,0xcd:16,0xb5:17,0xb6:18,0xb3:19,0xb4:20]
+        guard let code = codes[usage] else { return nil }
+        let data = (code << 16) | ((pressed ? 0xa : 0xb) << 8) | (repeated ? 1 : 0)
+        return NSEvent.otherEvent(with: .systemDefined, location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(MacKeys.flags(modifiers).rawValue)),
+            timestamp: 0, windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent
+    }
+}
+
 final class ActionEngine {
     var onCycle: (() -> Void)?
     var onBrightness: ((Int) -> Void)?
@@ -110,7 +122,7 @@ final class ActionEngine {
         endAppSwitcher()
         guard nativeOwners.change(usage, owner: owner ?? "key:\(usage)", pressed: pressed) else { return }
         if usage == 57 && pressed { capsLock.toggle() }
-        key(usage, pressed: pressed)
+        nativeKey(usage, pressed: pressed)
         guard usage < 224, usage != 57 else { return }
         if pressed {
             repeatTimer?.invalidate(); repeating = usage
@@ -118,10 +130,10 @@ final class ActionEngine {
             repeatTimer = Timer(timeInterval: timing.delay, repeats: false) { [weak self] _ in
                 guard let self, self.repeating == usage else { return }
                 self.endAppSwitcher()
-                self.key(usage, pressed: true, repeated: true)
+                self.nativeKey(usage, pressed: true, repeated: true)
                 self.repeatTimer = Timer(timeInterval: timing.interval, repeats: true) { [weak self] _ in
                     self?.endAppSwitcher()
-                    self?.key(usage, pressed: true, repeated: true)
+                    self?.nativeKey(usage, pressed: true, repeated: true)
                 }
                 if let timer = self.repeatTimer { RunLoop.main.add(timer, forMode: .common) }
             }
@@ -129,17 +141,18 @@ final class ActionEngine {
         } else if repeating == usage { repeatTimer?.invalidate(); repeatTimer = nil; repeating = nil }
     }
 
-    func media(_ usage: UInt16, pressed: Bool) -> Bool {
+    private func nativeKey(_ usage: UInt8, pressed: Bool, repeated: Bool = false) {
+        if let consumer = NativeFunctionKeys.consumerUsage(for: usage) {
+            _ = media(consumer, pressed: pressed, repeated: repeated)
+        } else { key(usage, pressed: pressed, repeated: repeated) }
+    }
+
+    func media(_ usage: UInt16, pressed: Bool, repeated: Bool = false) -> Bool {
         endAppSwitcher()
-        let codes: [UInt16: Int] = [0xe9:0,0xea:1,0x6f:2,0x70:3,0xe2:7,0xcd:16,0xb5:17,0xb6:18,0xb3:19,0xb4:20]
-        guard let code = codes[usage] else { return false }
-        let data = (code << 16) | ((pressed ? 0xa : 0xb) << 8)
+        guard let event = MacMediaKeys.event(usage: usage, pressed: pressed, repeated: repeated,
+                                            modifiers: physicalModifiers) else { return false }
         if let mediaOutput { mediaOutput(usage, pressed) }
-        else {
-            guard let event = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [], timestamp: 0,
-                windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent else { return false }
-            event.post(tap: .cghidEventTap)
-        }
+        else { event.post(tap: .cghidEventTap) }
         if pressed { heldMedia.insert(usage) } else { heldMedia.remove(usage) }
         return true
     }
@@ -185,7 +198,8 @@ final class ActionEngine {
                 CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 2,
                         wheel1: horizontal ? 0 : amount, wheel2: horizontal ? amount : 0, wheel3: 0)?.post(tap: .cghidEventTap)
             case .media:
-                let usages: [String: UInt16] = ["volumeUp":0xe9,"volumeDown":0xea,"mute":0xe2,"playPause":0xcd,"next":0xb5,"previous":0xb6]
+                let usages: [String: UInt16] = ["volumeUp":0xe9,"volumeDown":0xea,"mute":0xe2,"playPause":0xcd,"next":0xb5,"previous":0xb6,
+                    "displayBrightnessUp":0x6f,"displayBrightnessDown":0x70]
                 if let usage = usages[action.value] { _ = media(usage, pressed: true); _ = media(usage, pressed: false) }
             case .cycleDial: onCycle?()
             case .battery: onBattery?()

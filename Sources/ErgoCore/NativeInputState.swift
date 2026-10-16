@@ -11,6 +11,18 @@ public enum NativeExtraKeys {
     }
 }
 
+/// PT Ergo's printed F1/F2 actions while relaying the keyboard in driver mode.
+/// Explicit shortcut/macro output bypasses this native-input default.
+public enum NativeFunctionKeys {
+    public static func consumerUsage(for usage: UInt8) -> UInt16? {
+        switch usage {
+        case 58: return 0x70 // Display brightness down
+        case 59: return 0x6f // Display brightness up
+        default: return nil
+        }
+    }
+}
+
 /// Two physical halves can hold the same native key. Only the first press and
 /// last release should reach macOS, including when the reports arrive separately.
 public struct NativeKeyOwners {
