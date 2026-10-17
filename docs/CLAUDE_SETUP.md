@@ -10,16 +10,18 @@ Ergo Control offers Claude Code alongside Codex in **Chat apps**. The selected p
 4. Enable keyboard mappings. Unmapped M1–M5 use the selected provider. If an existing profile explicitly assigns Codex actions, change those actions, use Default, or create a separate Claude mappings profile; choosing Claude does not rewrite explicit actions.
 5. Optionally enable **Show Claude Code status lights**. All existing signal styles, wave speeds, working pulse, dark background and visual tests use the same renderer and saved-effect recovery as Codex. Keyboard brightness must be above zero.
 
+Under **Status lights → Colors for Claude Code**, choose separate Working, Approval requested and Turn ended colors. Claude defaults to **purple / pink / cyan**; Codex keeps **blue / amber / green**. Each provider saves its own palette, with a reset button for its defaults. The chosen colors apply to solid signals, wave heads/trails, working pulses and the visual test. Editing a live color updates the signal without replaying a completed wave. This does not change which provider owns the lights: the Chat apps selector still chooses that source.
+
 The default catalog is `~/Library/Application Support/Claude/claude-code-sessions/<account>/<organization>`. A single account/organization is discovered automatically. With several, choose the intended folder under **Claude session catalog**. Lists are never combined across accounts. **Use automatic catalog** clears that folder override. Metadata reads continue in Fixed mode to match desktop IDs to the engine UUIDs reported by hooks.
 
 ## Behavior and limits
 
 | Observation | Status |
 | --- | --- |
-| Prompt or tool activity | Working / blue |
-| Permission request or AskUserQuestion tool | Approval requested / amber |
-| Normal Stop | Brief turn-ended / green, then idle and normal effect |
-| StopFailure or SessionEnd | Idle, without a green completion signal |
+| Prompt or tool activity | Working color (purple by default) |
+| Permission request or AskUserQuestion tool | Approval color (pink by default) |
+| Normal Stop | Brief turn-ended color (cyan by default), then idle and normal effect |
+| StopFailure or SessionEnd | Idle, without a completion signal |
 | Idle notification | Clears working status, but never dismisses a pending approval |
 
 Claude does not emit Stop for a user interrupt. Its later idle notification can clear working status. If no notification arrives, use **Clear observed status**; ordinary stale work also expires after 30 minutes. A known pending approval remains until a later status, explicit reset, disabling the connection, or app exit. API failure means the turn stopped, not completed successfully. Newer prompt IDs protect against delayed terminal events from earlier prompts; older engines may omit them. Subagent events and events with explicit subagent identifiers are excluded. Parent-ID events without a distinguishing field cannot reliably be separated.
@@ -40,7 +42,7 @@ Disabling the selected connection or stopping mappings releases lighting through
 
 ## Validation
 
-Synthetic local tests cover hook filtering/privacy, prompt ordering, failure/idle behavior, config merge/removal, safe navigation IDs, catalog filtering/scope/limits, desktop-to-engine ID mapping, settings migration and callback-only action dispatch. Existing Codex bridge and keyboard restoration tests remain part of the same suite. Tests do not post input, change real hook settings, or access hardware.
+Synthetic local tests cover hook filtering/privacy, prompt ordering, failure/idle behavior, config merge/removal, safe navigation IDs, catalog filtering/scope/limits, desktop-to-engine ID mapping, settings migration and callback-only action dispatch. Palette tests also cover independent provider defaults/persistence/reset, matching RGB values across states, custom wave/pulse/solid frames, and color edits without wave replay. Existing Codex bridge and keyboard restoration tests remain part of the same suite. Tests do not post input, change real hook settings, or access hardware.
 
 Live validation remains necessary: create local Claude desktop sessions; compare recent/starred slots; verify M1–M5 select the exact session without sending a message; observe working, approval, completion and interruption; switch providers while a signal is active; and confirm effect restoration on the keyboard. No real Claude desktop session was available during initial implementation, so these behaviors are not yet claimed as hardware-confirmed.
 

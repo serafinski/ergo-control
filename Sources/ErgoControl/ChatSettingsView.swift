@@ -106,15 +106,23 @@ struct ChatSettingsView: View {
                     Text("Saves lighting power while keeping chat signals and animations active, including while you’re away.")
                         .font(.caption).foregroundStyle(.secondary)
                     Toggle("Pulse macro keys while working", isOn: Binding(get: { bridge.settings.pulseWhileWorking }, set: bridge.setPulseWhileWorking))
-                    Text("Fades blue through dim to dark and back after the starting wave. Off keeps solid blue.")
+                    Text("Fades your working color through dim to dark and back after the starting wave. Off keeps a solid color.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                HStack(spacing: 18) {
-                    statusKey(.working); statusKey(.attention); statusKey(.finished)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Colors for \(bridge.provider.name)").font(.headline)
+                    ForEach([CodexActivity.working, .attention, .finished], id: \.rawValue) { activity in
+                        ColorPicker(activity.label, selection: statusColorBinding(activity), supportsOpacity: false)
+                            .frame(maxWidth: 340)
+                    }
+                    Button("Reset \(bridge.provider.name) colors") { bridge.resetStatusColors() }
+                        .disabled(bridge.settings.statusColors == nil)
+                    Text("Each chat app saves its own colors. These colors apply to solid signals, waves, pulses and the light test.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Text(bridge.settings.lightingArea == .completionWave
-                     ? "Blue sweeps once from M1–M5 to the right when work starts, then the macro keys stay blue while working. Amber bounces continuously right and left while approval is pending. Green travels right and back once when the turn ends, then restores your normal effect. Brightness stays unchanged."
-                     : "Green lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
+                     ? "The working color sweeps once from M1–M5 to the right, then stays on the macro keys. The approval color bounces continuously while approval is pending. The turn-ended color travels right and back once, then restores your normal effect. Brightness stays unchanged."
+                     : "The turn-ended color lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     if let stage = bridge.lightingTestStage {
@@ -128,8 +136,8 @@ struct ChatSettingsView: View {
                     }
                 }
                 Text(bridge.settings.lightingArea == .completionWave
-                     ? "The test shows a blue sweep, bouncing amber waves, then one green out-and-back sweep and your previous effect. Live status resumes afterward; chat status is unchanged."
-                     : "The test shows blue → amber → green → your previous effect, for four seconds each. Live status resumes afterward; chat status is unchanged.")
+                     ? "The test uses your colors for a working sweep, bouncing approval waves, then one turn-ended sweep and your previous effect. Live status resumes afterward; chat status is unchanged."
+                     : "The test uses your colors for working → approval → turn ended → your previous effect, for four seconds each. Live status resumes afterward; chat status is unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.bluetooth.macroStatusLightingMessage.isEmpty {
                     Text(model.bluetooth.macroStatusLightingMessage).font(.caption).textSelection(.enabled)
@@ -156,19 +164,23 @@ struct ChatSettingsView: View {
                     Button("Use automatic catalog") { bridge.setCatalogFolder(nil) }
                     Button("Clear observed status") { bridge.resetStatus() }
                 }
-                Text("If you interrupt Claude and its status stays blue, clear observed status. Claude's idle notification also clears working status when received; it never dismisses a pending approval.")
+                Text("If you interrupt Claude and its status stays Working, clear observed status. Claude's idle notification also clears working status when received; it never dismisses a pending approval.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(.top, 10)
         }
     }
-    private func statusKey(_ activity: CodexActivity) -> some View {
-        let c = activity.color
-        return Label {
-            Text(activity.label).font(.caption)
-        } icon: {
-            Circle().fill(Color(red: Double(c.red) / 255, green: Double(c.green) / 255, blue: Double(c.blue) / 255))
-                .frame(width: 9, height: 9)
-        }
+    private func statusColorBinding(_ activity: CodexActivity) -> Binding<Color> {
+        Binding(get: {
+            let rgb = bridge.statusColors.color(for: activity)
+            return Color(.sRGB, red: Double(rgb.red) / 255, green: Double(rgb.green) / 255, blue: Double(rgb.blue) / 255, opacity: 1)
+        }, set: { color in
+            guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return }
+            func channel(_ value: CGFloat) -> UInt8 {
+                value.isFinite ? UInt8((min(1, max(0, value)) * 255).rounded()) : 0
+            }
+            bridge.setStatusColor(DialColor(red: channel(rgb.redComponent), green: channel(rgb.greenComponent),
+                                           blue: channel(rgb.blueComponent)), for: activity)
+        })
     }
 }
 

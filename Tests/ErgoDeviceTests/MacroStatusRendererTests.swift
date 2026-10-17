@@ -3,6 +3,64 @@ import ErgoCore
 @testable import ErgoDevice
 
 final class MacroStatusRendererTests: XCTestCase {
+    func testCustomColorsReachAllWaveHeadsAndWorkingHold() {
+        let color = DialColor(red: 150, green: 30, blue: 210)
+        for activity in [CodexActivity.working, .attention, .finished] {
+            let rig = Rig()
+            rig.renderer.request(color, area: .completionWave, signalID: "custom", activity: activity, speed: .quick)
+            let count = activity == .working ? 3 : 5
+            for _ in 0..<count { rig.renderer.pump() }
+            XCTAssertTrue(rig.frames.allSatisfy { $0.contains(color) })
+            XCTAssertEqual(rig.frames.map { $0.firstIndex(of: color)! }, activity == .working ? [0, 9, 18] : [0, 9, 18, 9, 0])
+            rig.renderer.pump()
+            if activity == .working { XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(color)) }
+            if activity == .finished { XCTAssertNil(rig.saved) }
+        }
+    }
+    func testColorEditDuringWaveContinuesAtNextColumnAndDoesNotReplayFinishedWork() {
+        let rig = Rig()
+        let first = DialColor(red: 150, green: 30, blue: 210), second = DialColor(red: 20, green: 200, blue: 160)
+        rig.renderer.request(first, area: .completionWave, signalID: "same-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(second, area: .completionWave, signalID: "same-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last?.firstIndex(of: second), 9)
+        rig.renderer.pump(); rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(second))
+        let count = rig.frames.count
+        rig.renderer.request(first, area: .completionWave, signalID: "same-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, count + 1)
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(first), "An edited working hold must not replay the start sweep")
+    }
+    func testCustomPulseAndWholeKeyboardSolidUseRequestedColor() {
+        let color = DialColor(red: 100, green: 200, blue: 240)
+        let pulse = Rig()
+        pulse.renderer.request(color, activity: .working, pulseWhileWorking: true)
+        pulse.renderer.pump(); pulse.clock += 0.351; pulse.renderer.pump()
+        XCTAssertEqual(pulse.frames.last?.first, DialColor(red: 75, green: 150, blue: 180))
+        let solid = Rig()
+        solid.renderer.request(color, area: .wholeKeyboard, activity: .attention)
+        solid.renderer.pump()
+        XCTAssertEqual(solid.frames.last, Array(repeating: color, count: 19))
+    }
+    func testEqualColorApprovalStillStopsPulsingAndCompletedWaveDoesNotReplayOnColorEdit() {
+        let color = DialColor(red: 150, green: 30, blue: 210)
+        let rig = Rig()
+        rig.renderer.request(color, activity: .working, pulseWhileWorking: true); rig.renderer.pump()
+        rig.renderer.request(color, activity: .attention, pulseWhileWorking: true); rig.renderer.pump()
+        let count = rig.frames.count
+        rig.clock += 1.5; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, count); XCTAssertFalse(rig.renderer.needsTimer)
+        rig.renderer.request(color, area: .completionWave, signalID: "done", activity: .finished, speed: .quick)
+        for _ in 0..<5 { rig.renderer.pump() }
+        rig.renderer.pump()
+        let completed = rig.frames.count
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "done", activity: .finished, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, completed)
+        XCTAssertNil(rig.saved)
+    }
     final class Rig {
         var effect = try! KeyboardEffect(kind: .wave)
         var saved: SavedMacroLighting?

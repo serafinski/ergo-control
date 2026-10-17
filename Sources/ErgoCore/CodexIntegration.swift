@@ -49,9 +49,9 @@ public enum CodexLightingTestStage: Int, CaseIterable {
     }
     public var label: String {
         switch self {
-        case .working: return "Working · blue"
-        case .attention: return "Approval requested · amber"
-        case .finished: return "Turn ended · green"
+        case .working: return "Working"
+        case .attention: return "Approval requested"
+        case .finished: return "Turn ended"
         case .restore: return "Restoring previous keyboard effect"
         }
     }
@@ -136,11 +136,13 @@ public struct CodexSettings: Codable, Equatable {
     public var pulseWhileWorking = false
     public var darkStatusBackground = false
     public var useUnmappedMacroKeys = true
+    /// Nil preserves provider defaults for settings written before color customization.
+    public var statusColors: ChatStatusColors?
     /// Optional Claude account/organization catalog directory; never a transcript directory.
     public var catalogPath: String?
     public var slots = (1...5).map(CodexSlot.init)
     public init() {}
-    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea, waveSpeed, pulseWhileWorking, darkStatusBackground, catalogPath }
+    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea, waveSpeed, pulseWhileWorking, darkStatusBackground, catalogPath, statusColors }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
@@ -153,6 +155,7 @@ public struct CodexSettings: Codable, Equatable {
         pulseWhileWorking = try c.decodeIfPresent(Bool.self, forKey: .pulseWhileWorking) ?? false
         useUnmappedMacroKeys = try c.decodeIfPresent(Bool.self, forKey: .useUnmappedMacroKeys) ?? true
         catalogPath = try c.decodeIfPresent(String.self, forKey: .catalogPath)
+        statusColors = try c.decodeIfPresent(ChatStatusColors.self, forKey: .statusColors)
     }
     public func validate(provider: ChatProvider = .codex) throws {
         guard slots.map(\.id) == Array(1...5), slots.allSatisfy({

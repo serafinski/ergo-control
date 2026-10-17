@@ -2,6 +2,8 @@
 
 The current settings sidebar calls this section **Chat apps**. Choose **Codex** there for the controls below. Existing Codex assignments, hooks and explicit profile actions are preserved. [Claude Code](CLAUDE_SETUP.md) is also available as a separate provider for default chat keys and lighting.
 
+**Status lights → Colors for Codex** now offers Working, Approval requested and Turn ended color pickers. Codex retains blue/amber/green defaults; Claude uses purple/pink/cyan, with its own saved colors. Each provider has a reset button. Solid signals, waves, pulses and visual tests all use the chosen palette; the color descriptions below refer to Codex defaults. Activity priority and effect restoration do not depend on which colors are chosen.
+
 Ergo Control 0.6.3 keeps Codex chat keys and status controls in a dedicated sidebar section. It uses local metadata listings, lifecycle hooks, and `codex://threads/<thread-id>` links. It does not emulate a Micro, modify Codex, require Chroma, or need an API key.
 
 ## Setup

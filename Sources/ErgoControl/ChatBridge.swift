@@ -19,6 +19,7 @@ final class ChatBridge: ObservableObject {
     private let now: () -> Date
     private var timer: Timer?
     private var lastColor: DialColor?
+    private var lastLightingActivity: CodexActivity = .unknown
     private var lastAllowsCompletionToFinish = false
     private var shuttingDown = false
     private var statusResetAt = Date.distantPast
@@ -195,6 +196,17 @@ final class ChatBridge: ObservableObject {
         var value = settings; value.darkStatusBackground = enabled
         if save(value) { updateLighting() }
     }
+    var statusColors: ChatStatusColors { settings.statusColors ?? .defaults(for: provider) }
+    func setStatusColor(_ color: DialColor, for activity: CodexActivity) {
+        guard [.working, .attention, .finished].contains(activity) else { return }
+        var colors = statusColors; colors.set(color, for: activity)
+        var value = settings; value.statusColors = colors
+        if save(value) { updateLighting() }
+    }
+    func resetStatusColors() {
+        var value = settings; value.statusColors = nil
+        if save(value) { updateLighting() }
+    }
     func startLightingTest() {
         guard settings.enabled, settings.lighting else { return }
         lightingTestStarted = uptime(); lightingTestStage = .working
@@ -340,9 +352,11 @@ final class ChatBridge: ObservableObject {
         if activities != lastActivities { lastActivities = activities; objectWillChange.send() }
         let color = lightingColor
         let signalID = lightingSignalID
-        if settings.darkStatusBackground != lastDarkStatusBackground || settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
+        let state = lightingActivity
+        if (color != nil && state != lastLightingActivity) || settings.darkStatusBackground != lastDarkStatusBackground || settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
             || (color != nil && signalID != lastSignalID) {
             lastColor = color; lastArea = settings.lightingArea; lastSignalID = signalID
+            lastLightingActivity = state
             lastAllowsCompletionToFinish = allowsCompletionToFinish
             lastWaveSpeed = settings.waveSpeed
             lastPulseWhileWorking = settings.pulseWhileWorking
@@ -357,7 +371,7 @@ final class ChatBridge: ObservableObject {
         guard !shuttingDown, settings.enabled, settings.lighting else { return nil }
         let state = lightingActivity
         switch state {
-        case .working, .attention, .finished: return state.color
+        case .working, .attention, .finished: return statusColors.color(for: state)
         case .idle, .unknown: return nil
         }
     }
