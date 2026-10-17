@@ -14,6 +14,8 @@ Report-2 vertical wheel steps now enter the existing rightCW/rightCCW mappings a
 
 All 266 local tests pass, including product ID mapping, right-axis direction, timeout rearming with a held macro, duplicate copies across all input paths, and end-to-end engine output. Live physical direction/playback verification is pending. Native macOS routing remains selected by default and focus-first playback remains experimental/off. No helper or hook reinstall is required.
 
+Live input evidence after installing 0.9.5: App logs recorded Play/Pause, Mute and Next track from driver extra-key records, and both Volume up/down from right-roller wheel reports, each followed by a native output-post entry. This confirms the actual physical input paths and why the old consumer-only handling missed them. Posted output still does not itself confirm player handling; user playback confirmation is pending.
+
 ## Driver-mode media input (0.9.4)
 
 The native-routing rollback in 0.9.3 did not restore the user's media controls. The user confirmed ordinary typing/left-dial functions still worked and tested volume, mute and playback repeatedly. No native consumer inputs were recorded while driver mode remained verified. The live HID descriptor still contains the normal report-3 consumer collection plus vendor reports 5/6.

@@ -104,7 +104,7 @@ The following report-5 identifiers were captured independently in verified drive
 | Left dial click | 96 (`60`) |
 | Battery button | 65 (`41`) |
 
-Static product-table media identifiers (0.9.5; live validation pending): right roller click 82 (`52`), next/double 83 (`53`), previous/triple 84 (`54`), play-pause/single 85 (`55`). The same exact product table maps MouseInput ScrollUp to VolumeUp and ScrollDown to VolumeDown. These enter the existing canonical media controls rather than being exposed as duplicate mapping cards. Source artifact `main.c8f8537456ab6ae7c847.js`, SHA-256 already recorded above. Only numeric protocol/default associations are reimplemented.
+Product-table media identifiers (0.9.5): right roller click 82 (`52`), next/double 83 (`53`), previous/triple 84 (`54`), play-pause/single 85 (`55`). The same exact product table maps MouseInput ScrollUp to VolumeUp and ScrollDown to VolumeDown. These enter the existing canonical media controls rather than being exposed as duplicate mapping cards. Source artifact `main.c8f8537456ab6ae7c847.js`, SHA-256 already recorded above. Only numeric protocol/default associations are reimplemented.
 
 
 Example M1 press: `050420000000000000000000`; release: `050400000000000000000000`. The shared report ID does not make the controls identical.
@@ -173,3 +173,6 @@ An isolated `--keyboard-power-test` saves a durable exact-target native-settings
 The original Protocol 30 hardware-event parser declares logical `MEDIA_KEYS = 2`, `RAZER_KEYS = 4` and `NOTIFICATION_EVENTS = 5`. Its media parser combines the two bytes following the logical record into a consumer usage. The app's blanket physical-report-6 notification branch therefore missed a possible driver-mode media path. The new decoder accepts only twelve bytes beginning `[6, 2]`, reads the little-endian usage at bytes 2–3 and requires bytes 4–11 to be zero. Zero-usage records do not generate a command. Each nonzero driver record generates a press/release pair; native report 3 retains its existing key lifetime and timeout logic. Matching usages across the two forms within 80 ms are correlated, without suppressing repeated records from the same source. No vendor implementation is copied or shipped.
 
 This is based on static protocol evidence and the user's repeated media tests producing no native report-3 entries while other driver-mode controls worked. The physical envelope and momentary behavior still require live confirmation; notification record 5 is not reinterpreted as input. Local evidence artifact: `rzHardwareEventsProtocol30Parser.474e82350be705232b6f.js`; SHA-256 `011b29b41e3279a91f21d44013870c50600569a2056c2632afea022858eac59b`.
+
+
+Live 0.9.5 app-event logs on 2026-10-17 confirm Play/Pause, Mute and Next track arriving via these report-5 extra identifiers, and Volume up/down via report-2 vertical wheel. The corresponding native output-post entries are present. Previous/triple and physical clockwise orientation still await explicit user confirmation; the report-6 media path remains unobserved in this test. These logs confirm delivery to the app/output path, not that a particular player acted.
