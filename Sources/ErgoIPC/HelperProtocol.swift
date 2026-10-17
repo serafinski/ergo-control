@@ -12,11 +12,13 @@ public enum HelperIdentity {
     public static let installedPlist = "/Library/LaunchDaemons/" + plist
 }
 
-// The privileged side exposes no commands, paths, output events, or configuration writes.
+// No commands, paths, event injection, or arbitrary configuration writes.
+// The sole output is the standard Caps Lock LED on the leased keyboard.
 @objc public protocol InputHelperProtocol {
     func permission(withReply reply: @escaping (Int32) -> Void)
     func begin(withReply reply: @escaping (Int32, String) -> Void)
     func renew(_ acknowledgedReport: UInt64, withReply reply: @escaping (Bool) -> Void)
+    func setCapsLock(_ enabled: Bool, withReply reply: @escaping (Int32) -> Void)
     func end(withReply reply: @escaping () -> Void)
 }
 

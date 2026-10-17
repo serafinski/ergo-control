@@ -18,6 +18,20 @@ final class MacroStatusRenderer {
     private var waveStarted: TimeInterval?
     private var waveIndex = 0
     private var nextWaveFrame: TimeInterval = 0
+    private var pulseRevision = 0
+    private var renderedPulseRevision = 0
+    private var pulseEnabled = false
+    private var desiredActivity: CodexActivity?
+    private var pulseStarted: TimeInterval?
+    private var renderedPulsePhase: Int?
+    private var pulses: Bool {
+        pulseEnabled && desiredActivity == .working && desiredArea == .macroColumn && desired != nil
+            && (signalID == nil || completedIDs.contains(signalID!))
+    }
+    private var pulsePhase: Int {
+        guard let pulseStarted else { return 0 }
+        return Int(max(0, uptime() - pulseStarted) / 0.7) % 2
+    }
     private var selected = false
     private var failed = false
     private var retryAfter = Date.distantPast
@@ -36,6 +50,7 @@ final class MacroStatusRenderer {
     func reset() {
         selected = false; rendered = nil; renderedArea = nil; failed = false; retryAfter = .distantPast
         waveStarted = nil; waveIndex = 0; nextWaveFrame = 0
+        pulseStarted = nil; renderedPulsePhase = nil
     }
     private func consumeSignal(_ id: String?) {
         guard let id, !completedIDs.contains(id) else { return }
@@ -43,11 +58,16 @@ final class MacroStatusRenderer {
         if completedIDs.count > 32 { completedIDs.removeFirst() }
     }
     func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn,
-                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth) {
+                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false) {
         // A chat becoming idle must not truncate an acknowledged return sweep.
         // Explicit disable/stop and new activity still supersede it immediately.
         if color == nil, allowCompletionToFinish, area == .completionWave,
            waveActivity == .finished, let signalID, !completedIDs.contains(signalID), !failed { return }
+        if pulseEnabled != pulseWhileWorking || desiredActivity != activity || desired != color {
+            pulseStarted = nil; renderedPulsePhase = nil
+            pulseRevision &+= 1
+        }
+        pulseEnabled = pulseWhileWorking; desiredActivity = activity
         let animate = color != nil && area == .completionWave && id != nil
             && activity.map { [.working, .attention, .finished].contains($0) } == true
         let nextID = animate ? id.map { "\($0):\(speed.rawValue)" } : nil
@@ -55,6 +75,7 @@ final class MacroStatusRenderer {
         if nextID != signalID || nextActivity != waveActivity {
             if waveActivity != .attention { consumeSignal(signalID) }
             waveStarted = nil; waveIndex = 0; nextWaveFrame = 0
+            pulseStarted = nil; renderedPulsePhase = nil
         }
         if color == nil {
             if waveActivity != .attention { consumeSignal(signalID) }
@@ -73,7 +94,7 @@ final class MacroStatusRenderer {
         if (desired == nil || failed) && load() != nil { return true }
         guard desired != nil, !failed else { return false }
         if let signalID, !completedIDs.contains(signalID) { return uptime() >= nextWaveFrame }
-        return desired != rendered || desiredArea != renderedArea
+        return desired != rendered || desiredArea != renderedArea || pulseRevision != renderedPulseRevision || (pulses && renderedPulsePhase != pulsePhase)
     }
     func pump() {
         guard hasWork, allowed() else { return }
@@ -112,12 +133,22 @@ final class MacroStatusRenderer {
         let wave = signalID.flatMap { completedIDs.contains($0) ? nil : $0 }
         let state = waveActivity
         if wave != nil && waveStarted == nil { waveStarted = uptime() }
+        let revision = pulseRevision
+        let pulsing = pulses
+        if pulsing && pulseStarted == nil { pulseStarted = uptime() }
+        let phase = pulsing ? pulsePhase : nil
+        let pulseEpoch = pulseStarted
         let colors: [DialColor]
         if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed) }
-        else { colors = MacroStatusFrame.colors(color, area: area) }
+        else {
+            let signal = phase == 1 ? DialColor(red: color.red / 5, green: color.green / 5, blue: color.blue / 5) : color
+            colors = MacroStatusFrame.colors(signal, area: area)
+        }
         step(.frame(colors), region: region) { [weak self] _ in
             guard let self else { return }
             self.rendered = color; self.renderedArea = area; self.busy = false
+            self.renderedPulseRevision = revision
+            if self.pulses == pulsing && self.pulseStarted == pulseEpoch { self.renderedPulsePhase = phase }
             if let wave, let state, wave == self.signalID, state == self.waveActivity {
                 self.waveIndex += 1
                 self.nextWaveFrame = self.uptime() + CodexStatusWave.minimumFrameInterval
@@ -133,7 +164,7 @@ final class MacroStatusRenderer {
                     }
                 } else { self.message(state == .finished ? "Completion wave · out and back" : "Status wave · macro column to the right") }
             } else {
-                self.message(area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
+                self.message(pulsing ? "Macro keys pulse blue while working" : area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
             }
         }
     }

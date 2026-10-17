@@ -357,4 +357,22 @@ final class ActionEngineTests: XCTestCase {
         XCTAssertEqual(output.count, count)
         engine.stop()
     }
+    func testCapsIndicatorTracksInitialStateAndDeduplicatedPresses() {
+        var leds: [Bool] = []
+        let engine = ActionEngine(keyOutput: { _, _ in })
+        engine.onCapsLockChange = { leds.append($0) }
+        engine.synchronizeCapsLock(false)
+        engine.relay(57, pressed: true)
+        engine.relay(57, pressed: true) // Duplicate input must not toggle twice.
+        engine.relay(57, pressed: false)
+        engine.relay(57, pressed: true)
+        engine.relay(57, pressed: false)
+        XCTAssertEqual(leds, [false, true, false])
+        engine.stop()
+        engine.synchronizeCapsLock(true) // Reconnect refreshes the actual OS state.
+        engine.relay(57, pressed: true); engine.relay(57, pressed: false)
+        XCTAssertEqual(leds.suffix(2), [true, false])
+        engine.stop()
+    }
+
 }

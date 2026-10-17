@@ -184,11 +184,11 @@ final class CodexBridgeTests: XCTestCase {
         _ = try enqueue(1); bridge.poll()
         var colors: [DialColor?] = []
         bridge.onLightingChange = { colors.append($0) }
-        bridge.setWaveSpeed(.smooth)
+        bridge.setWaveSpeed(.quick)
         XCTAssertEqual(colors, [CodexActivity.working.color])
         bridge.shutdown()
         let reopened = fixedBridge()
-        XCTAssertEqual(reopened.settings.waveSpeed, .smooth)
+        XCTAssertEqual(reopened.settings.waveSpeed, .quick)
         reopened.shutdown()
     }
 
@@ -335,6 +335,23 @@ final class CodexBridgeTests: XCTestCase {
         time.addTimeInterval(8); bridge.poll()
         XCTAssertNil(bridge.lightingSignalID); XCTAssertNil(bridge.lightingColor)
         bridge.shutdown()
+    }
+
+    func testPulsePreferencePersistsAndNotifiesWithoutReplayingStatus() throws {
+        let bridge = fixedBridge(); bridge.setEnabled(true); bridge.setLighting(true)
+        _ = try enqueue(1); bridge.poll()
+        let phase = bridge.lightingSignalID
+        var colors: [DialColor?] = []
+        bridge.onLightingChange = { colors.append($0) }
+        bridge.setPulseWhileWorking(true)
+        XCTAssertEqual(colors, [CodexActivity.working.color])
+        XCTAssertEqual(bridge.lightingSignalID, phase)
+        bridge.setPulseWhileWorking(false)
+        XCTAssertEqual(colors.count, 2)
+        bridge.setPulseWhileWorking(true); bridge.shutdown()
+        let reopened = fixedBridge()
+        XCTAssertTrue(reopened.settings.pulseWhileWorking)
+        reopened.shutdown()
     }
 
 }

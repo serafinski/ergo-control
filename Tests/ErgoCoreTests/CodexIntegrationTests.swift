@@ -135,12 +135,12 @@ final class CodexIntegrationTests: XCTestCase {
                                                  blue: UInt8(Int(activity.color.blue) / 10)))
         }
     }
-    func testWaveSpeedMigratesToQuickAndSmoothChoiceRoundTrips() throws {
+    func testWaveSpeedDefaultsToSmoothAndExplicitQuickChoiceRoundTrips() throws {
         var value = CodexSettings()
         var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
         old.removeValue(forKey: "waveSpeed")
-        XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: old)).waveSpeed, .quick)
-        value.waveSpeed = .smooth
+        XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: old)).waveSpeed, .smooth)
+        value.waveSpeed = .quick
         XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONEncoder().encode(value)), value)
     }
 
@@ -175,6 +175,16 @@ final class CodexIntegrationTests: XCTestCase {
         XCTAssertEqual(state.activity(now: Date(timeIntervalSince1970: 10_002)), .working)
         state.receive(try event("Stop", time: 10_003))
         XCTAssertEqual(state.activity(now: Date(timeIntervalSince1970: 10_008)), .idle)
+    }
+
+    func testWorkingPulseIsOptInAndPreferenceRoundTrips() throws {
+        var value = CodexSettings()
+        XCTAssertFalse(value.pulseWhileWorking)
+        var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+        old.removeValue(forKey: "pulseWhileWorking")
+        XCTAssertFalse(try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: old)).pulseWhileWorking)
+        value.pulseWhileWorking = true
+        XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONEncoder().encode(value)), value)
     }
 
 }

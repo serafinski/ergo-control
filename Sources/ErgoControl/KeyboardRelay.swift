@@ -1,6 +1,7 @@
 import Foundation
 import IOKit.hid
 import ErgoCore
+import ErgoHID
 
 final class KeyboardRelay {
     var onReport: ((UInt32, Data) -> Void)?
@@ -82,6 +83,11 @@ final class KeyboardRelay {
             try? data.write(to: url, options: .atomic)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
+    }
+    func setCapsLock(_ enabled: Bool, completion: @escaping (Int32) -> Void) {
+        guard accessMode == .fullKeyboard else { return }
+        if let helper { helper.setCapsLock(enabled, completion: completion) }
+        else if opened, let device { completion(CapsLockIndicator.set(enabled, on: device)) }
     }
     func stop() {
         helper?.stop(); helper = nil

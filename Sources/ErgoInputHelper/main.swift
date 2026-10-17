@@ -4,6 +4,7 @@ import SystemConfiguration
 import Security
 import ErgoCore
 import ErgoIPC
+import ErgoHID
 
 private func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
 private func consoleUID() -> uid_t? {
@@ -146,6 +147,17 @@ private final class CaptureService: NSObject, NSXPCListenerDelegate, InputHelper
                 && self.lease.renew(ack: acknowledgedReport, now: now())
             if !valid { self.fail("Input processing stopped; native keyboard input was returned") }
             reply(valid)
+        }
+    }
+    func setCapsLock(_ enabled: Bool, withReply reply: @escaping (Int32) -> Void) {
+        let caller = NSXPCConnection.current()
+        DispatchQueue.main.async {
+            guard let caller, self.connection === caller,
+                  caller.effectiveUserIdentifier == consoleUID(),
+                  self.lease.isValid(now: now()), let device = self.device else {
+                reply(kIOReturnNotPermitted); return
+            }
+            reply(CapsLockIndicator.set(enabled, on: device))
         }
     }
     func end(withReply reply: @escaping () -> Void) {

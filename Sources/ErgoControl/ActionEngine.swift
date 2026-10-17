@@ -88,6 +88,7 @@ enum MacMediaKeys {
 }
 
 final class ActionEngine {
+    var onCapsLockChange: ((Bool) -> Void)?
     var onCycle: (() -> Void)?
     var onBrightness: ((Int) -> Void)?
     var onBattery: (() -> Void)?
@@ -143,10 +144,15 @@ final class ActionEngine {
         }
     }
 
+    func synchronizeCapsLock(_ enabled: Bool = CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift)) {
+        capsLock = enabled
+        onCapsLockChange?(enabled)
+    }
+
     func relay(_ usage: UInt8, pressed: Bool, owner: String? = nil) {
         endAppSwitcher()
         guard nativeOwners.change(usage, owner: owner ?? "key:\(usage)", pressed: pressed) else { return }
-        if usage == 57 && pressed { capsLock.toggle() }
+        if usage == 57 && pressed { capsLock.toggle(); onCapsLockChange?(capsLock) }
         nativeKey(usage, pressed: pressed)
         guard usage < 224, usage != 57 else { return }
         if NativeFunctionKeys.action(for: usage, preferences: functionKeys).map({ $0.brightnessStep == nil }) == true {

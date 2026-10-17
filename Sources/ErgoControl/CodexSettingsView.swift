@@ -88,6 +88,11 @@ struct CodexSettingsView: View {
                     Text("Quick makes shorter sweeps with wider steps. Smooth uses more steps.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                if model.codex.settings.lightingArea != .wholeKeyboard {
+                    Toggle("Pulse macro keys while working", isOn: Binding(get: { model.codex.settings.pulseWhileWorking }, set: model.codex.setPulseWhileWorking))
+                    Text("Gently alternates bright and dim blue after the starting wave. Off keeps solid blue.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 HStack(spacing: 18) {
                     statusKey(.working); statusKey(.attention); statusKey(.finished)
                 }

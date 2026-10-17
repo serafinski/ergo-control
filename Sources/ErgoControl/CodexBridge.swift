@@ -19,7 +19,8 @@ final class CodexBridge: ObservableObject {
     private var lastAllowsCompletionToFinish = false
     private var shuttingDown = false
     private var lastArea: CodexLightingArea = .macroColumn
-    private var lastWaveSpeed: CodexWaveSpeed = .quick
+    private var lastWaveSpeed: CodexWaveSpeed = .smooth
+    private var lastPulseWhileWorking = false
     private var lastSignalID: String?
     private var lastActivities: [CodexActivity] = []
     private var lastExpiryRefresh = Date.distantPast
@@ -159,6 +160,10 @@ final class CodexBridge: ObservableObject {
         var value = settings; value.waveSpeed = speed
         if save(value) { updateLighting() }
     }
+    func setPulseWhileWorking(_ enabled: Bool) {
+        var value = settings; value.pulseWhileWorking = enabled
+        if save(value) { updateLighting() }
+    }
     func startLightingTest() {
         guard settings.enabled, settings.lighting else { return }
         lightingTestStarted = uptime(); lightingTestStage = .working
@@ -273,11 +278,12 @@ final class CodexBridge: ObservableObject {
         if activities != lastActivities { lastActivities = activities; objectWillChange.send() }
         let color = lightingColor
         let signalID = lightingSignalID
-        if color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
+        if settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
             || (color != nil && signalID != lastSignalID) {
             lastColor = color; lastArea = settings.lightingArea; lastSignalID = signalID
             lastAllowsCompletionToFinish = allowsCompletionToFinish
             lastWaveSpeed = settings.waveSpeed
+            lastPulseWhileWorking = settings.pulseWhileWorking
             onLightingChange?(color)
         }
     }

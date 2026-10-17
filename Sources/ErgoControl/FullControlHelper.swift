@@ -217,6 +217,15 @@ final class HelperInputClient {
         onReport?(id, data)
         if session == token { acknowledged = sequence }
     }
+    func setCapsLock(_ enabled: Bool, completion: @escaping (Int32) -> Void) {
+        guard let token = session, self.completion == nil, heartbeat != nil else { return }
+        proxy(session: token)?.setCapsLock(enabled) { [weak self] result in
+            DispatchQueue.main.async {
+                guard self?.session == token else { return }
+                completion(result)
+            }
+        }
+    }
     private func renew(session token: UUID) {
         guard session == token else { return }
         proxy(session: token)?.renew(acknowledged) { [weak self] alive in

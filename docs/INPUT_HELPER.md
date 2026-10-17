@@ -5,7 +5,7 @@ Ergo Control 0.2.6 bundles the input helper introduced in 0.2.2 to address the l
 ## Scope and trust boundary
 
 - Capture matches exactly one Bluetooth Low Energy PT Ergo (`068e:02c3`). Neither Logitech devices nor USB keyboards qualify.
-- The XPC API contains begin, renew, end, and a read-only input-permission check. It cannot execute commands, load plugins, accept a device identity/path, synthesize events, or write Bluetooth/device configuration.
+- The XPC API contains begin, renew, end, a read-only input-permission check, and a boolean Caps Lock indicator setter. It cannot execute commands, load plugins, accept a device identity/path, synthesize events, or write Bluetooth/vendor configuration. The sole HID output sets the standard Caps Lock LED on the already-captured exact keyboard, only for the authenticated foreground-console client during a valid capture lease.
 - The server enforces the GUI's designated signing requirement through `NSXPCConnection.setCodeSigningRequirement`. The requirement is embedded in the helper's signed Mach-O Info.plist. Development builds pin the app identifier and local certificate fingerprint; another signing identity uses its designated requirement. Ad-hoc signatures are rejected by the packaging tool.
 - The client requires the bundled helper's identifier and exact code-directory hash. Both sides validate signatures; an identifier alone does not authorize a client.
 - Only the current non-root console user's XPC connection is accepted. Only one connection can own capture. Requests are checked against their originating connection before executing on the main run loop. User switching ends capture.
@@ -95,3 +95,7 @@ All 166 tests pass, including unregister-before-install ordering, refusal after 
 
 
 The revised installer subsequently succeeded. After another reboot at 17:28:49 local time, the old bundled service was absent and dev.local.ergocontrol.inputhelper.local loaded from /Library/LaunchDaemons with the fixed /Library/PrivilegedHelperTools executable. This verifies the helper-registration repair survived reboot. The app launched at login about 33 seconds later. A separate pending-mode recovery connection deadlock in the battery scheduler prevented automatic mapping activation; manual Connect keyboard restored mode 0 with readback at 15:31:52Z, then fullKeyboard/result 0 and driver-mode verification at 15:32:21Z confirmed capture through the repaired local job. Version 0.7.2 fixes that scheduling deadlock; helper bytes and permissions remain unchanged.
+
+## Caps Lock indicator (helper 0.2.4 / app 0.8.3)
+
+The helper can set only the standard LED usage page 8 / Caps Lock usage 2 output element, using IOHIDDeviceSetValue. It accepts no report bytes, usage IDs, paths or device selectors. The caller must match the active XPC connection and console UID, with a valid input lease and an open captured device. The GUI initializes from current macOS Caps state and forwards distinct Caps toggles. LED rejection is nonfatal to keyboard input. Updating the helper through the bundled installer is required because peer verification pins its exact signed code hash. Existing fixed install paths, certificates, console checks and input watchdog are unchanged. Hardware validation is pending.

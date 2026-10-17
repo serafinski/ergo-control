@@ -90,3 +90,7 @@ The production app uses an ordered background packet logger, without publishing 
 Live 0.8.1 working-hook validation confirmed Quick heads at 0,9,18, followed by the steady macro column. The three acknowledged sweep frames took 1.148 seconds in that session, with no rejected frame commands. This is a single observed pass; Bluetooth timing varies and the Quick green/amber appearance still needs user confirmation.
 
 Since 0.8.2, status frames queue their existing with-response pieces together to reduce application-callback gaps. Each frame still waits for all write acknowledgements and the keyboard response before another command begins. The first four live frames completed in 149–165 ms without rejections; this is a small runtime observation, not guaranteed constant timing. Wave geometry and Quick/Smooth choices are unchanged.
+
+## Optional working pulse (0.8.3)
+
+In Codex → Status lights, turn on **Pulse macro keys while working** to alternate bright and dim blue on M1–M5 after the blue sweep, at 0.7 seconds per phase. It defaults to off, preserving steady blue. It also works in Macro column style; Whole keyboard · solid stays solid. Status refreshes do not restart the pulse or sweep. Approval/finish/idle and disabling cancel it through the existing restoration path. Late Bluetooth frames skip missed phases instead of queuing them. Smooth is again the default for new/missing preferences, with saved choices preserved. Test both toggle states with the status-light preview; physical confirmation is pending.

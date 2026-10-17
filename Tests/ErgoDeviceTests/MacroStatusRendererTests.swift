@@ -385,4 +385,62 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(rig.frames.count, 2)
     }
 
+    func testOptionalWorkingPulseStartsAfterWaveAndDoesNotReplayIt() {
+        let rig = Rig()
+        func working() {
+            rig.renderer.request(CodexActivity.working.color, area: .completionWave,
+                signalID: "pulse-work", activity: .working, pulseWhileWorking: true)
+        }
+        working()
+        for _ in 0..<4 { rig.renderer.pump() }
+        rig.renderer.pump() // First macro-only frame is bright.
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
+        rig.clock += 0.69; working(); rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 5)
+        rig.clock += 0.02; working(); rig.renderer.pump()
+        let dim = rig.frames.last!
+        XCTAssertEqual(dim[0], DialColor(red: 0, green: 24, blue: 51))
+        XCTAssertTrue(dim.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
+        rig.clock += 0.7; working(); rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
+        XCTAssertEqual(rig.frames.count, 7, "Status refreshes must not restart the wave or pulse clock")
+        XCTAssertNotNil(rig.saved)
+    }
+    func testPulseToggleOffImmediatelyRepaintsBlueAndIdleRestores() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump(); rig.clock += 0.71; rig.renderer.pump()
+        XCTAssertNotEqual(rig.frames.last?.first, CodexActivity.working.color)
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: false)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last?.first, CodexActivity.working.color)
+        let count = rig.frames.count
+        rig.clock += 30; rig.renderer.pump(); XCTAssertEqual(rig.frames.count, count)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        rig.clock += 30; rig.renderer.pump(); XCTAssertEqual(rig.frames.count, count)
+    }
+    func testPulseSkipsMissedPhasesAndApprovalCancelsIt() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump()
+        rig.clock += 70.71; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, 2, "Slow transport must not queue missed pulse frames")
+        rig.renderer.request(CodexActivity.attention.color, area: .completionWave,
+            signalID: "approval", activity: .attention, pulseWhileWorking: true)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, CodexStatusWave.frame(0, activity: .attention))
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+    func testRejectedPulseRestoresWithoutFurtherPulseWrites() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump(); rig.rejectFrame = true; rig.clock += 0.71; rig.renderer.pump()
+        rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        let count = rig.frames.count
+        rig.clock += 10; rig.renderer.pump(); XCTAssertEqual(rig.frames.count, count)
+    }
+
 }

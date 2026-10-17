@@ -145,3 +145,7 @@ Physical report 3 contains one little-endian consumer usage and trailing zero by
 The runtime now uses ConsumerKeyState. It retains state deduplication and immediate neutral/change releases, but caps only the three momentary gesture usages `00cd`, `00b5`, `00b6` at 300 ms. Expiry releases and clears the usage, including when expiry is first observed on the next report rather than by its run-loop timer. A late neutral does not release twice. Invalid reports do not mutate held state. Right-dial volume/mute, screen brightness, and genuine seek usages `00b3`/`00b4` are not subject to this timeout. Stopping capture cancels the timer and resets the decoder; the engine releases outstanding output.
 
 This behavior is regression-tested with missing neutral reports and through an output-suppressed ActionEngine. It does not establish that a release was missing in the user’s particular incident; no fresh failing hardware trace was collected. The helper and protocol transport are unchanged.
+
+## Standard Caps Lock indicator (0.8.3)
+
+The observed BLE HID report descriptor exposes output report ID 1 with three one-bit variable LED usages (page 8, usages 1–3) followed by five padding bits. Caps Lock is usage 2. This is separate from region-5 RGB lighting and the unresolved small command-dial color indicator. The implementation selects only the standard Caps output element and calls IOHIDDeviceSetValue with 0/1 on the already-open keyboard, leaving other LED elements untouched. Descriptor evidence is read-only; hardware LED behavior still needs confirmation.
