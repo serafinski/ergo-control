@@ -52,6 +52,15 @@ struct KeyboardSetupView: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
             }
+            GroupBox("Media controls") {
+                VStack(alignment: .leading, spacing: 14) {
+                    Toggle("Prefer focused window for playback (experimental)", isOn: $model.focusedMediaPlayback)
+                    Text("Off uses the previous macOS media-key behavior. Turn it off at any time if focused-window playback does not respond. Volume and mute always use system media keys.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("App logs show media controls received from the keyboard and events posted to macOS. Posted events do not confirm that a player handled them.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+            }
             DisclosureGroup("Advanced input checks") {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("A temporary test enables your saved mappings for 60 seconds, then restores the keyboard.")

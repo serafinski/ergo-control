@@ -19,6 +19,12 @@ final class ControlModel: ObservableObject {
     @Published var lastControl = "No control pressed yet"
     @Published var error: String?
     @Published var dirty = false
+    @Published var focusedMediaPlayback = UserDefaults.standard.bool(forKey: "focusedMediaPlaybackEnabled") {
+        didSet {
+            UserDefaults.standard.set(focusedMediaPlayback, forKey: "focusedMediaPlaybackEnabled")
+            configureMediaRouting()
+        }
+    }
     @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController(liveDiagnostics: false)
     let fullControlHelper = FullControlHelper()
@@ -98,7 +104,10 @@ final class ControlModel: ObservableObject {
         relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.", level: .warning) }
         relay.onFailure = { [weak self] message in self?.stop(message, level: .error) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message, level: .error) }
-        engine.onPlayback = { [weak self] command in self?.mediaController.perform(command) }
+        engine.onNativeMedia = { [weak self] usage, pressed in
+            guard pressed else { return }
+            self?.logs.record("\(Self.mediaLabel(usage)) event posted to macOS.", category: "Media")
+        }
         mediaController.onRoute = { [weak self] message in self?.logs.record(message, category: "Media") }
         mediaController.onNotice = { [weak self] message in
             self?.error = message; self?.logs.record(message, category: "Media", level: .warning)
@@ -404,7 +413,7 @@ final class ControlModel: ObservableObject {
         if bluetooth.canTryDriverMode, !activationStarted {
             if !batteryRequested { batteryRequested = true; bluetooth.readBattery(); return }
             activationStarted = true; relayOpened = true
-            mediaController.start()
+            configureMediaRouting()
             // Forward ordinary input immediately, including during the helper's asynchronous open.
             inputAccessMode = fullControlHelper.enabled ? .fullKeyboard : nil
             relay.start(usingHelper: fullControlHelper.enabled) { [weak self] result in
@@ -530,6 +539,28 @@ final class ControlModel: ObservableObject {
         else { stop("This input report needs support (\(id)); mappings stopped.", level: .error) }
     }
 
+    private func configureMediaRouting() {
+        mediaController.stop()
+        engine.onPlayback = nil
+        if focusedMediaPlayback && relayOpened {
+            mediaController.start()
+            engine.onPlayback = { [weak self] command in self?.mediaController.perform(command) }
+        }
+    }
+    private static func mediaLabel(_ usage: UInt16) -> String {
+        switch usage {
+        case 0xe9: return "Volume up"
+        case 0xea: return "Volume down"
+        case 0xe2: return "Mute"
+        case 0xcd: return "Play / pause"
+        case 0xb5: return "Next track"
+        case 0xb6: return "Previous track"
+        case 0x6f: return "Display brightness up"
+        case 0x70: return "Display brightness down"
+        default: return "Media control \(usage)"
+        }
+    }
+
     private func forwardMedia(_ events: [ConsumerKeyEvent]) {
         let controls: [UInt16: String] = [0xe9:"rightCW",0xea:"rightCCW",0xe2:"rightClick",0xcd:"mediaSingle",0xb5:"mediaDouble",0xb6:"mediaTriple"]
         if !events.isEmpty { lightingAutomation.userActivity() }
@@ -538,6 +569,7 @@ final class ControlModel: ObservableObject {
             let control = controls[event.usage] ?? "media:\(event.usage)"
             let mapping: MappingAction
             if event.pressed {
+                logs.record("\(Self.mediaLabel(event.usage)) received from PT Ergo.", category: "Media")
                 mapping = running ? action(for: control) : MappingAction()
                 mediaActions[event.usage] = mapping; lastControl = ControlCatalog.label(control)
             } else { mapping = mediaActions.removeValue(forKey: event.usage) ?? MappingAction() }

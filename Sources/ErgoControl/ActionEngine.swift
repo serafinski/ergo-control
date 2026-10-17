@@ -83,13 +83,14 @@ enum MacMediaKeys {
         let data = (code << 16) | ((pressed ? 0xa : 0xb) << 8) | (repeated ? 1 : 0)
         return NSEvent.otherEvent(with: .systemDefined, location: .zero,
             modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(MacKeys.flags(modifiers).rawValue)),
-            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent
+            timestamp: 0, windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent
     }
 }
 
 final class ActionEngine {
     var onCapsLockChange: ((Bool) -> Void)?
     var onPlayback: ((MediaPlaybackCommand) -> Void)?
+    var onNativeMedia: ((UInt16, Bool) -> Void)?
     var onCycle: (() -> Void)?
     var onBrightness: ((Int) -> Void)?
     var onBattery: (() -> Void)?
@@ -259,19 +260,24 @@ final class ActionEngine {
 
     func media(_ usage: UInt16, pressed: Bool, repeated: Bool = false) -> Bool {
         endAppSwitcher()
-        if let command = MediaPlaybackCommand(usage: usage), let onPlayback {
-            if pressed {
-                if !repeated && routedMedia.insert(usage).inserted { onPlayback(command) }
-            } else { routedMedia.remove(usage) }
+        // Keep the press's owner until release, including when routing changes
+        // while the physical key is down. Never release an AX press globally or
+        // swallow the release of a native media key when routing is enabled.
+        if routedMedia.contains(usage) {
+            if !pressed { routedMedia.remove(usage) }
             return true
         }
-        // A handler may be disconnected between a press and its release.
-        if !pressed, routedMedia.remove(usage) != nil { return true }
+        if !pressed, MediaPlaybackCommand(usage: usage) != nil, !heldMedia.contains(usage) { return true }
+        if pressed, !heldMedia.contains(usage), let command = MediaPlaybackCommand(usage: usage), let onPlayback {
+            if !repeated { routedMedia.insert(usage); onPlayback(command) }
+            return true
+        }
         guard let event = MacMediaKeys.event(usage: usage, pressed: pressed, repeated: repeated,
                                             modifiers: physicalModifiers | (heldFluidTrigger?.ownedModifiers ?? 0)) else { return false }
         if let mediaOutput { mediaOutput(usage, pressed) }
         else { event.post(tap: .cghidEventTap) }
         if pressed { heldMedia.insert(usage) } else { heldMedia.remove(usage) }
+        onNativeMedia?(usage, pressed)
         return true
     }
 

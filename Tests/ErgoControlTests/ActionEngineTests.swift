@@ -321,16 +321,32 @@ final class ActionEngineTests: XCTestCase {
         XCTAssertEqual(commands, [.playPause,.playPause,.playPause]); XCTAssertTrue(native.isEmpty)
         engine.stop()
     }
-    func testSystemMediaEventsHaveCurrentMonotonicTimestamps() throws {
-        let before = ProcessInfo.processInfo.systemUptime
-        let down = try XCTUnwrap(MacMediaKeys.event(usage: 0xcd, pressed: true))
-        let up = try XCTUnwrap(MacMediaKeys.event(usage: 0xcd, pressed: false))
-        let after = ProcessInfo.processInfo.systemUptime
-        let downTime = try XCTUnwrap(NSEvent(cgEvent: down)).timestamp
-        let upTime = try XCTUnwrap(NSEvent(cgEvent: up)).timestamp
-        XCTAssertGreaterThanOrEqual(downTime, before - 0.001)
-        XCTAssertGreaterThanOrEqual(upTime, downTime)
-        XCTAssertLessThanOrEqual(upTime, after + 0.001)
+    func testEnablingRoutingDuringNativePressKeepsItsReleaseNative() {
+        var native: [ConsumerKeyEvent] = []
+        var routed: [MediaPlaybackCommand] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        _ = engine.media(0xcd, pressed: true)
+        engine.onPlayback = { routed.append($0) }
+        _ = engine.media(0xcd, pressed: true)
+        _ = engine.media(0xcd, pressed: false)
+        XCTAssertTrue(routed.isEmpty)
+        XCTAssertEqual(native.last, ConsumerKeyEvent(0xcd, pressed: false))
+        _ = engine.media(0xcd, pressed: true)
+        _ = engine.media(0xcd, pressed: false)
+        XCTAssertEqual(routed, [.playPause])
+        engine.stop()
+    }
+    func testNativeMediaDiagnosticsObserveOutputWithoutChangingKeyDelivery() {
+        var native: [ConsumerKeyEvent] = [], observed: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        engine.onNativeMedia = { observed.append(ConsumerKeyEvent($0, pressed: $1)) }
+        for usage: UInt16 in [0xe9,0xea,0xe2,0xcd,0xb5,0xb6] {
+            _ = engine.media(usage, pressed: true); _ = engine.media(usage, pressed: false)
+        }
+        XCTAssertEqual(observed, native)
+        XCTAssertEqual(observed.count, 12)
+        engine.stop()
+        XCTAssertEqual(observed.count, 12)
     }
     func testStopReleasesHeldMediaAndRejectsUnknownOutput() {
         var output: [ConsumerKeyEvent] = []

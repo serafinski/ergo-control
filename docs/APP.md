@@ -4,7 +4,15 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.9.2**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.9.3**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+
+## Media regression recovery (0.9.3)
+
+The user reported that volume, mute and playback stopped responding in 0.9.2 while ordinary typing and the left dial continued working. A read-only process sample showed a responsive main run loop; the live keyboard still exposed its consumer-control collection and the configuration channel continued to verify driver mode. Those observations do not identify which input/output stage failed.
+
+Restored the previous native system-key timestamp encoding (zero) and made focus-based playback an explicit **Setup & diagnostics → Media controls → Prefer focused window for playback (experimental)** option, off by default. With it off, the accessibility routing worker/observer is inactive and all media controls use the previous macOS routing path. The setting saves immediately and can be switched off without a restart. Press ownership stays with native/routed delivery until release, even if the option changes mid-press; orphan playback releases are suppressed. The 0.9.2 timestamp change was not established as the cause of the reported failure.
+
+App logs now distinguish named media input received from PT Ergo from native system events posted. This records no raw reports, ordinary keystrokes, player titles or page contents. A posted event is not a player acknowledgement. All 251 local tests pass, including native/routed ownership across option changes and output-observer checks. Live volume/mute/playback confirmation remains pending; no helper or hook reinstall is required. General focus-first routing remains experimental rather than being presented as validated behavior.
 
 ## Focus-first playback (0.9.2)
 
