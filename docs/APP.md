@@ -405,3 +405,12 @@ The read-only 0.8.6 hardware query returned a 900-second sleep timer, automatic 
 ### Media-history audit after the 0.9.5 hardware check
 
 Git history shows the first mapping implementation (`d69ec5e`) already handled consumer report 3 while treating extra media IDs as ordinary unmapped extras and rejecting vertical-wheel reports. Version 0.7.7 (`99921b5`) changed valid auxiliary pointer reports from stopping mappings to being ignored, including the right-roller wheel. It prevented the stop but did not implement volume delivery. The 0.9.2 focus-routing work did not introduce these missing driver input paths. The 0.9.3 native rollback and 0.9.4 report-6-only repair did not resolve them; 0.9.5 added the exact product-defined extra-key/wheel defaults and the user reported recovery. No claim is made that the experimental focus router is validated.
+
+
+### AI/battery report traced to a Bluetooth disconnect (2026-10-17)
+
+The user reported AI and battery buttons no longer working after the media repair. The saved AI application-toggle mapping and default battery action were intact. App events showed mappings stopped at 13:12:22 UTC after the Bluetooth configuration connection ended; normal mode restoration was verified at 13:12:27 UTC. Activation was requested manually at 13:15:07 UTC and mappings became active at 13:15:08 UTC. This is a session shutdown, not evidence of the media decoder consuming AI or battery IDs.
+
+The macOS bluetoothd unified log independently records PT Ergo's link disconnect at 15:12:22.734 local time as “remotely-initiated,” with opaque reason 719/result 313. Both the system HID client and Ergo Control lost the link. The app's last protocol exchange before the event was a successful mode read roughly ten seconds earlier; there was no command timeout/failure or app-requested cancellation recorded before the link loss. Reconnection completed about two seconds later. The evidence establishes a peripheral-side termination as reported by macOS, but does not identify its firmware trigger or exclude earlier host traffic as a contributing factor. Do not label this interference, low battery, sleep, or firmware crash without additional evidence.
+
+The app then restored the keyboard safely but did not resume mappings after reconnection. That recovery gap leaves native typing/media available while custom AI/battery actions remain inactive. No recovery behavior was changed during this investigation. Raw system logs stay in ignored build output; unrelated device identities are not committed.

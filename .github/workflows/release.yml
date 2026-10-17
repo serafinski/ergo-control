@@ -54,9 +54,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          notes_file="docs/releases/$RELEASE_TAG.md"
+          if [ ! -f "$notes_file" ]; then notes_file="docs/RELEASE_NOTES.md"; fi
           gh release create "$RELEASE_TAG" dist/*.dmg dist/*.sha256 \
             --verify-tag --draft --title "Ergo Control $RELEASE_TAG (self-signed)" \
-            --notes-file docs/RELEASE_NOTES.md
+            --notes-file "$notes_file"
       - name: Remove signing credentials
         if: always()
         run: python3 tools/release_signing.py cleanup

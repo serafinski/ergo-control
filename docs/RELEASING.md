@@ -64,7 +64,7 @@ gh workflow run ci.yml --ref main --repo serafinski/ergo-control
 
 ## Create a draft release
 
-Update `VERSION` and `docs/RELEASE_NOTES.md`, commit, then create a matching tag:
+Update `VERSION` and `docs/RELEASE_NOTES.md`, and add focused public notes in `docs/releases/vX.Y.Z.md` (the workflow falls back to the full release history if absent). Commit, then create a matching tag:
 
 ```sh
 git tag v0.7.8
