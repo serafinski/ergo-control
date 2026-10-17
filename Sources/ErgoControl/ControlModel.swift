@@ -32,6 +32,7 @@ final class ControlModel: ObservableObject {
     private var resumeAfterWake = false
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
+    private let mediaController = FocusedMediaController()
     private let controlIndicator = ControlIndicator()
     private var batteryPopupTicket: UUID?
     private var batterySchedule = BatteryRefreshSchedule()
@@ -97,6 +98,11 @@ final class ControlModel: ObservableObject {
         relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.", level: .warning) }
         relay.onFailure = { [weak self] message in self?.stop(message, level: .error) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message, level: .error) }
+        engine.onPlayback = { [weak self] command in self?.mediaController.perform(command) }
+        mediaController.onRoute = { [weak self] message in self?.logs.record(message, category: "Media") }
+        mediaController.onNotice = { [weak self] message in
+            self?.error = message; self?.logs.record(message, category: "Media", level: .warning)
+        }
         engine.onNotice = { [weak self] message in self?.error = message }
         engine.onCapsLockChange = { [weak self] enabled in
             self?.relay.setCapsLock(enabled) { [weak self] result in
@@ -139,6 +145,7 @@ final class ControlModel: ObservableObject {
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification).sink { [weak self] note in
             self?.frontmostID = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
             self?.updateProfile()
+            self?.mediaController.focusChanged()
         }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification).sink { [weak self] _ in
             guard let self else { return }
@@ -164,7 +171,10 @@ final class ControlModel: ObservableObject {
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
                     : "Mappings active · PT Ergo only"
                 self.logs.record(self.status, category: "Keyboard")
-            } else if !verified && self.running { self.stop("Keyboard mode changed. Mappings stopped safely.", level: .warning) }
+            } else if !verified && self.running {
+                self.stop(self.bluetooth.ready ? "Keyboard driver mode could not be verified. Mappings stopped safely."
+                    : "PT Ergo’s Bluetooth configuration connection ended. Mappings stopped safely; reconnect the keyboard, then enable mappings.", level: .warning)
+            }
         }.store(in: &subscriptions)
         updateProfile()
         logs.record("Ergo Control \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "development") started.")
@@ -394,6 +404,7 @@ final class ControlModel: ObservableObject {
         if bluetooth.canTryDriverMode, !activationStarted {
             if !batteryRequested { batteryRequested = true; bluetooth.readBattery(); return }
             activationStarted = true; relayOpened = true
+            mediaController.start()
             // Forward ordinary input immediately, including during the helper's asynchronous open.
             inputAccessMode = fullControlHelper.enabled ? .fullKeyboard : nil
             relay.start(usingHelper: fullControlHelper.enabled) { [weak self] result in
@@ -415,6 +426,7 @@ final class ControlModel: ObservableObject {
         preparing = false; running = false; timer?.invalidate(); timer = nil
         codex.cancelLightingTest()
         sessionDeadline = nil
+        mediaController.stop()
         relay.stop(); relayOpened = false; engine.stop()
         mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = ConsumerKeyState()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()

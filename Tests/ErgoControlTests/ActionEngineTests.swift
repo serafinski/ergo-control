@@ -278,6 +278,60 @@ final class ActionEngineTests: XCTestCase {
         engine.stop()
         XCTAssertEqual(output.count, 6)
     }
+    func testFocusedPlaybackRoutingConsumesBothEdgesAndNeverRoutesVolumeOrMute() {
+        var commands: [MediaPlaybackCommand] = []
+        var native: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        engine.onPlayback = { commands.append($0) }
+        for command in MediaPlaybackCommand.allCases {
+            XCTAssertTrue(engine.media(command.usage, pressed: true))
+            XCTAssertTrue(engine.media(command.usage, pressed: true))
+            XCTAssertTrue(engine.media(command.usage, pressed: true, repeated: true))
+            XCTAssertTrue(engine.media(command.usage, pressed: false))
+            XCTAssertTrue(engine.media(command.usage, pressed: false))
+        }
+        XCTAssertEqual(commands, MediaPlaybackCommand.allCases)
+        XCTAssertTrue(native.isEmpty, "AX commands must not also toggle the global media target")
+        for usage: UInt16 in [0xe9,0xea,0xe2] { _ = engine.media(usage, pressed: true); _ = engine.media(usage, pressed: false) }
+        XCTAssertEqual(native.count, 6)
+        engine.stop()
+        XCTAssertEqual(commands.count, 3, "Stopping cannot issue another playback command")
+    }
+    func testPlaybackReleaseAfterHandlerRemovalDoesNotLeakToAnotherPlayer() {
+        var commands: [MediaPlaybackCommand] = []
+        var native: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        engine.onPlayback = { commands.append($0) }
+        _ = engine.media(0xcd, pressed: true)
+        engine.onPlayback = nil
+        _ = engine.media(0xcd, pressed: false)
+        XCTAssertEqual(commands, [.playPause]); XCTAssertTrue(native.isEmpty)
+        engine.stop()
+    }
+    func testLostPhysicalReleaseStillAllowsEverySubsequentRoutedPlayPause() {
+        var commands: [MediaPlaybackCommand] = []
+        var native: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        engine.onPlayback = { commands.append($0) }
+        var state = ConsumerKeyState()
+        let press = Data([3,0xcd] + Array(repeating: 0, count: 10))
+        for time in [0.0,1,2] {
+            for event in state.decode(press, at: time)! { _ = engine.media(event.usage, pressed: event.pressed) }
+        }
+        XCTAssertEqual(commands, [.playPause,.playPause,.playPause]); XCTAssertTrue(native.isEmpty)
+        engine.stop()
+    }
+    func testSystemMediaEventsHaveCurrentMonotonicTimestamps() throws {
+        let before = ProcessInfo.processInfo.systemUptime
+        let down = try XCTUnwrap(MacMediaKeys.event(usage: 0xcd, pressed: true))
+        let up = try XCTUnwrap(MacMediaKeys.event(usage: 0xcd, pressed: false))
+        let after = ProcessInfo.processInfo.systemUptime
+        let downTime = try XCTUnwrap(NSEvent(cgEvent: down)).timestamp
+        let upTime = try XCTUnwrap(NSEvent(cgEvent: up)).timestamp
+        XCTAssertGreaterThanOrEqual(downTime, before - 0.001)
+        XCTAssertGreaterThanOrEqual(upTime, downTime)
+        XCTAssertLessThanOrEqual(upTime, after + 0.001)
+    }
     func testStopReleasesHeldMediaAndRejectsUnknownOutput() {
         var output: [ConsumerKeyEvent] = []
         let engine = ActionEngine(mediaOutput: { usage, pressed in output.append(ConsumerKeyEvent(usage, pressed: pressed)) })

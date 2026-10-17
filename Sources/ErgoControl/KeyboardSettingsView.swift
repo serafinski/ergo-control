@@ -113,6 +113,8 @@ struct KeyboardSettingsView: View {
             Text("Choose a button to change what it does.").foregroundStyle(.secondary)
             controlGroup("Macro keys and AI", ids: ["extra:32", "extra:33", "extra:34", "extra:35", "extra:36", "extra:247"])
             controlGroup("Media and battery", ids: ["mediaSingle", "mediaDouble", "mediaTriple", "extra:65"])
+            Text("Playback prefers the focused window’s accessible player, then the last media window. If neither is available, macOS chooses the media target. Volume and mute control system audio.")
+                .font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Other keys") {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Split keys and any other keys you remap.").font(.callout).foregroundStyle(.secondary)

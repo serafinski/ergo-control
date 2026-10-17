@@ -83,12 +83,13 @@ enum MacMediaKeys {
         let data = (code << 16) | ((pressed ? 0xa : 0xb) << 8) | (repeated ? 1 : 0)
         return NSEvent.otherEvent(with: .systemDefined, location: .zero,
             modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(MacKeys.flags(modifiers).rawValue)),
-            timestamp: 0, windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil, subtype: 8, data1: data, data2: -1)?.cgEvent
     }
 }
 
 final class ActionEngine {
     var onCapsLockChange: ((Bool) -> Void)?
+    var onPlayback: ((MediaPlaybackCommand) -> Void)?
     var onCycle: (() -> Void)?
     var onBrightness: ((Int) -> Void)?
     var onBattery: (() -> Void)?
@@ -100,6 +101,7 @@ final class ActionEngine {
     private let source = CGEventSource(stateID: .privateState)
     private var down: Set<UInt8> = []
     private var heldMedia: Set<UInt16> = []
+    private var routedMedia: Set<UInt16> = []
     private var jobs: [DispatchWorkItem] = []
     private var tasks: [Process] = []
     private var repeating: UInt8?
@@ -257,6 +259,14 @@ final class ActionEngine {
 
     func media(_ usage: UInt16, pressed: Bool, repeated: Bool = false) -> Bool {
         endAppSwitcher()
+        if let command = MediaPlaybackCommand(usage: usage), let onPlayback {
+            if pressed {
+                if !repeated && routedMedia.insert(usage).inserted { onPlayback(command) }
+            } else { routedMedia.remove(usage) }
+            return true
+        }
+        // A handler may be disconnected between a press and its release.
+        if !pressed, routedMedia.remove(usage) != nil { return true }
         guard let event = MacMediaKeys.event(usage: usage, pressed: pressed, repeated: repeated,
                                             modifiers: physicalModifiers | (heldFluidTrigger?.ownedModifiers ?? 0)) else { return false }
         if let mediaOutput { mediaOutput(usage, pressed) }
@@ -379,6 +389,6 @@ final class ActionEngine {
         down.removeAll()
         nativeOwners = NativeKeyOwners()
         for usage in heldMedia.sorted() { _ = media(usage, pressed: false) }
-        heldMedia.removeAll()
+        heldMedia.removeAll(); routedMedia.removeAll()
     }
 }
