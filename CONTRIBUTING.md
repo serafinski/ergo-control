@@ -1,5 +1,9 @@
 # Contributing
 
+Create a feature branch and open a pull request against `main`. Direct pushes, force pushes and deletion of `main` are blocked by an active GitHub ruleset, with no bypass actors. Resolve review conversations before merging. A second person's approval is not mandatory, so the maintainer can merge their own PR.
+
+GitHub Actions run only when manually dispatched. Do not enable automatic push, pull-request or tag builds; this keeps runner usage under the maintainer's control. For release builds, follow [the release guide](docs/RELEASING.md).
+
 Build and test on macOS with Swift 5.9 or newer. Run `swift test` and compile the affected release products before submitting a change. GitHub Actions performs tests and unsigned release compilation; it does not install a helper or open a keyboard.
 
 The source is organized as follows:
