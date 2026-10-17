@@ -10,7 +10,14 @@ Ergo Control offers Claude Code alongside Codex in **Chat apps**. The selected p
 4. Enable keyboard mappings. Unmapped M1–M5 use the selected provider. If an existing profile explicitly assigns Codex actions, change those actions, use Default, or create a separate Claude mappings profile; choosing Claude does not rewrite explicit actions.
 5. Optionally enable **Show Claude Code status lights**. All existing signal styles, wave speeds, working pulse, dark background and visual tests use the same renderer and saved-effect recovery as Codex. Keyboard brightness must be above zero.
 
-Under **Status lights → Colors for Claude Code**, choose separate Working, Approval requested and Turn ended colors. Claude defaults to **purple / pink / cyan**; Codex keeps **blue / amber / green**. Each provider saves its own palette, with a reset button for its defaults. The chosen colors apply to solid signals, wave heads/trails, working pulses and the visual test. Editing a live color updates the signal without replaying a completed wave. This does not change which provider owns the lights: the Chat apps selector still chooses that source.
+Under **Status lights → Colors for Claude Code**, choose separate Working, Approval requested and Turn ended colors. Claude defaults to **orange / magenta / cyan**; Codex uses **blue / red / green**. The exact default RGB values are listed below. Each provider saves its own palette, with a reset button for its defaults. The chosen colors apply to solid signals, wave heads/trails, working pulses and the visual test. Editing a live color updates the signal without replaying a completed wave. This does not change which provider owns the lights: the Chat apps selector still chooses that source.
+
+| Provider | Working | Approval requested | Turn ended |
+| --- | --- | --- | --- |
+| Codex | `#0010FF` (0, 16, 255) | `#FF0012` (255, 0, 18) | `#00FF00` (0, 255, 0) |
+| Claude Code | `#FF5700` (255, 87, 0) | `#FF01EB` (255, 1, 235) | `#00FFFF` (0, 255, 255) |
+
+These defaults match the palettes selected in the app. Existing saved overrides are preserved; Reset colors returns to the defaults above.
 
 The default catalog is `~/Library/Application Support/Claude/claude-code-sessions/<account>/<organization>`. A single account/organization is discovered automatically. With several, choose the intended folder under **Claude session catalog**. Lists are never combined across accounts. **Use automatic catalog** clears that folder override. Metadata reads continue in Fixed mode to match desktop IDs to the engine UUIDs reported by hooks.
 
@@ -18,8 +25,8 @@ The default catalog is `~/Library/Application Support/Claude/claude-code-session
 
 | Observation | Status |
 | --- | --- |
-| Prompt or tool activity | Working color (purple by default) |
-| Permission request or AskUserQuestion tool | Approval color (pink by default) |
+| Prompt or tool activity | Working color (orange by default) |
+| Permission request or AskUserQuestion tool | Approval color (magenta by default) |
 | Normal Stop | Brief turn-ended color (cyan by default), then idle and normal effect |
 | StopFailure or SessionEnd | Idle, without a completion signal |
 | Idle notification | Clears working status, but never dismisses a pending approval |

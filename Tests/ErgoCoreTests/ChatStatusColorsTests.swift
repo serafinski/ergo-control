@@ -2,7 +2,7 @@ import XCTest
 import ErgoCore
 
 final class ChatStatusColorsTests: XCTestCase {
-    func testDefaultsKeepCodexColorsAndDistinguishAllClaudeStates() {
+    func testDefaultsMatchSelectedPaletteAndDistinguishAllClaudeStates() {
         let codex = ChatStatusColors.defaults(for: .codex), claude = ChatStatusColors.defaults(for: .claude)
         XCTAssertEqual(codex.working, CodexActivity.working.color)
         XCTAssertEqual(codex.attention, CodexActivity.attention.color)

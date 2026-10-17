@@ -462,7 +462,7 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(rig.frames.count, 5)
         rig.clock += 0.02; working(); rig.renderer.pump()
         let dim = rig.frames.last!
-        XCTAssertEqual(dim[0], DialColor(red: 0, green: 90, blue: 191))
+        XCTAssertEqual(dim[0], DialColor(red: 0, green: 12, blue: 191))
         XCTAssertTrue(dim.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
         rig.clock += 2.45; working(); rig.renderer.pump()
         XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
@@ -515,7 +515,7 @@ final class MacroStatusRendererTests: XCTestCase {
             rig.renderer.pump()
         }
         XCTAssertEqual(rig.frames.map { $0[0].blue }, [255,191,102,38,0,38,102,191,255])
-        XCTAssertEqual(rig.frames.map { $0[0].green }, [120,90,48,18,0,18,48,90,120])
+        XCTAssertEqual(rig.frames.map { $0[0].green }, [16,12,6,2,0,2,6,12,16])
         XCTAssertEqual(rig.frames[4][0], DialColor(red: 0, green: 0, blue: 0))
         XCTAssertTrue(rig.frames.allSatisfy { $0.dropFirst().allSatisfy { $0 == MacroStatusFrame.background } })
         XCTAssertNotNil(rig.saved)

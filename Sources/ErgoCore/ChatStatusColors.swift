@@ -14,9 +14,9 @@ public struct ChatStatusColors: Codable, Equatable {
             return Self(working: CodexActivity.working.color, attention: CodexActivity.attention.color,
                         finished: CodexActivity.finished.color)
         }
-        return Self(working: DialColor(red: 160, green: 60, blue: 255),
-                    attention: DialColor(red: 255, green: 0, blue: 128),
-                    finished: DialColor(red: 0, green: 230, blue: 230))
+        return Self(working: DialColor(red: 255, green: 87, blue: 0),
+                    attention: DialColor(red: 255, green: 1, blue: 235),
+                    finished: DialColor(red: 0, green: 255, blue: 255))
     }
     public func color(for activity: CodexActivity) -> DialColor {
         switch activity {

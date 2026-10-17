@@ -15,8 +15,8 @@ public enum CodexActivity: String, Codable, CaseIterable {
         switch self {
         case .unknown: return DialColor(red: 50, green: 50, blue: 50)
         case .idle: return DialColor(red: 140, green: 140, blue: 140)
-        case .working: return DialColor(red: 0, green: 120, blue: 255)
-        case .attention: return DialColor(red: 255, green: 100, blue: 0)
+        case .working: return DialColor(red: 0, green: 16, blue: 255)
+        case .attention: return DialColor(red: 255, green: 0, blue: 18)
         case .finished: return DialColor(red: 0, green: 255, blue: 0)
         }
     }
