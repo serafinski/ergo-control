@@ -215,7 +215,12 @@ final class CodexBridgeTests: XCTestCase {
         clock = 116; bridge.poll()
         XCTAssertNil(bridge.lightingTestStage)
         XCTAssertEqual(bridge.lightingColor, CodexActivity.finished.color)
-        XCTAssertEqual(colors, [CodexActivity.attention.color, CodexActivity.finished.color,
+        // Arbitration metadata also notifies while the preview's color stays
+        // fixed. The renderer coalesces identical requests; assert transitions.
+        let transitions = colors.reduce(into: [DialColor?]()) { result, color in
+            if result.isEmpty || result[result.count - 1] != color { result.append(color) }
+        }
+        XCTAssertEqual(transitions, [CodexActivity.attention.color, CodexActivity.finished.color,
                                 nil, CodexActivity.finished.color])
         bridge.shutdown()
     }

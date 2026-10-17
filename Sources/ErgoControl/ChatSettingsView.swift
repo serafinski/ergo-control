@@ -20,9 +20,10 @@ struct ChatSettingsView: View {
             Picker("App settings", selection: $viewedProvider) {
                 ForEach(ChatProvider.allCases) { provider in Text(provider.name).tag(provider) }
             }.pickerStyle(.segmented)
-            Text("View either app here. Switching pages keeps your key assignments and lighting source unchanged.")
+            Text("View either app here. Switching pages keeps your key assignments and lighting mode unchanged.")
                 .font(.caption).foregroundStyle(.secondary)
             automaticDefaults
+            lightingMode
             if let error = model.chatPreferences.error { Text(error).foregroundStyle(.red) }
             Toggle("Connect to \(bridge.provider.name)", isOn: Binding(get: { bridge.settings.enabled }, set: bridge.setEnabled))
                 .toggleStyle(.switch)
@@ -54,14 +55,28 @@ struct ChatSettingsView: View {
         }.id(bridge.provider)
     }
     private var automaticDefaults: some View {
-        GroupBox("Automatic keys and status lights") {
+        GroupBox("Automatic keys") {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("Follow", selection: Binding(get: { model.chatPreferences.provider }, set: model.setChatProvider)) {
+                Picker("Default chat app", selection: Binding(get: { model.chatPreferences.provider }, set: model.setChatProvider)) {
                     ForEach(ChatProvider.allCases) { provider in Text(provider.name).tag(provider) }
                 }
                 Toggle("Use unmapped M1–M5 for \(model.chat.provider.name) chats", isOn: Binding(
                     get: { model.chat.settings.useUnmappedMacroKeys }, set: { model.chat.setUseUnmappedMacroKeys($0) }))
                 Text("Only keys set to Default follow this choice. Explicit mappings can open either app and take precedence.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(10)
+        }
+    }
+    private var lightingMode: some View {
+        GroupBox("Keyboard status lighting") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Lighting mode", selection: Binding(get: { model.chatPreferences.lightingMode }, set: model.setChatLightingMode)) {
+                    ForEach(ChatLightingMode.allCases) { mode in Text(mode.label).tag(mode) }
+                }
+                Text("Automatic: approval takes priority, then the newest working turn. When it ends, earlier work resumes its color. Completion appears only when no chat is busy.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Current signal: \(model.chatLightingStatus)").font(.caption)
+                Text("Each included app must have its connection and status lights enabled. Key mappings are independent of this mode.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(10)
         }
@@ -178,7 +193,7 @@ struct ChatSettingsView: View {
         GroupBox("Status lights") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Show \(bridge.provider.name) status lights", isOn: Binding(get: { bridge.settings.lighting }, set: bridge.setLighting))
-                Text("Keyboard lights currently follow \(model.chatPreferences.provider.name). Choose the lighting source under Automatic keys and status lights above.")
+                Text("Lighting mode: \(model.chatPreferences.lightingMode.label). Change it under Keyboard status lighting above.")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("Signal style", selection: Binding(get: { bridge.settings.lightingArea }, set: bridge.setLightingArea)) {
                     ForEach(CodexLightingArea.allCases) { area in Text(area.label).tag(area) }
@@ -218,17 +233,17 @@ struct ChatSettingsView: View {
                         Button("Stop test") { bridge.cancelLightingTest() }
                         Text("Test: \(stage.label)").font(.callout)
                     } else {
-                        Button(bridge.settings.lightingArea == .completionWave ? "Test status waves · 24 seconds" : "Test status lights · 16 seconds") { bridge.startLightingTest() }
-                            .disabled(!model.running || !bridge.settings.lighting || bridge.provider != model.chatPreferences.provider)
-                        Text(bridge.provider != model.chatPreferences.provider
-                             ? "Choose \(bridge.provider.name) as the lighting source above to test its colors."
+                        Button(bridge.settings.lightingArea == .completionWave ? "Test status waves · 24 seconds" : "Test status lights · 16 seconds") { model.startChatLightingTest(bridge.provider) }
+                            .disabled(!model.running || !bridge.settings.lighting || !model.chatPreferences.lightingMode.includes(bridge.provider))
+                        Text(!model.chatPreferences.lightingMode.includes(bridge.provider)
+                             ? "Include \(bridge.provider.name) in the lighting mode above to test its colors."
                              : model.running ? "Keep keyboard brightness above 0%." : "Enable mappings to test the lights.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Text(bridge.settings.lightingArea == .completionWave
-                     ? "The test uses your colors for a working sweep, bouncing approval waves, then one turn-ended sweep and your previous effect. Live status resumes afterward; chat status is unchanged."
-                     : "The test uses your colors for working → approval → turn ended → your previous effect, for four seconds each. Live status resumes afterward; chat status is unchanged.")
+                    ? "The test temporarily overrides live lighting with your working, approval and turn-ended waves, then restores the previous effect. Live status from either app resumes afterward; chat status is unchanged."
+                     : "The test temporarily overrides live lighting with working → approval → turn ended → your previous effect, for four seconds each. Live status from either app resumes afterward; chat status is unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.bluetooth.macroStatusLightingMessage.isEmpty {
                     Text(model.bluetooth.macroStatusLightingMessage).font(.caption).textSelection(.enabled)

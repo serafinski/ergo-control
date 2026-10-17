@@ -3,6 +3,29 @@ import ErgoCore
 @testable import ErgoDevice
 
 final class MacroStatusRendererTests: XCTestCase {
+    func testProviderHandoffsPreserveSnapshotAndResumeWorkWithoutReplayingItsSweep() {
+        let rig = Rig()
+        let orange = ChatStatusColors.defaults(for: .claude).working
+        let blue = ChatStatusColors.defaults(for: .codex).working
+        let magenta = ChatStatusColors.defaults(for: .claude).attention
+        rig.renderer.request(orange, area: .completionWave, signalID: "claude-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(magenta, area: .completionWave, signalID: "claude-approval", activity: .attention, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(blue))
+        rig.renderer.request(orange, area: .completionWave, signalID: "claude-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(orange))
+        XCTAssertEqual(rig.operations.filter { $0 == "save" }.count, 1)
+        XCTAssertFalse(rig.operations.contains("restore"), "Handoffs must keep the original restoration snapshot")
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
     func testCustomColorsReachAllWaveHeadsAndWorkingHold() {
         let color = DialColor(red: 150, green: 30, blue: 210)
         for activity in [CodexActivity.working, .attention, .finished] {

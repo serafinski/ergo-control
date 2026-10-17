@@ -29,6 +29,7 @@ final class ChatBridge: ObservableObject {
     private var lastDarkStatusBackground = false
     private var lastSignalID: String?
     private var lastActivities: [CodexActivity] = []
+    private var lastLightingCandidates: [ChatLightingCandidate] = []
     private var lastExpiryRefresh = Date.distantPast
     private var nextHistoryRefresh = Date.distantPast
     private let history: CodexHistorySource?
@@ -353,7 +354,8 @@ final class ChatBridge: ObservableObject {
         let color = lightingColor
         let signalID = lightingSignalID
         let state = lightingActivity
-        if (color != nil && state != lastLightingActivity) || settings.darkStatusBackground != lastDarkStatusBackground || settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
+        let candidates = lightingCandidates
+        if candidates != lastLightingCandidates || (color != nil && state != lastLightingActivity) || settings.darkStatusBackground != lastDarkStatusBackground || settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
             || (color != nil && signalID != lastSignalID) {
             lastColor = color; lastArea = settings.lightingArea; lastSignalID = signalID
             lastLightingActivity = state
@@ -361,7 +363,17 @@ final class ChatBridge: ObservableObject {
             lastWaveSpeed = settings.waveSpeed
             lastPulseWhileWorking = settings.pulseWhileWorking
             lastDarkStatusBackground = settings.darkStatusBackground
+            lastLightingCandidates = candidates
             onLightingChange?(color)
+        }
+    }
+    var lightingCandidates: [ChatLightingCandidate] {
+        guard !shuttingDown, settings.enabled, settings.lighting else { return [] }
+        let ids = Set(displaySlots.compactMap(statusID))
+        return ids.sorted().compactMap { id in
+            sessions[id].flatMap { ChatLightingCandidate(provider: provider, session: $0, now: now(),
+                completionDuration: settings.lightingArea == .completionWave
+                    ? CodexStatusWave.completionWindow : CodexSessionStatus.completionSignalDuration) }
         }
     }
     var allowsCompletionToFinish: Bool {
@@ -397,7 +409,7 @@ final class ChatBridge: ObservableObject {
     func openSlot(_ number: Int) {
         guard settings.enabled else { message = "Enable the \(provider.name) connection first."; return }
         guard let slot = displaySlots.first(where: { $0.id == number }), let url = url(for: slot) else {
-            message = "M\(number) has no chat in \(selectionLabel)."; return
+            message = "Slot \(number) has no chat in \(selectionLabel)."; return
         }
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: provider.bundleID) else {
             message = "\(provider.name) desktop could not be found."; return

@@ -31,6 +31,8 @@ final class ControlModel: ObservableObject {
     let codex = ChatBridge()
     let claude = ChatBridge(provider: .claude)
     let chatPreferences = ChatPreferences()
+    private lazy var chatLighting = ChatLightingController(codex: codex, claude: claude)
+    @Published private(set) var chatLightingStatus = "No active chat signal"
     var chat: ChatBridge { chatBridge(for: chatPreferences.provider) }
     func chatBridge(for provider: ChatProvider) -> ChatBridge { provider == .codex ? codex : claude }
     func macroAssignments(alternateLayer: Bool) -> [MacroKeyAssignment] {
@@ -102,12 +104,10 @@ final class ControlModel: ObservableObject {
             if !enabled { self?.cancelAutomaticStart() }
         }.store(in: &subscriptions)
         codex.onLightingChange = { [weak self] _ in
-            guard let self, self.chat.provider == .codex else { return }
-            self.updateChatLighting()
+            self?.updateChatLighting()
         }
         claude.onLightingChange = { [weak self] _ in
-            guard let self, self.chat.provider == .claude else { return }
-            self.updateChatLighting()
+            self?.updateChatLighting()
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
@@ -335,19 +335,31 @@ final class ControlModel: ObservableObject {
     }
     func setChatProvider(_ provider: ChatProvider) {
         guard provider != chatPreferences.provider else { return }
+        _ = chatPreferences.select(provider)
+    }
+    func setChatLightingMode(_ mode: ChatLightingMode) {
+        guard mode != chatPreferences.lightingMode else { return }
         codex.cancelLightingTest(); claude.cancelLightingTest()
-        guard chatPreferences.select(provider) else { return }
+        guard chatPreferences.selectLighting(mode) else { return }
         // Explicitly release the old provider before repainting, including a
         // one-shot completion that would otherwise be allowed to finish.
         bluetooth.setMacroStatusColor(nil)
+        chatLighting.reset()
         updateChatLighting()
     }
+    func startChatLightingTest(_ provider: ChatProvider) {
+        guard running, chatPreferences.lightingMode.includes(provider) else { return }
+        codex.cancelLightingTest(); claude.cancelLightingTest()
+        chatBridge(for: provider).startLightingTest()
+    }
     private func updateChatLighting() {
-        let bridge = chat
-        bluetooth.setMacroStatusColor(running ? bridge.lightingColor : nil, area: bridge.settings.lightingArea,
-            signalID: bridge.lightingSignalID.map { "\(bridge.provider.rawValue):\($0)" }, activity: bridge.lightingActivity,
-            allowCompletionToFinish: running && bridge.allowsCompletionToFinish, speed: bridge.settings.waveSpeed,
-            pulseWhileWorking: bridge.settings.pulseWhileWorking, darkBackground: bridge.settings.darkStatusBackground)
+        let output = chatLighting.output(mode: chatPreferences.lightingMode)
+        let status = !running ? "Mappings are off" : output.provider.map { "\($0.name) · \(output.activity.label)" } ?? "No active chat signal"
+        if chatLightingStatus != status { chatLightingStatus = status }
+        bluetooth.setMacroStatusColor(running ? output.color : nil, area: output.area,
+            signalID: output.signalID, activity: output.activity,
+            allowCompletionToFinish: running && output.allowCompletionToFinish, speed: output.speed,
+            pulseWhileWorking: output.pulseWhileWorking, darkBackground: output.darkBackground)
     }
     func createChatProfile(_ provider: ChatProvider) {
         if let existing = configuration.profiles.first(where: { p in
@@ -462,6 +474,7 @@ final class ControlModel: ObservableObject {
         batteryPopupTicket = nil
         controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
+        chatLightingStatus = "Mappings are off"
         codex.cancelLightingTest(); claude.cancelLightingTest()
         sessionDeadline = nil
         mediaController.stop()

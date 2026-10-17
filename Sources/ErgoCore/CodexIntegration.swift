@@ -228,7 +228,8 @@ public enum CodexHistoryRequest {
 public struct CodexSessionStatus {
     public private(set) var latest: CodexHookEvent
     public private(set) var workingSince: Date
-    public init(_ event: CodexHookEvent) { latest = event; workingSince = event.time }
+    public private(set) var turnStarted: Date
+    public init(_ event: CodexHookEvent) { latest = event; workingSince = event.time; turnStarted = event.time }
     public mutating func receive(_ event: CodexHookEvent) {
         guard event.sessionID == latest.sessionID, event.time > latest.time else { return }
         // Claude's delayed idle notification must not dismiss a pending approval.
@@ -238,6 +239,9 @@ public struct CodexSessionStatus {
            let current = latest.turnID, turn != current { return }
         if event.activity == .working {
             let newTurn = event.turnID != nil && latest.turnID != nil && event.turnID != latest.turnID
+            if newTurn || event.event == "UserPromptSubmit" || [.idle, .finished].contains(latest.activity) {
+                turnStarted = event.time
+            }
             if latest.activity != .working || newTurn || event.event == "UserPromptSubmit" { workingSince = event.time }
         }
         latest = event
