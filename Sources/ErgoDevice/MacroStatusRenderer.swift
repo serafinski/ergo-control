@@ -30,7 +30,7 @@ final class MacroStatusRenderer {
     }
     private var pulsePhase: Int {
         guard let pulseStarted else { return 0 }
-        return Int(max(0, uptime() - pulseStarted) / 0.7) % 2
+        return Int(max(0, uptime() - pulseStarted) / 1.4) % 2
     }
     private var selected = false
     private var failed = false

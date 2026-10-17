@@ -395,13 +395,13 @@ final class MacroStatusRendererTests: XCTestCase {
         for _ in 0..<4 { rig.renderer.pump() }
         rig.renderer.pump() // First macro-only frame is bright.
         XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
-        rig.clock += 0.69; working(); rig.renderer.pump()
+        rig.clock += 1.39; working(); rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, 5)
         rig.clock += 0.02; working(); rig.renderer.pump()
         let dim = rig.frames.last!
         XCTAssertEqual(dim[0], DialColor(red: 0, green: 24, blue: 51))
         XCTAssertTrue(dim.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
-        rig.clock += 0.7; working(); rig.renderer.pump()
+        rig.clock += 1.4; working(); rig.renderer.pump()
         XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
         XCTAssertEqual(rig.frames.count, 7, "Status refreshes must not restart the wave or pulse clock")
         XCTAssertNotNil(rig.saved)
@@ -409,7 +409,7 @@ final class MacroStatusRendererTests: XCTestCase {
     func testPulseToggleOffImmediatelyRepaintsBlueAndIdleRestores() {
         let rig = Rig()
         rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
-        rig.renderer.pump(); rig.clock += 0.71; rig.renderer.pump()
+        rig.renderer.pump(); rig.clock += 1.41; rig.renderer.pump()
         XCTAssertNotEqual(rig.frames.last?.first, CodexActivity.working.color)
         rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: false)
         rig.renderer.pump()
@@ -424,7 +424,7 @@ final class MacroStatusRendererTests: XCTestCase {
         let rig = Rig()
         rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
         rig.renderer.pump()
-        rig.clock += 70.71; rig.renderer.pump()
+        rig.clock += 141.41; rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, 2, "Slow transport must not queue missed pulse frames")
         rig.renderer.request(CodexActivity.attention.color, area: .completionWave,
             signalID: "approval", activity: .attention, pulseWhileWorking: true)
@@ -436,7 +436,7 @@ final class MacroStatusRendererTests: XCTestCase {
     func testRejectedPulseRestoresWithoutFurtherPulseWrites() {
         let rig = Rig()
         rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
-        rig.renderer.pump(); rig.rejectFrame = true; rig.clock += 0.71; rig.renderer.pump()
+        rig.renderer.pump(); rig.rejectFrame = true; rig.clock += 1.41; rig.renderer.pump()
         rig.renderer.pump()
         XCTAssertNil(rig.saved)
         let count = rig.frames.count
