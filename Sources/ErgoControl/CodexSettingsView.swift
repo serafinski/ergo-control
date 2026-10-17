@@ -90,7 +90,7 @@ struct CodexSettingsView: View {
                 }
                 if model.codex.settings.lightingArea != .wholeKeyboard {
                     Toggle("Pulse macro keys while working", isOn: Binding(get: { model.codex.settings.pulseWhileWorking }, set: model.codex.setPulseWhileWorking))
-                    Text("Gently alternates bright and dim blue after the starting wave. Off keeps solid blue.")
+                    Text("Fades blue through dim to dark and back after the starting wave. Off keeps solid blue.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 18) {

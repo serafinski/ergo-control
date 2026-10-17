@@ -395,13 +395,13 @@ final class MacroStatusRendererTests: XCTestCase {
         for _ in 0..<4 { rig.renderer.pump() }
         rig.renderer.pump() // First macro-only frame is bright.
         XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
-        rig.clock += 1.39; working(); rig.renderer.pump()
+        rig.clock += 0.34; working(); rig.renderer.pump()
         XCTAssertEqual(rig.frames.count, 5)
         rig.clock += 0.02; working(); rig.renderer.pump()
         let dim = rig.frames.last!
-        XCTAssertEqual(dim[0], DialColor(red: 0, green: 24, blue: 51))
+        XCTAssertEqual(dim[0], DialColor(red: 0, green: 90, blue: 191))
         XCTAssertTrue(dim.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
-        rig.clock += 1.4; working(); rig.renderer.pump()
+        rig.clock += 2.45; working(); rig.renderer.pump()
         XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
         XCTAssertEqual(rig.frames.count, 7, "Status refreshes must not restart the wave or pulse clock")
         XCTAssertNotNil(rig.saved)
@@ -441,6 +441,23 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertNil(rig.saved)
         let count = rig.frames.count
         rig.clock += 10; rig.renderer.pump(); XCTAssertEqual(rig.frames.count, count)
+    }
+
+    func testWorkingPulseFadesThroughDarkAndBackAtTheSameSlowCycle() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump()
+        for step in 1...8 {
+            rig.clock = 100 + Double(step) * 0.35 + 0.001
+            rig.renderer.pump()
+        }
+        XCTAssertEqual(rig.frames.map { $0[0].blue }, [255,191,102,38,0,38,102,191,255])
+        XCTAssertEqual(rig.frames.map { $0[0].green }, [120,90,48,18,0,18,48,90,120])
+        XCTAssertEqual(rig.frames[4][0], DialColor(red: 0, green: 0, blue: 0))
+        XCTAssertTrue(rig.frames.allSatisfy { $0.dropFirst().allSatisfy { $0 == MacroStatusFrame.background } })
+        XCTAssertNotNil(rig.saved)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
     }
 
 }

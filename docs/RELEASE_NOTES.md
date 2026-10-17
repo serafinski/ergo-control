@@ -1,3 +1,5 @@
+Version 0.8.5 changes the optional working pulse to a blue fade through dim to fully dark and back. Eight intensity steps retain the 2.8-second cycle, with other keys unchanged. The toggle remains off by default; no helper or hook update is needed.
+
 Version 0.8.4 slows the optional working pulse to 1.4 seconds per bright/dim phase, a 2.8-second cycle: half the previous frequency. The toggle remains off by default. No helper or hook update is needed after 0.8.3.
 
 Version 0.8.3 adds an optional **Pulse macro keys while working** toggle in Codex → Status lights, off by default. When enabled, M1–M5 alternate bright/dim blue every 0.7 seconds after the starting sweep, until work ends or approval begins. Missed phases are skipped rather than queued. Smooth is the default for new/missing speed preferences; existing choices are preserved. The Caps Lock white indicator is synchronized through its standard HID LED output while full keyboard control is active. **Update the input helper from Setup & diagnostics** for Caps Lock indicator support; hooks do not need reinstalling. Hardware confirmation of the new indicator and pulse remains pending.

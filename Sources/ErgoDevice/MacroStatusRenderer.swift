@@ -28,9 +28,11 @@ final class MacroStatusRenderer {
         pulseEnabled && desiredActivity == .working && desiredArea == .macroColumn && desired != nil
             && (signalID == nil || completedIDs.contains(signalID!))
     }
+    // One 2.8-second breath, including a fully dark macro-column frame.
+    private static let pulseLevels = [100, 75, 40, 15, 0, 15, 40, 75]
     private var pulsePhase: Int {
         guard let pulseStarted else { return 0 }
-        return Int(max(0, uptime() - pulseStarted) / 1.4) % 2
+        return Int(max(0, uptime() - pulseStarted) / 0.35) % Self.pulseLevels.count
     }
     private var selected = false
     private var failed = false
@@ -141,7 +143,10 @@ final class MacroStatusRenderer {
         let colors: [DialColor]
         if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed) }
         else {
-            let signal = phase == 1 ? DialColor(red: color.red / 5, green: color.green / 5, blue: color.blue / 5) : color
+            let level = phase.map { Self.pulseLevels[$0] } ?? 100
+            let signal = DialColor(red: UInt8(Int(color.red) * level / 100),
+                                   green: UInt8(Int(color.green) * level / 100),
+                                   blue: UInt8(Int(color.blue) * level / 100))
             colors = MacroStatusFrame.colors(signal, area: area)
         }
         step(.frame(colors), region: region) { [weak self] _ in
