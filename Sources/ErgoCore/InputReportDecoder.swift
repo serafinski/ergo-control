@@ -35,6 +35,9 @@ public struct InputReportDecoder {
             consumer = usage
             return events
         }
+        if let record = DriverMediaRecord(Data(bytes)) {
+            return record.usage == 0 ? [] : ["\(Self.consumerName(record.usage)) · driver media event"]
+        }
         // Physical report 6, logical notification record 5, brightness event 8.
         if reportID == 6, bytes.count == 12, bytes[1] == 5, bytes[2] == 8,
            bytes.dropFirst(4).allSatisfy({ $0 == 0 }) {

@@ -33,6 +33,7 @@ final class ControlModel: ObservableObject {
     lazy var lightingAutomation = LightingAutomation(device: bluetooth)
     let logs = AppLog()
     private var lastPointerNote: String?
+    private var lastVendorNote: String?
     private var automaticStart = AutomaticMappingStart()
     private var automaticStartTimer: Timer?
     private var resumeAfterWake = false
@@ -54,7 +55,7 @@ final class ControlModel: ObservableObject {
     private var keyActions: [UInt8: MappingAction] = [:]
     private var extraActions: [UInt8: MappingAction] = [:]
     private var mediaActions: [UInt16: MappingAction] = [:]
-    private var consumer = ConsumerKeyState()
+    private var consumer = MediaInputState()
     private var mediaReleaseTimer: Timer?
     private var extraDecoder = ExtraKeyDecoder()
     private var layerKeys: Set<String> = []
@@ -394,7 +395,7 @@ final class ControlModel: ObservableObject {
         if dirty { save(); if error != nil { return } }
         preparing = true; stageStarted = Date(); activationStarted = false; batteryRequested = false
         sessionDeadline = testSeconds.map { Date().addingTimeInterval($0) }
-        extraDecoder = ExtraKeyDecoder(); ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll(); consumer = ConsumerKeyState()
+        extraDecoder = ExtraKeyDecoder(); ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll(); consumer = MediaInputState()
         status = "Connecting to PT Ergo…"; bluetooth.connect()
         timer?.invalidate()
         timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.advance() }
@@ -437,7 +438,7 @@ final class ControlModel: ObservableObject {
         sessionDeadline = nil
         mediaController.stop()
         relay.stop(); relayOpened = false; engine.stop()
-        mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = ConsumerKeyState()
+        mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = MediaInputState()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()
         bluetooth.restore(); status = message
     }
@@ -535,7 +536,20 @@ final class ControlModel: ObservableObject {
             }
             forwardMedia(events)
             scheduleMediaRelease()
-        } else if id == 6 { return } // device notifications, not keyboard actions
+        } else if id == 6 {
+            // Report 6 multiplexes driver media records and notifications.
+            // Only the strict logical-record-2 shape enters media delivery.
+            guard DriverMediaRecord(data) != nil else {
+                if bytes.count > 1, bytes[1] != 5 {
+                    let note = "Unrecognized vendor input record \(bytes[1]) (\(bytes.count) bytes); no media command generated."
+                    if note != lastVendorNote { logs.record(note, category: "Media", level: .warning); lastVendorNote = note }
+                }
+                return
+            }
+            guard let events = consumer.decode(data, at: ProcessInfo.processInfo.systemUptime) else { return }
+            forwardMedia(events, source: "driver media record")
+            scheduleMediaRelease()
+        }
         else { stop("This input report needs support (\(id)); mappings stopped.", level: .error) }
     }
 
@@ -561,7 +575,7 @@ final class ControlModel: ObservableObject {
         }
     }
 
-    private func forwardMedia(_ events: [ConsumerKeyEvent]) {
+    private func forwardMedia(_ events: [ConsumerKeyEvent], source: String = "native consumer report") {
         let controls: [UInt16: String] = [0xe9:"rightCW",0xea:"rightCCW",0xe2:"rightClick",0xcd:"mediaSingle",0xb5:"mediaDouble",0xb6:"mediaTriple"]
         if !events.isEmpty { lightingAutomation.userActivity() }
         for event in events {
@@ -569,7 +583,7 @@ final class ControlModel: ObservableObject {
             let control = controls[event.usage] ?? "media:\(event.usage)"
             let mapping: MappingAction
             if event.pressed {
-                logs.record("\(Self.mediaLabel(event.usage)) received from PT Ergo.", category: "Media")
+                logs.record("\(Self.mediaLabel(event.usage)) received from PT Ergo (\(source)).", category: "Media")
                 mapping = running ? action(for: control) : MappingAction()
                 mediaActions[event.usage] = mapping; lastControl = ControlCatalog.label(control)
             } else { mapping = mediaActions.removeValue(forKey: event.usage) ?? MappingAction() }

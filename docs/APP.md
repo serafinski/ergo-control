@@ -4,7 +4,15 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.9.3**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.9.4**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+
+## Driver-mode media input (0.9.4)
+
+The native-routing rollback in 0.9.3 did not restore the user's media controls. The user confirmed ordinary typing/left-dial functions still worked and tested volume, mute and playback repeatedly. No native consumer inputs were recorded while driver mode remained verified. The live HID descriptor still contains the normal report-3 consumer collection plus vendor reports 5/6.
+
+Static inspection of the original Protocol 30 event parser identifies logical record 2 as a media command carrying a little-endian consumer usage; logical record 5 is a notification. The app previously discarded every physical report 6 as a notification. It now recognizes the strict 12-byte `[6, 2, usageLo, usageHi, zero padding…]` shape and sends each momentary record through the existing media mapping/output path as a balanced pulse. Other notifications remain ignored. App logs identify whether media arrived through native consumer input or a driver media record. Unsupported vendor record IDs are logged once per changed shape, without raw payloads.
+
+MediaInputState retains native report-3 press/release/timeout behavior and correlates same-usage events only across native/vendor sources within 80 ms, avoiding double toggles if both forms arrive. Repeated same-source vendor volume steps are preserved. All 259 tests pass, including each driver media action, malformed/notification rejection, both duplicate orderings, missing native releases, and integrated engine delivery. Physical confirmation of the report-6 path is still pending. Focus-first playback remains experimental/off by default; no helper or hook reinstall is required.
 
 ## Media regression recovery (0.9.3)
 

@@ -93,7 +93,7 @@ Static provenance (vendor sources remain local and ignored):
 | 3 | 12-byte consumer snapshot; little-endian usage at bytes 1–2, zero on release |
 | 4 | System input; not currently relayed by the mapping app |
 | 5 | 12-byte extra-key snapshot: `[5, 4, key set…]`, ten identifier bytes |
-| 6 | Device notification, distinct from key actions |
+| 6 | Vendor envelope: logical record 5 notifications; logical record 2 momentary media commands (added in 0.9.4; live confirmation pending) |
 
 The following report-5 identifiers were captured independently in verified driver mode. All-zero key sets release held keys; duplicate snapshots do not retrigger actions.
 
@@ -163,3 +163,10 @@ The fixed recovered setters use class 5: dimming `0a` with argument6/profile 0, 
 The percentage slider uses the previously verified class 16 / command 5, profile 1 / all regions (0), and checks class 16 / `85`, profile 1 / region 5. Automatic display/idle blackout uses those same brightness commands, with a separate exact-target raw-brightness recovery journal written before setting zero. Native dim/sleep user choices are persistent and are not put into the temporary mode/lighting recovery journal.
 
 An isolated `--keyboard-power-test` saves a durable exact-target native-settings backup, changes brightness/dim/sleep, verifies getters, exercises blackout/recovery, and restores/verifies every original native value. Re-running an interrupted test restores its existing backup instead of starting another experiment. It requires the GUI quit and both ordinary recovery journals clear; the GUI blocks native power edits while that test backup is pending. The hardware check passed: all requested native values matched getter readback, blackout/recovery was verified, then all original values matched a separate final read. Its test backup and brightness recovery journal were removed only after verification. Subsequent live getters from the settings UI also succeeded with full mappings active. Real inactivity/display notification timing is separate from this verified brightness write/recovery path.
+
+
+## Driver-mode media envelope (0.9.4)
+
+The original Protocol 30 hardware-event parser declares logical `MEDIA_KEYS = 2`, `RAZER_KEYS = 4` and `NOTIFICATION_EVENTS = 5`. Its media parser combines the two bytes following the logical record into a consumer usage. The app's blanket physical-report-6 notification branch therefore missed a possible driver-mode media path. The new decoder accepts only twelve bytes beginning `[6, 2]`, reads the little-endian usage at bytes 2–3 and requires bytes 4–11 to be zero. Zero-usage records do not generate a command. Each nonzero driver record generates a press/release pair; native report 3 retains its existing key lifetime and timeout logic. Matching usages across the two forms within 80 ms are correlated, without suppressing repeated records from the same source. No vendor implementation is copied or shipped.
+
+This is based on static protocol evidence and the user's repeated media tests producing no native report-3 entries while other driver-mode controls worked. The physical envelope and momentary behavior still require live confirmation; notification record 5 is not reinterpreted as input. Local evidence artifact: `rzHardwareEventsProtocol30Parser.474e82350be705232b6f.js`; SHA-256 `011b29b41e3279a91f21d44013870c50600569a2056c2632afea022858eac59b`.

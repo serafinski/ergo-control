@@ -348,6 +348,26 @@ final class ActionEngineTests: XCTestCase {
         engine.stop()
         XCTAssertEqual(observed.count, 12)
     }
+    func testDriverMediaRecordsReachNativeOutputOnceEvenWithConsumerCopies() {
+        var native: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        var state = MediaInputState()
+        let usages: [UInt16] = [0xe9,0xea,0xe2,0xcd,0xb5,0xb6]
+        for (index, usage) in usages.enumerated() {
+            let time = Double(index)
+            let reports: [(Data, Double)] = [
+                (Data([6,2,UInt8(usage & 255),UInt8(usage >> 8)] + Array(repeating: 0, count: 8)),time),
+                (Data([3,UInt8(usage & 255),UInt8(usage >> 8)] + Array(repeating: 0, count: 9)),time + 0.02),
+                (Data([3] + Array(repeating: 0, count: 11)),time + 0.04)
+            ]
+            for (report, at) in reports {
+                for event in state.decode(report, at: at)! { XCTAssertTrue(engine.media(event.usage, pressed: event.pressed)) }
+            }
+        }
+        XCTAssertEqual(native, usages.flatMap { [ConsumerKeyEvent($0, pressed: true), ConsumerKeyEvent($0, pressed: false)] })
+        engine.stop()
+        XCTAssertEqual(native.count, 12)
+    }
     func testStopReleasesHeldMediaAndRejectsUnknownOutput() {
         var output: [ConsumerKeyEvent] = []
         let engine = ActionEngine(mediaOutput: { usage, pressed in output.append(ConsumerKeyEvent(usage, pressed: pressed)) })
