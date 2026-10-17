@@ -94,3 +94,7 @@ Since 0.8.2, status frames queue their existing with-response pieces together to
 ## Optional working pulse (0.8.3)
 
 In Codex → Status lights, turn on **Pulse macro keys while working** to fade blue through dim to fully dark and back on M1–M5 after the blue sweep. Since 0.8.5, eight intensity steps retain the slower 2.8-second cycle. It defaults to off, preserving steady blue. It also works in Macro column style; Whole keyboard · solid stays solid. Status refreshes do not restart the pulse or sweep. Approval/finish/idle and disabling cancel it through the existing restoration path. Late Bluetooth frames skip missed phases instead of queuing them. Smooth is again the default for new/missing preferences, with saved choices preserved. Test both toggle states with the status-light preview; physical confirmation is pending.
+
+## Lower lighting traffic and dark background (0.8.6)
+
+Pulse updates send just the shared macro zone after the first full frame, reducing each update from five writes to two. Rejection falls back to full frames for compatibility. Timing, acknowledgements, recovery and animation appearance are preserved. **Keep other keys dark during status lights** is an independent optional toggle, off by default; it turns the otherwise dim white background black, including behind waves. Codex lights continue while you’re away. It does not lower global brightness or change the previous normal backlight effect. These changes reduce traffic/lit area; measured battery hours are not yet available. See [battery optimization](BATTERY_LIFE.md).

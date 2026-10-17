@@ -4,7 +4,7 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.8.5**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.8.6**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
 
 ## Caps Lock and optional working pulse (0.8.3)
 
@@ -340,3 +340,15 @@ The installed signed 0.8.2 Applications copy activated full mappings automatical
 All 196 tests pass, including the new early-success case that requires the last of all five write acknowledgements before releasing a frame transaction and verifies chunk sizes [8,20,20,20,2]. No compiler warnings or helper/hook update. The prior Applications build was retained as an ignored archive for comparison. GitHub workflows remain manual-only.
 
 In 0.8.5 the optional working pulse fades fully dark and back through intermediate levels, retaining the slower 2.8-second cycle. The user confirmed 0.8.4 was less distracting; the new fade remains pending hardware confirmation. The helper is unchanged.
+
+## Battery traffic and optional dark background (0.8.6)
+
+Separated mode verification from the renewed local lease countdown. It previously caused about one radio read every five seconds; successful readbacks now schedule the next check 30 seconds later. Initial mode verification, readback failures, the 60-second local mapping deadline and privileged helper watchdog are unchanged. Busy channels defer a check rather than dropping it.
+
+After the first acknowledged full status frame, working pulses update only column 0 if the other pixels have not changed. The fixed type-4 row-0/column-0 frame is 8 payload bytes versus 62 for the full row: two acknowledged writes instead of five. The complete keyboard reply is still required. A rejected short frame disables the optimization for that renderer and falls back to the full row. Stop/disconnect cancels further writes and retains verified restoration. Waves and changed backgrounds still receive full frames.
+
+Codex → Status lights → **Keep other keys dark during status lights** is optional and defaults off. It replaces the dim white background with black, including behind waves. Status lights remain active while the user is away; global brightness and the previous normal effect are preserved. The setting is local and updates the active status without replaying its starting wave. There is no automatic inactivity timeout or reduced alert visibility.
+
+A fixed read-only `--keyboard-power-read` diagnostic can inspect charging, sleep, automatic-sleep and dimming settings after Ergo Control has quit and restoration has finished. It cannot set power modes or accept arbitrary commands. See BATTERY_LIFE.md for measurements, firmware findings and the limits of battery-life claims.
+
+The read-only 0.8.6 hardware query returned a 900-second sleep timer, automatic sleep enabled and dimming enabled after 300 seconds to 20%; seconds/minutes are confirmed by the model UI's conversions. No power setting changed. The installed app resumed full mappings and its first periodic mode read followed successful verification by 30.89 seconds. The user's pulse was off, so its smaller update format still awaits a live pulse test. Static status now stops the otherwise idle 10 Hz frame timer; animations and recovery retain scheduling.

@@ -343,11 +343,13 @@ enum LightingLabRunner {
                     let started = ProcessInfo.processInfo.systemUptime
                     var frames = 0
                     while !session.stopped && ProcessInfo.processInfo.systemUptime - started < duration {
-                        _ = try command(.frame(pattern.frame(at: ProcessInfo.processInfo.systemUptime - started)))
+                        let pixels = try pattern.frame(at: ProcessInfo.processInfo.systemUptime - started)
+                        let operation: BluetoothLightingLabCommand = pattern == .macroPulse && frames > 0 ? .macroColor(pixels[0]) : .frame(pixels)
+                        _ = try command(operation, queued: pattern == .macroPulse)
                         frames += 1
                         session.wait(0.25) // At most four frames/sec; commands remain serialized.
                     }
-                    session.log("frames_acknowledged", ["count": frames])
+                    session.log("frames_acknowledged", ["count": frames, "macro_only_updates": pattern == .macroPulse ? max(0, frames - 1) : 0])
                     print("Sent \(frames) acknowledged Bluetooth frames; watch the physical lighting.")
                 }
             }

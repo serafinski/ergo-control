@@ -178,4 +178,14 @@ final class Protocol30Tests: XCTestCase {
         try exchange.acknowledgeWrite()
         XCTAssertEqual(exchange.completedResponse?.payload, Data([0, 0]))
     }
+    func testPowerDiagnosticsCanOnlyIssueFixedReadOnlyBatteryOneQueries() throws {
+        XCTAssertEqual(KeyboardPowerQuery.allCases.map(\.rawValue), [0x84,0x85,0x87,0x8a])
+        for query in KeyboardPowerQuery.allCases {
+            let request = try query.request(transaction: 2)
+            XCTAssertEqual(request.header, Data([2,0,0,0,5,query.rawValue,0,1]))
+            XCTAssertTrue(request.payload.isEmpty)
+            XCTAssertEqual(request.writeChunks.count, 1)
+        }
+    }
+
 }

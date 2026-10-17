@@ -354,4 +354,19 @@ final class CodexBridgeTests: XCTestCase {
         reopened.shutdown()
     }
 
+    func testDarkBackgroundPersistsAndNotifiesWithSameActivity() throws {
+        let bridge = fixedBridge(); bridge.setEnabled(true); bridge.setLighting(true)
+        _ = try enqueue(1); bridge.poll()
+        let phase = bridge.lightingSignalID
+        var notifications = 0
+        bridge.onLightingChange = { _ in notifications += 1 }
+        bridge.setDarkStatusBackground(true)
+        XCTAssertEqual(notifications, 1)
+        XCTAssertEqual(bridge.lightingSignalID, phase)
+        bridge.shutdown()
+        let reopened = fixedBridge()
+        XCTAssertTrue(reopened.settings.darkStatusBackground)
+        reopened.shutdown()
+    }
+
 }

@@ -129,10 +129,11 @@ public struct CodexSettings: Codable, Equatable {
     public var lightingArea: CodexLightingArea = .macroColumn
     public var waveSpeed: CodexWaveSpeed = .smooth
     public var pulseWhileWorking = false
+    public var darkStatusBackground = false
     public var useUnmappedMacroKeys = true
     public var slots = (1...5).map(CodexSlot.init)
     public init() {}
-    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea, waveSpeed, pulseWhileWorking }
+    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea, waveSpeed, pulseWhileWorking, darkStatusBackground }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
@@ -141,6 +142,7 @@ public struct CodexSettings: Codable, Equatable {
         selection = try c.decodeIfPresent(CodexSelectionMode.self, forKey: .selection) ?? .recent
         lightingArea = try c.decodeIfPresent(CodexLightingArea.self, forKey: .lightingArea) ?? .macroColumn
         waveSpeed = try c.decodeIfPresent(CodexWaveSpeed.self, forKey: .waveSpeed) ?? .smooth
+        darkStatusBackground = try c.decodeIfPresent(Bool.self, forKey: .darkStatusBackground) ?? false
         pulseWhileWorking = try c.decodeIfPresent(Bool.self, forKey: .pulseWhileWorking) ?? false
         useUnmappedMacroKeys = try c.decodeIfPresent(Bool.self, forKey: .useUnmappedMacroKeys) ?? true
     }

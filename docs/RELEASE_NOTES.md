@@ -1,3 +1,5 @@
+Version 0.8.6 reduces background mode-read traffic, stops idle frame-pump wakeups for steady status, and uses small macro-only updates for working pulses, falling back to full frames if rejected. Codex → Status lights offers an optional dark background while signals continue when you’re away. Brightness, pulse timing, safety watchdogs and previous-effect restoration are preserved. No helper or hook reinstall is needed. Battery runtime improvements remain unmeasured; see BATTERY_LIFE.md.
+
 Version 0.8.5 changes the optional working pulse to a blue fade through dim to fully dark and back. Eight intensity steps retain the 2.8-second cycle, with other keys unchanged. The toggle remains off by default; no helper or hook update is needed.
 
 Version 0.8.4 slows the optional working pulse to 1.4 seconds per bright/dim phase, a 2.8-second cycle: half the previous frequency. The toggle remains off by default. No helper or hook update is needed after 0.8.3.

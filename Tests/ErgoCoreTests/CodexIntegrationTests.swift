@@ -187,4 +187,16 @@ final class CodexIntegrationTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONEncoder().encode(value)), value)
     }
 
+    func testDarkStatusBackgroundIsOptInAndDoesNotChangeWaveSignalColors() throws {
+        var value = CodexSettings()
+        var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+        old.removeValue(forKey: "darkStatusBackground")
+        XCTAssertFalse(try JSONDecoder().decode(CodexSettings.self, from: JSONSerialization.data(withJSONObject: old)).darkStatusBackground)
+        value.darkStatusBackground = true
+        XCTAssertEqual(try JSONDecoder().decode(CodexSettings.self, from: JSONEncoder().encode(value)), value)
+        let wave = CodexStatusWave.frame(0, activity: .working, darkBackground: true)
+        XCTAssertEqual(wave[0], CodexActivity.working.color)
+        XCTAssertTrue(wave.dropFirst().allSatisfy { $0 == DialColor(red: 0, green: 0, blue: 0) })
+    }
+
 }

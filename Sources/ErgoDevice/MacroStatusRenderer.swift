@@ -20,6 +20,9 @@ final class MacroStatusRenderer {
     private var nextWaveFrame: TimeInterval = 0
     private var pulseRevision = 0
     private var renderedPulseRevision = 0
+    private var lastPixels: [DialColor]?
+    private var partialFramesUnavailable = false
+    private var darkBackground = false
     private var pulseEnabled = false
     private var desiredActivity: CodexActivity?
     private var pulseStarted: TimeInterval?
@@ -52,7 +55,7 @@ final class MacroStatusRenderer {
     func reset() {
         selected = false; rendered = nil; renderedArea = nil; failed = false; retryAfter = .distantPast
         waveStarted = nil; waveIndex = 0; nextWaveFrame = 0
-        pulseStarted = nil; renderedPulsePhase = nil
+        pulseStarted = nil; renderedPulsePhase = nil; lastPixels = nil
     }
     private func consumeSignal(_ id: String?) {
         guard let id, !completedIDs.contains(id) else { return }
@@ -60,15 +63,16 @@ final class MacroStatusRenderer {
         if completedIDs.count > 32 { completedIDs.removeFirst() }
     }
     func request(_ color: DialColor?, area: CodexLightingArea = .macroColumn,
-                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false) {
+                 signalID id: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false, darkBackground: Bool = false) {
         // A chat becoming idle must not truncate an acknowledged return sweep.
         // Explicit disable/stop and new activity still supersede it immediately.
         if color == nil, allowCompletionToFinish, area == .completionWave,
            waveActivity == .finished, let signalID, !completedIDs.contains(signalID), !failed { return }
-        if pulseEnabled != pulseWhileWorking || desiredActivity != activity || desired != color {
+        if self.darkBackground != darkBackground || pulseEnabled != pulseWhileWorking || desiredActivity != activity || desired != color {
             pulseStarted = nil; renderedPulsePhase = nil
             pulseRevision &+= 1
         }
+        self.darkBackground = darkBackground
         pulseEnabled = pulseWhileWorking; desiredActivity = activity
         let animate = color != nil && area == .completionWave && id != nil
             && activity.map { [.working, .attention, .finished].contains($0) } == true
@@ -90,6 +94,13 @@ final class MacroStatusRenderer {
                 desired = color
             } else { desired = consumed ? nil : color }
         }
+    }
+    /// Static status colors need no periodic frame-pump wakeups. Keep polling
+    /// only for animations or a restoration retry with its durable snapshot.
+    var needsTimer: Bool {
+        if busy || pulses { return true }
+        if desired == nil || failed { return load() != nil }
+        return signalID.map { !completedIDs.contains($0) } ?? false
     }
     var hasWork: Bool {
         guard !busy, Date() >= retryAfter else { return false }
@@ -140,8 +151,8 @@ final class MacroStatusRenderer {
         if pulsing && pulseStarted == nil { pulseStarted = uptime() }
         let phase = pulsing ? pulsePhase : nil
         let pulseEpoch = pulseStarted
-        let colors: [DialColor]
-        if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed) }
+        var colors: [DialColor]
+        if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed, darkBackground: darkBackground) }
         else {
             let level = phase.map { Self.pulseLevels[$0] } ?? 100
             let signal = DialColor(red: UInt8(Int(color.red) * level / 100),
@@ -149,7 +160,10 @@ final class MacroStatusRenderer {
                                    blue: UInt8(Int(color.blue) * level / 100))
             colors = MacroStatusFrame.colors(signal, area: area)
         }
-        step(.frame(colors), region: region) { [weak self] _ in
+        if darkBackground && area != .wholeKeyboard && wave == nil {
+            for index in 1..<colors.count { colors[index] = DialColor(red: 0, green: 0, blue: 0) }
+        }
+        writeFrame(colors, region: region, preferMacro: pulsing) { [weak self] in
             guard let self else { return }
             self.rendered = color; self.renderedArea = area; self.busy = false
             self.renderedPulseRevision = revision
@@ -170,6 +184,28 @@ final class MacroStatusRenderer {
                 } else { self.message(state == .finished ? "Completion wave · out and back" : "Status wave · macro column to the right") }
             } else {
                 self.message(pulsing ? "Macro keys pulse blue while working" : area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
+            }
+        }
+    }
+
+    private func writeFrame(_ colors: [DialColor], region: UInt8, preferMacro: Bool, completion: @escaping () -> Void) {
+        guard allowed() else { busy = false; return }
+        let partial = preferMacro && !partialFramesUnavailable && lastPixels?.dropFirst() == colors.dropFirst()
+        let operation: BluetoothLightingLabCommand = partial ? .macroColor(colors[0]) : .frame(colors)
+        command(operation, region) { [weak self] result in
+            guard let self else { return }
+            guard self.allowed() else { self.busy = false; return }
+            switch result {
+            case .success:
+                self.lastPixels = colors
+                completion()
+            case .failure(let error):
+                if partial {
+                    // Unsupported short frames fall back once, preserving input
+                    // and the original effect's existing recovery snapshot.
+                    self.partialFramesUnavailable = true
+                    self.writeFrame(colors, region: region, preferMacro: false, completion: completion)
+                } else { self.fail(error) }
             }
         }
     }
@@ -221,7 +257,7 @@ final class MacroStatusRenderer {
                 }
                 do {
                     try self.persist(nil)
-                    self.selected = false; self.rendered = nil; self.renderedArea = nil
+                    self.selected = false; self.rendered = nil; self.renderedArea = nil; self.lastPixels = nil
                     self.message("Previous keyboard lighting restored and verified")
                     completion(true)
                 } catch { self.retryAfter = Date().addingTimeInterval(5); self.message("Could not update lighting recovery record; retained for retry."); completion(false) }

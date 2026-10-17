@@ -35,6 +35,9 @@ struct ErgoControlApp: App {
         if CommandLine.arguments.dropFirst().first == "--restore-keyboard" {
             NativeDialInspection.restoreKeyboardCommandLine()
         }
+        if CommandLine.arguments.dropFirst().first == "--keyboard-power-read" {
+            NativeDialInspection.readPowerCommandLine()
+        }
         if CommandLine.arguments.dropFirst().first == "--lighting-read" {
             NativeDialInspection.readLightingCommandLine()
         }

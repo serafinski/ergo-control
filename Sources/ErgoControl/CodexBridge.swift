@@ -21,6 +21,7 @@ final class CodexBridge: ObservableObject {
     private var lastArea: CodexLightingArea = .macroColumn
     private var lastWaveSpeed: CodexWaveSpeed = .smooth
     private var lastPulseWhileWorking = false
+    private var lastDarkStatusBackground = false
     private var lastSignalID: String?
     private var lastActivities: [CodexActivity] = []
     private var lastExpiryRefresh = Date.distantPast
@@ -164,6 +165,10 @@ final class CodexBridge: ObservableObject {
         var value = settings; value.pulseWhileWorking = enabled
         if save(value) { updateLighting() }
     }
+    func setDarkStatusBackground(_ enabled: Bool) {
+        var value = settings; value.darkStatusBackground = enabled
+        if save(value) { updateLighting() }
+    }
     func startLightingTest() {
         guard settings.enabled, settings.lighting else { return }
         lightingTestStarted = uptime(); lightingTestStage = .working
@@ -278,12 +283,13 @@ final class CodexBridge: ObservableObject {
         if activities != lastActivities { lastActivities = activities; objectWillChange.send() }
         let color = lightingColor
         let signalID = lightingSignalID
-        if settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
+        if settings.darkStatusBackground != lastDarkStatusBackground || settings.pulseWhileWorking != lastPulseWhileWorking || color != lastColor || settings.lightingArea != lastArea || settings.waveSpeed != lastWaveSpeed || allowsCompletionToFinish != lastAllowsCompletionToFinish
             || (color != nil && signalID != lastSignalID) {
             lastColor = color; lastArea = settings.lightingArea; lastSignalID = signalID
             lastAllowsCompletionToFinish = allowsCompletionToFinish
             lastWaveSpeed = settings.waveSpeed
             lastPulseWhileWorking = settings.pulseWhileWorking
+            lastDarkStatusBackground = settings.darkStatusBackground
             onLightingChange?(color)
         }
     }

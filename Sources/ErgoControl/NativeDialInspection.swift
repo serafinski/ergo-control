@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import ErgoDevice
 
 enum NativeDialInspection {
@@ -16,6 +17,33 @@ enum NativeDialInspection {
             }
         }
         print("Restoration remains pending: \(controller.status)"); exit(1)
+    }
+
+    static func readPowerCommandLine() -> Never {
+        guard !NSRunningApplication.runningApplications(withBundleIdentifier: "dev.local.ergocontrol.app")
+            .contains(where: { $0.processIdentifier != getpid() }) else {
+            print("Quit Ergo Control before reading keyboard power settings."); exit(1)
+        }
+        let journal = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/ErgoControl/Bluetooth/pending-restoration.json")
+        guard !FileManager.default.fileExists(atPath: journal.path) else {
+            print("Finish keyboard restoration before reading power settings."); exit(1)
+        }
+        let controller = BluetoothController()
+        controller.connect()
+        let deadline = Date().addingTimeInterval(30)
+        var started = false, finished = false
+        while !finished && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            if controller.ready && !controller.busy && !started {
+                started = true
+                controller.inspectPowerSettings { rows in
+                    rows.forEach { print($0) }; finished = true
+                }
+            }
+        }
+        if !finished { print("Power inspection stopped: \(controller.status)") }
+        exit(finished ? 0 : 1)
     }
 
     static func readLightingCommandLine() -> Never {

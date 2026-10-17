@@ -67,8 +67,8 @@ public enum CodexStatusWave {
         default: return []
         }
     }
-    public static func frame(_ index: Int, activity: CodexActivity, speed: CodexWaveSpeed = .smooth) -> [DialColor] {
-        var colors = Array(repeating: MacroStatusFrame.background, count: 19)
+    public static func frame(_ index: Int, activity: CodexActivity, speed: CodexWaveSpeed = .smooth, darkBackground: Bool = false) -> [DialColor] {
+        var colors = Array(repeating: darkBackground ? DialColor(red: 0, green: 0, blue: 0) : MacroStatusFrame.background, count: 19)
         let positions = positions(for: activity, speed: speed)
         guard positions.indices.contains(index) else { return colors }
         let head = positions[index]

@@ -101,6 +101,7 @@ public enum LightingLabError: LocalizedError {
 /// regular effect picker retains its separate five-effect writer.
 public enum BluetoothLightingLabCommand {
     case readRegions, readEffect, selectCustom, restore(KeyboardEffect), frame([DialColor])
+    case macroColor(DialColor)
     case experimentalWavePalette
 
     public func request(transaction: UInt8, region: UInt8 = 0) throws -> Protocol30Request {
@@ -121,6 +122,11 @@ public enum BluetoothLightingLabCommand {
             _ = try Protocol30Request.keyboardEffect(transaction: transaction, effect: effect)
             return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 3,
                                          argument7: region, payload: effect.payload)
+        case .macroColor(let color):
+            guard region == 5 else { throw LightingLabError.invalidPattern }
+            // Same recovered frame format, scoped to row 0 / column 0 only.
+            return try Protocol30Request(transaction: transaction, commandClass: 16, commandID: 4,
+                                         argument7: region, payload: Data([4,0,0,0,0]) + color.bytes)
         case .frame(let colors):
             guard colors.count == 19 else { throw LightingLabError.invalidPattern }
             // Frame type 4, rows 0…0, columns 0…18; then row-major RGB.

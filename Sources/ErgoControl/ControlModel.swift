@@ -85,7 +85,7 @@ final class ControlModel: ObservableObject {
         codex.onLightingChange = { [weak self] color in
             guard let self else { return }
             self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                allowCompletionToFinish: self.running && self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking)
+                allowCompletionToFinish: self.running && self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking, darkBackground: self.codex.settings.darkStatusBackground)
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
@@ -156,7 +156,7 @@ final class ControlModel: ObservableObject {
                     guard let self, self.running else { return }
                     self.updateProfile()
                     self.bluetooth.setMacroStatusColor(self.codex.lightingColor, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                        allowCompletionToFinish: self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking)
+                        allowCompletionToFinish: self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking, darkBackground: self.codex.settings.darkStatusBackground)
                 }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."

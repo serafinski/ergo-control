@@ -90,7 +90,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             // of a frame together so app/UI callback latency cannot stall its
             // later chunks. Completion still needs every ACK and the full reply.
             let queueFrame: Bool
-            if case .frame = operation { queueFrame = true } else { queueFrame = false }
+            switch operation {
+            case .frame, .macroColor: queueFrame = true
+            default: queueFrame = false
+            }
             self.send(request, queueWrites: queueFrame) { result in completion(result.map(\.payload)) }
         } catch { completion(.failure(error)) }
     }, load: { [weak self] in self?.original?.macroLighting }, persist: { [weak self] light in
@@ -125,6 +128,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private var commandTimeout: Timer?
     private var connectionTimeout: Timer?
     private var restoreTimer: Timer?
+    private var modeCheckSchedule = DriverModeCheckSchedule()
     private var leaseDeadline: TimeInterval?
     private var retryTimer: Timer?
     private var original: SavedMode?
@@ -415,6 +419,28 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         else { DispatchQueue.main.async { [weak self] in self?.pumpLighting() } }
     }
 
+    /// Isolated read-only diagnostic; never run alongside a mapping session.
+    public func inspectPowerSettings(completion: @escaping ([String]) -> Void) {
+        guard ready, !busy, !restoreOwed, !driverModeVerified, !keyboardEffectBusy, !closing else {
+            completion(["Stop mappings and finish restoration before reading power settings."]); return
+        }
+        func read(_ queries: ArraySlice<KeyboardPowerQuery>, _ rows: [String]) {
+            guard let query = queries.first else { completion(rows); return }
+            guard self.ready, !self.busy, !self.restoreOwed, !self.closing else { completion(rows + ["Power inspection interrupted."]); return }
+            do {
+                try self.send(query.request(transaction: self.transactions.next())) { result in
+                    let description: String
+                    switch result {
+                    case .success(let response): description = "\(query.name): \(Array(response.payload))"
+                    case .failure(let error): description = "\(query.name): unavailable (\(error.localizedDescription))"
+                    }
+                    read(queries.dropFirst(), rows + [description])
+                }
+            } catch { completion(rows + [error.localizedDescription]) }
+        }
+        read(KeyboardPowerQuery.allCases[...], [])
+    }
+
     public func readMode() {
         guard !restoreOwed else { restore(); return }
         guard ready, !busy else { return }
@@ -482,7 +508,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
         do {
             if queueFrameWrites {
-                guard case .frame = operation else { throw LightingLabError.invalidPattern }
+                switch operation {
+                case .frame, .macroColor: break
+                default: throw LightingLabError.invalidPattern
+                }
             }
             let request = try operation.request(transaction: transactions.next(), region: region)
             send(request, queueWrites: queueFrameWrites) { result in completion(result.map(\.payload)) }
@@ -644,7 +673,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             guard let self else { return }
             self.secondsRemaining = max(0, Int(ceil((self.leaseDeadline ?? 0) - ProcessInfo.processInfo.systemUptime)))
             if self.secondsRemaining == 0 { self.restoreTimer?.invalidate(); self.restore() }
-            else if self.secondsRemaining % 10 == 0 && self.ready && !self.busy {
+            else if self.modeCheckSchedule.isDue(at: ProcessInfo.processInfo.systemUptime) && self.ready && !self.busy {
                 self.verifyDriverMode()
             }
         }
@@ -668,6 +697,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         send(request) { [weak self] result in
             guard let self else { return }
             if case .success(let response) = result, response.payload == Data([3, 0]) {
+                self.modeCheckSchedule.verified(at: ProcessInfo.processInfo.systemUptime)
                 self.driverModeVerified = true
                 self.currentMode = (3, 0)
                 self.modeText = "Temporary driver mode (3)"
@@ -778,7 +808,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             ensureLightingRegion(brightness: true) { [weak self] in self?.changeBrightness() }
         } else if macroRenderer.hasWork {
             macroRenderer.pump()
-        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged, original?.macroLighting == nil {
+        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged, !macroRenderer.needsTimer {
             lightingTimer?.invalidate(); lightingTimer = nil
         }
     }
@@ -1054,7 +1084,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
     }
 
-    public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn, signalID: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false) {
+    public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn, signalID: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false, darkBackground: Bool = false) {
         if color != nil {
             let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("ErgoControl/LightingLab/pending-lighting.json")
@@ -1065,7 +1095,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
         // Only an active mapping lease can own custom status lighting.
         macroRenderer.request(driverModeVerified ? color : nil, area: area, signalID: signalID, activity: activity,
-                              allowCompletionToFinish: driverModeVerified && allowCompletionToFinish, speed: speed, pulseWhileWorking: pulseWhileWorking)
+                              allowCompletionToFinish: driverModeVerified && allowCompletionToFinish, speed: speed, pulseWhileWorking: pulseWhileWorking, darkBackground: darkBackground)
         if macroRenderer.hasWork { startLightingTimer(); pumpLighting() }
     }
 

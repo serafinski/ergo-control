@@ -14,6 +14,7 @@ final class MacroStatusRendererTests: XCTestCase {
         var saveFails = false
         var mismatchedReadback = false
         var rejectFrame = false
+        var rejectPartial = false
         var beforeReply: ((String) -> Void)?
         lazy var renderer = MacroStatusRenderer(command: { [unowned self] command, region, done in
             let name: String; let response: Data
@@ -25,14 +26,18 @@ final class MacroStatusRendererTests: XCTestCase {
                 name = "frame"; response = Data()
                 frames.append(colors)
                 XCTAssertEqual(colors.count, 19)
+            case .macroColor(let color):
+                name = "macro"; response = Data()
+                var pixels = frames.last ?? Array(repeating: MacroStatusFrame.background, count: 19)
+                pixels[0] = color; frames.append(pixels)
             case .restore: name = "restore"; response = Data()
             case .experimentalWavePalette:
                 XCTFail("Regular status rendering must not send the experimental Wave palette")
                 name = "unexpected"; response = Data()
             }
-            if name == "frame" || name == "custom" { writesBeforeSnapshot = writesBeforeSnapshot || saved == nil }
+            if name == "frame" || name == "macro" || name == "custom" { writesBeforeSnapshot = writesBeforeSnapshot || saved == nil }
             operations.append(name); beforeReply?(name)
-            done(name == "frame" && rejectFrame ? .failure(LightingLabError.invalidPacket) : .success(response))
+            done(((name == "frame" || name == "macro") && rejectFrame) || (name == "macro" && rejectPartial) ? .failure(LightingLabError.invalidPacket) : .success(response))
         }, load: { [unowned self] in saved }, persist: { [unowned self] value in
             if saveFails { throw LightingLabError.invalidPacket }
             operations.append(value == nil ? "clear" : "save"); saved = value
@@ -457,6 +462,80 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertTrue(rig.frames.allSatisfy { $0.dropFirst().allSatisfy { $0 == MacroStatusFrame.background } })
         XCTAssertNotNil(rig.saved)
         rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+
+    func testPulseUpdatesOnlyMacroZoneAfterOneFullFrame() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump()
+        for step in 1...8 { rig.clock = 100 + Double(step) * 0.35 + 0.001; rig.renderer.pump() }
+        XCTAssertEqual(rig.operations.filter { $0 == "frame" }.count, 1)
+        XCTAssertEqual(rig.operations.filter { $0 == "macro" }.count, 8)
+        XCTAssertTrue(rig.frames.allSatisfy { $0.dropFirst().allSatisfy { $0 == MacroStatusFrame.background } })
+    }
+    func testUnsupportedMacroUpdatesFallBackToFullFramesOnceAndRestore() {
+        let rig = Rig(); rig.rejectPartial = true
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump(); rig.clock += 0.36; rig.renderer.pump()
+        XCTAssertEqual(rig.operations.suffix(2), ["macro", "frame"])
+        rig.clock += 0.35; rig.renderer.pump()
+        XCTAssertEqual(rig.operations.filter { $0 == "macro" }.count, 1)
+        XCTAssertNotNil(rig.saved)
+        XCTAssertNotNil(rig.renderer.desired)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+    func testDarkBackgroundIsOptionalAndChangingItRepaintsBeforePartialUpdates() {
+        let rig = Rig()
+        let black = DialColor(red: 0, green: 0, blue: 0)
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump()
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true, darkBackground: true)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.operations.last, "frame", "The background needs a full repaint before macro-only updates")
+        XCTAssertTrue(rig.frames.last!.dropFirst().allSatisfy { $0 == black })
+        rig.clock += 0.36; rig.renderer.pump()
+        XCTAssertEqual(rig.operations.last, "macro")
+        rig.renderer.request(CodexActivity.attention.color, area: .completionWave, signalID: "approval", activity: .attention, darkBackground: true)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last?.first, CodexActivity.attention.color)
+        XCTAssertTrue(rig.frames.last!.dropFirst().allSatisfy { $0 == black })
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+
+    func testStoppingDuringPartialUpdateCannotQueueFallbackOrMorePulses() {
+        let rig = Rig(); rig.rejectPartial = true
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump()
+        rig.beforeReply = { name in
+            if name == "macro" { rig.renderer.request(nil); rig.allowed = false }
+        }
+        rig.clock += 0.36; rig.renderer.pump()
+        XCTAssertEqual(rig.operations.filter { $0 == "frame" }.count, 1)
+        XCTAssertNotNil(rig.saved, "Keep the journal until mapping recovery owns restoration")
+        rig.beforeReply = nil
+        rig.renderer.restore { XCTAssertTrue($0) }
+        XCTAssertNil(rig.saved)
+        let count = rig.frames.count
+        rig.clock += 10; rig.renderer.pump(); XCTAssertEqual(rig.frames.count, count)
+    }
+
+    func testSteadyStatusStopsFrameTimerButPulseAndRestorationKeepItAlive() {
+        let rig = Rig()
+        rig.renderer.request(CodexActivity.working.color, activity: .working)
+        rig.renderer.pump()
+        XCTAssertFalse(rig.renderer.needsTimer)
+        XCTAssertNotNil(rig.saved, "A static status keeps recovery state without polling frames")
+        rig.renderer.request(CodexActivity.working.color, activity: .working, pulseWhileWorking: true)
+        rig.renderer.pump()
+        XCTAssertFalse(rig.renderer.hasWork)
+        XCTAssertTrue(rig.renderer.needsTimer, "A future pulse phase must still be scheduled")
+        rig.renderer.request(nil)
+        XCTAssertTrue(rig.renderer.needsTimer, "Stopping must retain the pump until restoration completes")
+        rig.renderer.pump()
+        XCTAssertFalse(rig.renderer.needsTimer)
         XCTAssertNil(rig.saved)
     }
 

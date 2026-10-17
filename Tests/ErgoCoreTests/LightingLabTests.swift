@@ -203,4 +203,12 @@ final class LightingLabTests: XCTestCase {
         XCTAssertThrowsError(try journal.restore(connection: "usb", identity: "one", apply: { _ in wrote = true }, read: { saved }))
         XCTAssertFalse(wrote); XCTAssertTrue(journal.pending)
     }
+    func testMacroOnlyUpdateUsesTwoAcknowledgedWritesAndOnlyColumnZero() throws {
+        let update = try BluetoothLightingLabCommand.macroColor(DialColor(red: 0, green: 90, blue: 191)).request(transaction: 3, region: 5)
+        XCTAssertEqual(update.header, Data([3,8,0,0,16,4,0,5]))
+        XCTAssertEqual(update.payload, Data([4,0,0,0,0,0,90,191]))
+        XCTAssertEqual(update.writeChunks.map(\.count), [8,8])
+        XCTAssertThrowsError(try BluetoothLightingLabCommand.macroColor(black).request(transaction: 3, region: 1))
+    }
+
 }

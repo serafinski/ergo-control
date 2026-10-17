@@ -89,6 +89,9 @@ struct CodexSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if model.codex.settings.lightingArea != .wholeKeyboard {
+                    Toggle("Keep other keys dark during status lights", isOn: Binding(get: { model.codex.settings.darkStatusBackground }, set: model.codex.setDarkStatusBackground))
+                    Text("Saves lighting power while keeping Codex signals and animations active, including while you’re away.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Pulse macro keys while working", isOn: Binding(get: { model.codex.settings.pulseWhileWorking }, set: model.codex.setPulseWhileWorking))
                     Text("Fades blue through dim to dark and back after the starting wave. Off keeps solid blue.")
                         .font(.caption).foregroundStyle(.secondary)

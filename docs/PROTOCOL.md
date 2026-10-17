@@ -149,3 +149,9 @@ This behavior is regression-tested with missing neutral reports and through an o
 ## Standard Caps Lock indicator (0.8.3)
 
 The observed BLE HID report descriptor exposes output report ID 1 with three one-bit variable LED usages (page 8, usages 1–3) followed by five padding bits. Caps Lock is usage 2. This is separate from region-5 RGB lighting and the unresolved small command-dial color indicator. The implementation selects only the standard Caps output element and calls IOHIDDeviceSetValue with 0/1 on the already-open keyboard, leaving other LED elements untouched. Descriptor evidence is read-only; hardware LED behavior still needs confirmation.
+
+## Macro-zone updates and read-only power queries (0.8.6)
+
+The recovered type-4 frame supports bounded rows and columns. A pulse-only update uses class 16 / command 4, profile 0, reported region 5, payload `[4,0,0,0,0,R,G,B]`: row 0 only, column 0 only. The existing 19-zone row remains `[4,0,0,0,18,...57 RGB bytes]`. Short updates are eligible only when all other acknowledged pixel values are unchanged; otherwise the full frame initializes/repaints the row. A short-update rejection falls back to the full frame and disables further short attempts for that renderer. Partial frames retain complete ATT/keyboard acknowledgements. Hardware validation is pending.
+
+Read-only power inspection uses the recovered class 5 getters `84` (sleep timer), `85` (charging), `87` (automatic sleep), `8a` (idle dimming), profile 0 / battery 1, no payload. Unknown/rejected results are reported individually. The read-only normal-mode hardware test returned `84: [132,3]`, `85: [0]`, `87: [1]`, `8a: [1,44,1,20]`. Little-endian time values are seconds (900 and 300), independently confirmed by model UI minute conversions. Driver-mode dimming behavior remains unverified; no power setters or sleep toggles are added.
