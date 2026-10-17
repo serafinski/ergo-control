@@ -176,3 +176,6 @@ This is based on static protocol evidence and the user's repeated media tests pr
 
 
 Live 0.9.5 app-event logs on 2026-10-17 confirm Play/Pause, Mute and Next track arriving via these report-5 extra identifiers, and Volume up/down via report-2 vertical wheel. The corresponding native output-post entries are present. Previous/triple and physical clockwise orientation still await explicit user confirmation; the report-6 media path remains unobserved in this test. These logs confirm delivery to the app/output path, not that a particular player acted.
+
+
+After the 0.9.5 live input check, the user reported that volume, mute and playback appear to work again. Native routing was selected; this does not validate the optional focus-based router or the unused report-6 media envelope.

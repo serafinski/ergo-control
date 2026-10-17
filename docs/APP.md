@@ -14,7 +14,7 @@ Report-2 vertical wheel steps now enter the existing rightCW/rightCCW mappings a
 
 All 266 local tests pass, including product ID mapping, right-axis direction, timeout rearming with a held macro, duplicate copies across all input paths, and end-to-end engine output. Live physical direction/playback verification is pending. Native macOS routing remains selected by default and focus-first playback remains experimental/off. No helper or hook reinstall is required.
 
-Live input evidence after installing 0.9.5: App logs recorded Play/Pause, Mute and Next track from driver extra-key records, and both Volume up/down from right-roller wheel reports, each followed by a native output-post entry. This confirms the actual physical input paths and why the old consumer-only handling missed them. Posted output still does not itself confirm player handling; user playback confirmation is pending.
+Live input evidence after installing 0.9.5: App logs recorded Play/Pause, Mute and Next track from driver extra-key records, and both Volume up/down from right-roller wheel reports, each followed by a native output-post entry. This confirms the actual physical input paths and why the old consumer-only handling missed them. The user then reported that the controls appear to work again after testing the roller directions, mute/unmute and playback. This is a hardware confirmation of the repaired native path; general focus-first routing remains unvalidated/off.
 
 ## Driver-mode media input (0.9.4)
 
@@ -400,3 +400,8 @@ Codex → Status lights → **Keep other keys dark during status lights** is opt
 A fixed read-only `--keyboard-power-read` diagnostic can inspect charging, sleep, automatic-sleep and dimming settings after Ergo Control has quit and restoration has finished. It cannot set power modes or accept arbitrary commands. See BATTERY_LIFE.md for measurements, firmware findings and the limits of battery-life claims.
 
 The read-only 0.8.6 hardware query returned a 900-second sleep timer, automatic sleep enabled and dimming enabled after 300 seconds to 20%; seconds/minutes are confirmed by the model UI's conversions. No power setting changed. The installed app resumed full mappings and its first periodic mode read followed successful verification by 30.89 seconds. The user's pulse was off and was preserved. A later isolated three-second pulse check successfully acknowledged one full-row frame and seven macro-only updates, then restored and verified the previous effect; recovery journals were cleared only after readback. Static status now stops the otherwise idle 10 Hz frame timer; animations and recovery retain scheduling.
+
+
+### Media-history audit after the 0.9.5 hardware check
+
+Git history shows the first mapping implementation (`d69ec5e`) already handled consumer report 3 while treating extra media IDs as ordinary unmapped extras and rejecting vertical-wheel reports. Version 0.7.7 (`99921b5`) changed valid auxiliary pointer reports from stopping mappings to being ignored, including the right-roller wheel. It prevented the stop but did not implement volume delivery. The 0.9.2 focus-routing work did not introduce these missing driver input paths. The 0.9.3 native rollback and 0.9.4 report-6-only repair did not resolve them; 0.9.5 added the exact product-defined extra-key/wheel defaults and the user reported recovery. No claim is made that the experimental focus router is validated.
