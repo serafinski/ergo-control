@@ -28,7 +28,10 @@ final class ControlModel: ObservableObject {
     @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController(liveDiagnostics: false)
     let fullControlHelper = FullControlHelper()
-    let codex = CodexBridge()
+    let codex = ChatBridge()
+    let claude = ChatBridge(provider: .claude)
+    let chatPreferences = ChatPreferences()
+    var chat: ChatBridge { chatPreferences.provider == .codex ? codex : claude }
     let startup = StartupSettings()
     lazy var lightingAutomation = LightingAutomation(device: bluetooth)
     let logs = AppLog()
@@ -86,16 +89,21 @@ final class ControlModel: ObservableObject {
             .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        claude.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        chatPreferences.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         lightingAutomation.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.$automaticMappings.dropFirst().sink { [weak self] enabled in
             if !enabled { self?.cancelAutomaticStart() }
         }.store(in: &subscriptions)
-        codex.onLightingChange = { [weak self] color in
-            guard let self else { return }
-            self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                allowCompletionToFinish: self.running && self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking, darkBackground: self.codex.settings.darkStatusBackground)
+        codex.onLightingChange = { [weak self] _ in
+            guard let self, self.chat.provider == .codex else { return }
+            self.updateChatLighting()
+        }
+        claude.onLightingChange = { [weak self] _ in
+            guard let self, self.chat.provider == .claude else { return }
+            self.updateChatLighting()
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
@@ -122,6 +130,7 @@ final class ControlModel: ObservableObject {
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
+        engine.onClaudeSlot = { [weak self] number in self?.claude.openSlot(number) }
         engine.onCodexSlot = { [weak self] number in self?.codex.openSlot(number) }
         bluetooth.$lightingStatus.removeDuplicates().sink { [weak self] message in
             guard !message.isEmpty else { return }
@@ -130,7 +139,7 @@ final class ControlModel: ObservableObject {
         bluetooth.$macroStatusLightingMessage.removeDuplicates().sink { [weak self] message in
             let value = message.lowercased()
             if ["unavailable", "pending", "invalid", "could not"].contains(where: value.contains) {
-                self?.logs.record(message, category: "Codex lighting", level: .warning)
+                self?.logs.record(message, category: "Chat lighting", level: .warning)
             }
         }.store(in: &subscriptions)
         bluetooth.$restoreOwed.removeDuplicates().dropFirst().sink { [weak self] pending in
@@ -174,8 +183,7 @@ final class ControlModel: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.running else { return }
                     self.updateProfile()
-                    self.bluetooth.setMacroStatusColor(self.codex.lightingColor, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                        allowCompletionToFinish: self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking, darkBackground: self.codex.settings.darkStatusBackground)
+                    self.updateChatLighting()
                 }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
@@ -311,7 +319,7 @@ final class ControlModel: ObservableObject {
                 case .script: guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("Choose an existing script") }
                 case .keyboardBrightness: guard action.value == "up" || action.value == "down" else { throw MappingValidationError.message("Choose Increase or Decrease for keyboard brightness") }
                 case .text: guard action.value.utf16.count <= 4096 else { throw MappingValidationError.message("Text actions can contain up to 4096 characters") }
-                case .codexChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a chat slot from 1 to 5") }
+                case .codexChat, .claudeChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a chat slot from 1 to 5") }
                 default: break
                 }
             }
@@ -321,12 +329,28 @@ final class ControlModel: ObservableObject {
         let profile = MappingProfile(name: "New profile")
         configuration.profiles.append(profile); selectedProfileID = profile.id
     }
-    func createCodexProfile() {
+    func setChatProvider(_ provider: ChatProvider) {
+        guard provider != chatPreferences.provider else { return }
+        codex.cancelLightingTest(); claude.cancelLightingTest()
+        guard chatPreferences.select(provider) else { return }
+        // Explicitly release the old provider before repainting, including a
+        // one-shot completion that would otherwise be allowed to finish.
+        bluetooth.setMacroStatusColor(nil)
+        updateChatLighting()
+    }
+    private func updateChatLighting() {
+        let bridge = chat
+        bluetooth.setMacroStatusColor(running ? bridge.lightingColor : nil, area: bridge.settings.lightingArea,
+            signalID: bridge.lightingSignalID.map { "\(bridge.provider.rawValue):\($0)" }, activity: bridge.lightingActivity,
+            allowCompletionToFinish: running && bridge.allowsCompletionToFinish, speed: bridge.settings.waveSpeed,
+            pulseWhileWorking: bridge.settings.pulseWhileWorking, darkBackground: bridge.settings.darkStatusBackground)
+    }
+    func createChatProfile(_ provider: ChatProvider) {
         if let existing = configuration.profiles.first(where: { p in
-            (1...5).allSatisfy { p.mappings["extra:\($0 + 31)"] == MappingAction(.codexChat, String($0)) }
+            (1...5).allSatisfy { p.mappings["extra:\($0 + 31)"] == MappingAction(provider.action, String($0)) }
         }) { selectedProfileID = existing.id; return }
-        var profile = MappingProfile(name: "Chat keys")
-        for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(.codexChat, String(slot)) }
+        var profile = MappingProfile(name: "\(provider.name) chat keys")
+        for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(provider.action, String(slot)) }
         configuration.profiles.append(profile)
         selectedProfileID = profile.id
         // A dedicated profile can open the selected chat source from anywhere. Existing profiles
@@ -434,7 +458,7 @@ final class ControlModel: ObservableObject {
         batteryPopupTicket = nil
         controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
-        codex.cancelLightingTest()
+        codex.cancelLightingTest(); claude.cancelLightingTest()
         sessionDeadline = nil
         mediaController.stop()
         relay.stop(); relayOpened = false; engine.stop()
@@ -445,7 +469,7 @@ final class ControlModel: ObservableObject {
     func terminate() -> NSApplication.TerminateReply {
         terminating = true
         lightingAutomation.stop()
-        codex.shutdown()
+        codex.shutdown(); claude.shutdown()
         batteryTimer?.invalidate(); batteryTimer = nil
         stop()
         logs.flush()
@@ -456,7 +480,7 @@ final class ControlModel: ObservableObject {
         let profile = activeProfile
         if layerActive, let action = profile.alternate[control], action.kind != .standard { return action }
         if let action = profile.mappings[control], action.kind != .standard { return action }
-        if let action = codex.defaultAction(for: control) { return action }
+        if let action = chat.defaultAction(for: control) { return action }
         if control == "extra:96" { return MappingAction(.cycleDial) }
         if control == "extra:65" { return MappingAction(.battery) }
         if control == "leftCW" || control == "leftCCW" {

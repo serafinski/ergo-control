@@ -1,5 +1,7 @@
 # Codex chat keys and status
 
+The current settings sidebar calls this section **Chat apps**. Choose **Codex** there for the controls below. Existing Codex assignments, hooks and explicit profile actions are preserved. [Claude Code](CLAUDE_SETUP.md) is also available as a separate provider for default chat keys and lighting.
+
 Ergo Control 0.6.3 keeps Codex chat keys and status controls in a dedicated sidebar section. It uses local metadata listings, lifecycle hooks, and `codex://threads/<thread-id>` links. It does not emulate a Micro, modify Codex, require Chroma, or need an API key.
 
 ## Setup

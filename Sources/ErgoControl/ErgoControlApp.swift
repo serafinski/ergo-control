@@ -106,7 +106,7 @@ struct ControlSettingsView: View {
                     section = .setup; focusedSection = .setup
                 }
             case .codex:
-                ScrollView { CodexSettingsView(model: model).frame(maxWidth: 900).frame(maxWidth: .infinity).padding(28) }
+                ScrollView { ChatSettingsView(model: model).frame(maxWidth: 900).frame(maxWidth: .infinity).padding(28) }
             case .app:
                 ScrollView { AppSettingsView(startup: model.startup).frame(maxWidth: 800).frame(maxWidth: .infinity).padding(28) }
             case .setup:
@@ -129,7 +129,7 @@ struct ControlSettingsView: View {
             Divider()
             VStack(spacing: 6) {
                 sectionButton("Keyboard", icon: "keyboard", destination: .keyboard)
-                sectionButton("Codex", icon: "bubble.left.and.bubble.right", destination: .codex)
+                sectionButton("Chat apps", icon: "bubble.left.and.bubble.right", destination: .codex)
                 sectionButton("App", icon: "gearshape", destination: .app)
                 sectionButton("Setup & diagnostics", icon: "wrench.and.screwdriver", destination: .setup)
                 sectionButton("App logs", icon: "list.bullet.rectangle", destination: .logs)
@@ -216,7 +216,7 @@ struct ActionEditor: View {
                 case .scroll: action.value = "down"
                 case .media: action.value = "playPause"
                 case .keyboardBrightness: action.value = "up"
-                case .codexChat: action.value = "1"
+                case .codexChat, .claudeChat: action.value = "1"
                 case .application, .toggleApplication:
                     if previousKind != .application && previousKind != .toggleApplication { action.value = "" }
                 default: action.value = ""
@@ -248,11 +248,11 @@ struct ActionEditor: View {
                     Text("Increase").tag("up"); Text("Decrease").tag("down")
                 }
                 Text("Adjust PT Ergo’s backlight in 5% steps.").font(.caption).foregroundStyle(.secondary)
-            case .codexChat:
+            case .codexChat, .claudeChat:
                 Picker("Chat slot", selection: $action.value) {
                     ForEach(1...5, id: \.self) { number in Text("M\(number) · Slot \(number)").tag(String(number)) }
                 }
-                Text("Opens the current Codex slot. Enable the connection in the Codex section first.").font(.caption).foregroundStyle(.secondary)
+                Text("Opens this provider’s current slot. Enable its connection in Chat apps first.").font(.caption).foregroundStyle(.secondary)
             case .standard:
                 if let control, control.hasPrefix("key:"), let usage = UInt8(control.dropFirst(4)),
                    let label = NativeFunctionKeys.label(for: usage, preferences: functionKeys) {

@@ -65,6 +65,11 @@ public struct CodexHookEvent: Codable, Equatable {
     public let event: String
     public let project: String
     public let time: Date
+    /// Used by provider adapters after filtering the original payload.
+    init(sessionID: String, turnID: String?, event: String, project: String, time: Date) {
+        self.sessionID = sessionID; self.turnID = turnID; self.event = event
+        self.project = project; self.time = time
+    }
     public static let events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                                 "PermissionRequest", "Stop", "Interrupt", "SessionEnd"]
     public init(input: Data, time: Date = Date()) throws {
@@ -87,7 +92,7 @@ public struct CodexHookEvent: Codable, Equatable {
         }
     }
     public func validate(now: Date) -> Bool {
-        UUID(uuidString: sessionID) != nil && Self.events.contains(event) && project.count <= 80
+        UUID(uuidString: sessionID) != nil && (Self.events + ["IdleNotification"]).contains(event) && project.count <= 80
             && (turnID?.count ?? 0) <= 128 && time <= now.addingTimeInterval(5)
             && time >= now.addingTimeInterval(-300)
     }
@@ -131,9 +136,11 @@ public struct CodexSettings: Codable, Equatable {
     public var pulseWhileWorking = false
     public var darkStatusBackground = false
     public var useUnmappedMacroKeys = true
+    /// Optional Claude account/organization catalog directory; never a transcript directory.
+    public var catalogPath: String?
     public var slots = (1...5).map(CodexSlot.init)
     public init() {}
-    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea, waveSpeed, pulseWhileWorking, darkStatusBackground }
+    private enum CodingKeys: String, CodingKey { case enabled, lighting, slots, selection, useUnmappedMacroKeys, lightingArea, waveSpeed, pulseWhileWorking, darkStatusBackground, catalogPath }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decode(Bool.self, forKey: .enabled)
@@ -145,11 +152,12 @@ public struct CodexSettings: Codable, Equatable {
         darkStatusBackground = try c.decodeIfPresent(Bool.self, forKey: .darkStatusBackground) ?? false
         pulseWhileWorking = try c.decodeIfPresent(Bool.self, forKey: .pulseWhileWorking) ?? false
         useUnmappedMacroKeys = try c.decodeIfPresent(Bool.self, forKey: .useUnmappedMacroKeys) ?? true
+        catalogPath = try c.decodeIfPresent(String.self, forKey: .catalogPath)
     }
-    public func validate() throws {
+    public func validate(provider: ChatProvider = .codex) throws {
         guard slots.map(\.id) == Array(1...5), slots.allSatisfy({
-            $0.name.count <= 80 && ($0.threadID == nil || UUID(uuidString: $0.threadID!) != nil)
-        }) else { throw CodexIntegrationError.invalidSettings }
+            $0.name.count <= 80 && ($0.threadID == nil || provider.sessionID(from: $0.threadID!) == $0.threadID!.lowercased())
+        }), catalogPath == nil || (catalogPath!.hasPrefix("/") && catalogPath!.count <= 4096) else { throw CodexIntegrationError.invalidSettings }
         let assigned = slots.compactMap(\.threadID).map { $0.lowercased() }
         guard Set(assigned).count == assigned.count else { throw CodexIntegrationError.duplicateSlot }
     }
@@ -220,8 +228,10 @@ public struct CodexSessionStatus {
     public init(_ event: CodexHookEvent) { latest = event; workingSince = event.time }
     public mutating func receive(_ event: CodexHookEvent) {
         guard event.sessionID == latest.sessionID, event.time > latest.time else { return }
+        // Claude's delayed idle notification must not dismiss a pending approval.
+        if event.event == "IdleNotification", latest.activity == .attention { return }
         // A delayed terminal event from an earlier turn must not finish a newer one.
-        if ["Stop", "Interrupt"].contains(event.event), let turn = event.turnID,
+        if ["Stop", "Interrupt", "IdleNotification"].contains(event.event), let turn = event.turnID,
            let current = latest.turnID, turn != current { return }
         if event.activity == .working {
             let newTurn = event.turnID != nil && latest.turnID != nil && event.turnID != latest.turnID
@@ -245,8 +255,8 @@ public enum CodexIntegrationError: LocalizedError {
     case invalidEvent, invalidSettings, duplicateSlot, message(String)
     public var errorDescription: String? {
         switch self {
-        case .invalidEvent: return "Unsupported Codex event."
-        case .invalidSettings: return "Invalid Codex slot settings; the saved file was preserved."
+        case .invalidEvent: return "Unsupported chat event or metadata."
+        case .invalidSettings: return "Invalid chat slot settings; the saved file was preserved."
         case .duplicateSlot: return "This chat already has a slot. Choose a different chat."
         case .message(let message): return message
         }
@@ -254,15 +264,15 @@ public enum CodexIntegrationError: LocalizedError {
 }
 
 public enum CodexHookConfiguration {
-    public static func command(executable: String) -> String {
-        "'" + executable.replacingOccurrences(of: "'", with: "'\\''") + "' --ergo-codex-hook-v1"
+    public static func command(executable: String, provider: ChatProvider = .codex) -> String {
+        "'" + executable.replacingOccurrences(of: "'", with: "'\\''") + "' " + provider.hookFlag
     }
     /// Merge only our exact command; preserve every foreign field and handler.
-    public static func updating(_ data: Data?, executable: String, install: Bool) throws -> Data {
+    public static func updating(_ data: Data?, executable: String, install: Bool, provider: ChatProvider = .codex) throws -> Data {
         var root: [String: Any] = [:]
         if let data {
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw CodexIntegrationError.message("Existing hooks.json is not an object; it was preserved.")
+                throw CodexIntegrationError.message("Existing hooks settings are not an object; the file was preserved.")
             }
             root = object
         }
@@ -270,8 +280,8 @@ public enum CodexHookConfiguration {
             throw CodexIntegrationError.message("Existing hooks configuration was preserved because its format is unfamiliar.")
         }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
-        let command = command(executable: executable)
-        for event in CodexHookEvent.events {
+        let command = command(executable: executable, provider: provider)
+        for event in provider == .codex ? CodexHookEvent.events : ClaudeHookEvent.events {
             if let value = hooks[event], !(value is [[String: Any]]) { throw CodexIntegrationError.invalidSettings }
             var entries: [[String: Any]] = []
             for var entry in hooks[event] as? [[String: Any]] ?? [] {
@@ -280,7 +290,11 @@ public enum CodexHookConfiguration {
                 if remaining.count == handlers.count { entries.append(entry); continue }
                 if !remaining.isEmpty { entry["hooks"] = remaining; entries.append(entry) }
             }
-            if install { entries.append(["hooks": [["type": "command", "command": command, "timeout": 1]]]) }
+            if install {
+                var entry: [String: Any] = ["hooks": [["type": "command", "command": command, "timeout": 1]]]
+                if provider == .claude, event == "Notification" { entry["matcher"] = "^(permission_prompt|idle_prompt)$" }
+                entries.append(entry)
+            }
             if entries.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = entries }
         }
         root["hooks"] = hooks

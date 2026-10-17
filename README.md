@@ -20,9 +20,10 @@ Ergo Control uses SwiftUI and macOS frameworks, with no third-party runtime pack
 - Use Mac F-row defaults: F1/F2 screen brightness, F3 Mission Control, F4 Spotlight or Raycast, F5 Apple dictation or Fluid Voice, F6 emoji, F10 lock, F11 keyboard brightness down, and F12 keyboard brightness up. Explicit shortcut mappings remain available.
 - See a brief popup when changing dial modes.
 - Press the battery button, or any control assigned **Show battery**, for an on-screen percentage.
-- Keep the keyboard icon and battery percentage in a compact menu bar, without a Dock icon. Chat controls stay in the Codex sidebar section.
+- Keep the keyboard icon and battery percentage in a compact menu bar, without a Dock icon. Choose Codex or Claude Code in the Chat apps sidebar section.
 - Launch at login and automatically enable saved mappings from the App sidebar section.
 - Reduce lighting traffic with macro-zone pulse updates, and optionally keep other keys dark during Codex status. See [battery optimization and limits](docs/BATTERY_LIFE.md).
+- Use Claude Code as an alternative for recent/starred/fixed chat slots, M1–M5 navigation and the same status-light styles. Local desktop catalog compatibility and live keyboard behavior still need verification; starred chats use newest-first ordering. See [Claude Code setup and limits](docs/CLAUDE_SETUP.md).
 - Store profiles locally and restore the keyboard’s saved mode when mappings stop.
 - Use the dedicated Codex sidebar section to follow the five most recent Codex chats with M1–M5, choose pinned chats or fixed assignments, show lifecycle status, and color the shared macro column. Choose macro-column, whole-keyboard solid, or Status waves: blue once when work starts followed by a steady blue macro column, amber bouncing continuously while approval is pending, and green right-and-back once when finished before restoring your previous effect. An optional working pulse fades blue through dim to fully dark and back on the macro keys; it defaults to off. Quick wave speed uses fewer, wider steps; Smooth is the default. A visual light test is included. See [Codex setup and limits](docs/CODEX_SETUP.md).
 

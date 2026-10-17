@@ -112,7 +112,7 @@ private struct LightingOffView: View {
                     Stepper("After \(automation.preferences.idleMinutes) min", value: $automation.preferences.idleMinutes, in: 1...15)
                         .disabled(!automation.preferences.whenIdle)
                 }
-                Text("Applies while Ergo Control is running. Keyboard, mouse or trackpad activity restores your brightness. These switches also turn off Codex status lights; leave them off to keep status visible while you’re away.")
+                Text("Applies while Ergo Control is running. Keyboard, mouse or trackpad activity restores your brightness. These switches also turn off Chat status lights; leave them off to keep status visible while you’re away.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Saved automatically on this Mac.").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(16)

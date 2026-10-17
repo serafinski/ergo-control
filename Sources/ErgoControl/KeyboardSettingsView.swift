@@ -301,6 +301,7 @@ struct KeyboardSettingsView: View {
             case .text: return action.value.isEmpty ? "Type text" : "“\(action.value.replacingOccurrences(of: "\n", with: " ").prefix(36))”"
             case .application, .toggleApplication, .script:
                 return action.value.isEmpty ? action.kind.label : "\(action.kind.label) · \(URL(fileURLWithPath: action.value).deletingPathExtension().lastPathComponent)"
+            case .claudeChat: return "Claude Code chat · slot \(action.value)"
             case .codexChat: return "Codex chat · slot \(action.value)"
             default: return action.kind.label
             }
@@ -309,7 +310,7 @@ struct KeyboardSettingsView: View {
         if let usage = UInt8(id.hasPrefix("key:") ? String(id.dropFirst(4)) : ""),
            let label = NativeFunctionKeys.label(for: usage, preferences: model.configuration.functionKeys) { return label }
         if let number = Int(id.replacingOccurrences(of: "extra:", with: "")), (32...36).contains(number),
-           model.codex.settings.enabled, model.codex.settings.useUnmappedMacroKeys { return "Codex chat · slot \(number - 31)" }
+           model.chat.settings.enabled, model.chat.settings.useUnmappedMacroKeys { return "\(model.chat.provider.name) chat · slot \(number - 31)" }
         switch id {
         case "leftCW", "leftCCW": return "Use current dial mode"
         case "extra:96": return "Next dial mode"
