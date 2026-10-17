@@ -99,3 +99,5 @@ The revised installer subsequently succeeded. After another reboot at 17:28:49 l
 ## Caps Lock indicator (helper 0.2.4 / app 0.8.3)
 
 The helper can set only the standard LED usage page 8 / Caps Lock usage 2 output element, using IOHIDDeviceSetValue. It accepts no report bytes, usage IDs, paths or device selectors. The caller must match the active XPC connection and console UID, with a valid input lease and an open captured device. The GUI initializes from current macOS Caps state and forwards distinct Caps toggles. LED rejection is nonfatal to keyboard input. Updating the helper through the bundled installer is required because peer verification pins its exact signed code hash. Existing fixed install paths, certificates, console checks and input watchdog are unchanged. Hardware validation is pending.
+
+App 0.9.0 keeps the helper unchanged. Native power settings and display/idle brightness automation use the app's serialized Bluetooth channel and existing grants. No new helper RPC, device-capture scope or privileged output permission is introduced.

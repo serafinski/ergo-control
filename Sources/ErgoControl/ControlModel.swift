@@ -24,6 +24,7 @@ final class ControlModel: ObservableObject {
     let fullControlHelper = FullControlHelper()
     let codex = CodexBridge()
     let startup = StartupSettings()
+    lazy var lightingAutomation = LightingAutomation(device: bluetooth)
     let logs = AppLog()
     private var lastPointerNote: String?
     private var automaticStart = AutomaticMappingStart()
@@ -78,6 +79,7 @@ final class ControlModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        lightingAutomation.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.$automaticMappings.dropFirst().sink { [weak self] enabled in
             if !enabled { self?.cancelAutomaticStart() }
@@ -420,6 +422,7 @@ final class ControlModel: ObservableObject {
     }
     func terminate() -> NSApplication.TerminateReply {
         terminating = true
+        lightingAutomation.stop()
         codex.shutdown()
         batteryTimer?.invalidate(); batteryTimer = nil
         stop()
@@ -443,6 +446,7 @@ final class ControlModel: ObservableObject {
         return MappingAction()
     }
     private func execute(_ action: MappingAction, control: String, pressed: Bool) {
+        lightingAutomation.userActivity()
         if action.kind == .layer {
             engine.endAppSwitcher()
             if pressed { layerKeys.insert(control) } else { layerKeys.remove(control) }
@@ -460,7 +464,7 @@ final class ControlModel: ObservableObject {
                 stop("This key needs support; PT Ergo has been returned to normal input.", level: .error); return
             }
             let transitions = NativeKeyboardTransitions.changes(from: ordinary, to: current)
-            if !transitions.isEmpty { engine.endAppSwitcher() }
+            if !transitions.isEmpty { lightingAutomation.userActivity(); engine.endAppSwitcher() }
             for transition in transitions {
                 guard relayOpened else { return }
                 let usage = transition.usage
@@ -479,6 +483,7 @@ final class ControlModel: ObservableObject {
         } else if id == 5 {
             guard let events = extraDecoder.decode(reportID: id, bytes: data) else { stop("Unexpected extra-key packet; mappings stopped.", level: .error); return }
             guard running || relayOpened && relay.accessMode == .fullKeyboard else { return }
+            if !events.isEmpty { lightingAutomation.userActivity() }
             for event in events {
                 guard relayOpened else { return }
                 let control = "extra:\(event.key)"
@@ -499,6 +504,7 @@ final class ControlModel: ObservableObject {
                 if note != lastPointerNote { logs.record(note, category: "Keyboard"); lastPointerNote = note }
             }
             let steps = pointer.horizontalPan; guard running, steps != 0 else { return }
+            lightingAutomation.userActivity()
             let control = steps > 0 ? "leftCW" : "leftCCW"
             lastControl = ControlCatalog.label(control)
             for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control), fromDial: true) }
@@ -514,6 +520,7 @@ final class ControlModel: ObservableObject {
 
     private func forwardMedia(_ events: [ConsumerKeyEvent]) {
         let controls: [UInt16: String] = [0xe9:"rightCW",0xea:"rightCCW",0xe2:"rightClick",0xcd:"mediaSingle",0xb5:"mediaDouble",0xb6:"mediaTriple"]
+        if !events.isEmpty { lightingAutomation.userActivity() }
         for event in events {
             guard relayOpened else { return }
             let control = controls[event.usage] ?? "media:\(event.usage)"

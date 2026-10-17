@@ -107,6 +107,56 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }, message: { [weak self] message in
         if self?.macroStatusLightingMessage != message { self?.macroStatusLightingMessage = message }
     })
+    public var powerSettings: KeyboardPowerSettings? { powerManager.settings }
+    public var powerSettingsBusy: Bool { powerManager.busy || powerManager.needsTimer }
+    public var powerTestRecoveryPending: Bool { FileManager.default.fileExists(atPath: Self.folder.appendingPathComponent("pending-power-test.json").path) }
+    private var runningPowerCheck: Bool { CommandLine.arguments.dropFirst().first == "--keyboard-power-test" }
+    public var powerSettingsMessage: String {
+        powerTestRecoveryPending && !runningPowerCheck ? "An interrupted power check needs restoration before settings can change. Quit and rerun the power check." : powerManager.message
+    }
+    public var lightingOffVerified: Bool { powerManager.offVerified }
+    public var lightingSuppressed: Bool { powerManager.suppressed }
+    private var resumeMacroStatus: (() -> Void)?
+    private var brightnessRecoveryURL: URL { Self.folder.appendingPathComponent("pending-brightness.json") }
+    private lazy var powerManager = KeyboardPowerManager(send: { [weak self] request, completion in
+        guard let self, self.ready, !self.restoreRequested, !self.restorationChain,
+              !self.restoreOwed || self.driverModeVerified else {
+            completion(.failure(BluetoothFailure.message("Keyboard restoration takes priority. Retry when connected."))); return
+        }
+        self.send(request) { completion($0.map(\.payload)) }
+    }, transaction: { [weak self] in self?.transactions.next() ?? 1 }, identity: { [weak self] in self?.targetID },
+       load: { [weak self] in
+        guard let self, FileManager.default.fileExists(atPath: self.brightnessRecoveryURL.path) else { return nil }
+        return try JSONDecoder().decode(SavedKeyboardBrightness.self, from: Data(contentsOf: self.brightnessRecoveryURL))
+    }, persist: { [weak self] saved in
+        guard let self else { throw LightingLabError.invalidPacket }
+        if let saved {
+            try JSONEncoder().encode(saved).write(to: self.brightnessRecoveryURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: self.brightnessRecoveryURL.path)
+            let file = try FileHandle(forWritingTo: self.brightnessRecoveryURL); try file.synchronize(); try file.close()
+        } else if FileManager.default.fileExists(atPath: self.brightnessRecoveryURL.path) {
+            try FileManager.default.removeItem(at: self.brightnessRecoveryURL)
+        }
+    }, changed: { [weak self] in
+        guard let self else { return }
+        self.objectWillChange.send()
+        if self.closing { DispatchQueue.main.async { [weak self] in self?.finishClosingIfReady() } }
+    })
+    public func refreshPowerSettings() {
+        powerManager.requestRead(); startLightingTimer(); pumpLighting()
+    }
+    public func applyPowerSettings(_ changes: KeyboardPowerChanges) {
+        guard !powerTestRecoveryPending || runningPowerCheck else { objectWillChange.send(); return }
+        powerManager.apply(changes); startLightingTimer(); pumpLighting()
+    }
+    public func setLightingSuppressed(_ value: Bool) {
+        guard !value || !powerTestRecoveryPending || runningPowerCheck else { return }
+        guard value != powerManager.suppressed else { return }
+        powerManager.setSuppressed(value)
+        if value { macroRenderer.request(nil) } else { resumeMacroStatus?() }
+        startLightingTimer(); pumpLighting()
+    }
+
     private var brightnessSteps = BrightnessSteps()
     private var lightingRegion: UInt8?
     private var lightingTimer: Timer?
@@ -136,6 +186,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     private var restoreRequested = false
     private var restorationChain = false
     private var closing = false
+    private var terminationReplied = false
     private var logfile: FileHandle?
     private var packetLog: BluetoothPacketLog?
     private let serviceUUID = CBUUID(string: ErgoTarget.service)
@@ -332,6 +383,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         log("responses_enabled")
         if restoreOwed { restore() }
         else { readMode() }
+        if powerManager.restorationOwed { startLightingTimer() }
     }
 
     private func connectionFailed(_ reason: String) {
@@ -773,7 +825,11 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
     }
 
     private func pumpLighting() {
-        guard ready, !restoreRequested, !closing, !restorationChain else { return }
+        if ready, !restoreRequested, !restorationChain, !busy, !lightingOperation, !macroRenderer.busy, !keyboardEffectBusy,
+           !restoreOwed || driverModeVerified, !closing || !restoreOwed, powerManager.hasWork {
+            powerManager.pump(); return
+        }
+        guard ready, !restoreRequested, !closing, !restorationChain, !powerManager.busy else { return }
         if let request = effectRequests.takeIfIdle(commandBusy: busy, dialLightingBusy: lightingOperation || macroRenderer.busy) {
             switch request {
             case .read: beginKeyboardEffectRead()
@@ -787,10 +843,15 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
         guard !keyboardEffectBusy, !macroRenderer.busy else { return }
         guard driverModeVerified else {
-            lightingTimer?.invalidate(); lightingTimer = nil
+            if !powerManager.needsTimer { lightingTimer?.invalidate(); lightingTimer = nil }
             return
         }
         guard !busy, !lightingOperation else { return }
+        if powerManager.suppressed {
+            if macroRenderer.desired == nil && macroRenderer.hasWork { macroRenderer.pump() }
+            else if !powerManager.needsTimer && !macroRenderer.needsTimer { lightingTimer?.invalidate(); lightingTimer = nil }
+            return
+        }
         // Retire the previous flash before processing brightness. A newer mode
         // selection supersedes its timeout and is coalesced to the latest color.
         if requestedDialColor != nil, !indicatorUnavailable {
@@ -808,7 +869,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             ensureLightingRegion(brightness: true) { [weak self] in self?.changeBrightness() }
         } else if macroRenderer.hasWork {
             macroRenderer.pump()
-        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged, !macroRenderer.needsTimer {
+        } else if requestedDialColor == nil, brightnessSteps.isEmpty, !dialLightChanged, !macroRenderer.needsTimer, !powerManager.needsTimer {
             lightingTimer?.invalidate(); lightingTimer = nil
         }
     }
@@ -894,6 +955,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         lightingOperation = false
         let percent = Int(ceil(Double(raw) / 255 * 100))
         keyboardBrightnessPercent = percent
+        powerManager.noteBrightness(raw)
         lightingStatus = "Keyboard brightness: \(percent)%"
         log("keyboard_brightness_verified", ["percent": percent, "raw": raw])
         if indicatorBacklight.retryAfterBrightnessChange(rawBrightness: raw), let color = lastRequestedDialColor {
@@ -1078,10 +1140,8 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         retryTimer?.invalidate(); retryTimer = nil
         try? FileManager.default.removeItem(at: recoveryURL)
         log("restoration_completed")
-        if closing {
-            packetLog?.flush()
-            NSApplication.shared.reply(toApplicationShouldTerminate: true)
-        }
+        if closing { finishClosingIfReady() }
+        else if powerManager.needsTimer { startLightingTimer(); pumpLighting() }
     }
 
     public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn, signalID: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false, darkBackground: Bool = false) {
@@ -1094,8 +1154,14 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
             }
         }
         // Only an active mapping lease can own custom status lighting.
-        macroRenderer.request(driverModeVerified ? color : nil, area: area, signalID: signalID, activity: activity,
-                              allowCompletionToFinish: driverModeVerified && allowCompletionToFinish, speed: speed, pulseWhileWorking: pulseWhileWorking, darkBackground: darkBackground)
+        resumeMacroStatus = { [weak self] in
+            guard let self else { return }
+            self.macroRenderer.request(self.driverModeVerified && !self.powerManager.suppressed ? color : nil,
+                area: area, signalID: signalID, activity: activity,
+                allowCompletionToFinish: self.driverModeVerified && !self.powerManager.suppressed && allowCompletionToFinish,
+                speed: speed, pulseWhileWorking: pulseWhileWorking, darkBackground: darkBackground)
+        }
+        resumeMacroStatus?()
         if macroRenderer.hasWork { startLightingTimer(); pumpLighting() }
     }
 
@@ -1127,11 +1193,24 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         }
     }
 
+    private func finishClosingIfReady() {
+        guard closing, !terminationReplied, !restoreOwed, !powerManager.busy else { return }
+        if powerManager.restorationOwed {
+            startLightingTimer()
+            DispatchQueue.main.async { [weak self] in self?.pumpLighting() }
+            return
+        }
+        terminationReplied = true
+        packetLog?.flush()
+        NSApplication.shared.reply(toApplicationShouldTerminate: true)
+    }
+
     public func requestTermination() -> NSApplication.TerminateReply {
         log("termination_requested", ["restorationPending": restoreOwed, "ready": ready, "busy": busy])
-        guard restoreOwed else { packetLog?.flush(); return .terminateNow }
         closing = true
-        restore()
+        powerManager.prepareToQuit()
+        guard restoreOwed || (ready && (powerManager.busy || powerManager.restorationOwed)) else { terminationReplied = true; packetLog?.flush(); return .terminateNow }
+        if restoreOwed { restore() } else { startLightingTimer(); pumpLighting() }
         return .terminateLater
     }
 }

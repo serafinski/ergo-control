@@ -16,6 +16,8 @@ struct KeyboardLightingView: View {
     private var available: Bool { device.canEditKeyboardLighting && !model.preparing }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+        KeyboardPowerView(model: model)
         GroupBox("Keyboard lighting") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -65,6 +67,7 @@ struct KeyboardLightingView: View {
                 Text("Works with mappings on or off. Lighting applies to every profile. Keep keyboard brightness above 0% to see the effect.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(8)
+        }
         }
         .onReceive(device.$currentKeyboardEffect) { effect in
             guard let effect else { return }

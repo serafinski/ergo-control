@@ -3,7 +3,7 @@ import AppKit
 import ErgoCore
 
 enum KeyboardSettingsPage: String, CaseIterable, Identifiable {
-    case buttons = "Buttons", dials = "Dials", lighting = "Lighting", functionKeys = "Function keys", profiles = "Profiles"
+    case buttons = "Buttons", dials = "Dials", lighting = "Lighting & power", functionKeys = "Function keys", profiles = "Profiles"
     var id: String { rawValue }
 }
 
@@ -74,10 +74,12 @@ struct KeyboardSettingsView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 10) {
                 Text(model.bluetooth.batteryText).font(.callout).foregroundStyle(.secondary)
+                if page != .lighting || model.dirty {
                 HStack {
                     Text(model.dirty ? "Unsaved changes" : "Saved").font(.caption).foregroundStyle(.secondary)
                     Button("Save changes") { model.save() }.keyboardShortcut("s")
                         .buttonStyle(.borderedProminent).disabled(!model.dirty)
+                }
                 }
             }
         }

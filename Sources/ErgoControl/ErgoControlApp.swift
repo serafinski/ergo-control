@@ -35,6 +35,9 @@ struct ErgoControlApp: App {
         if CommandLine.arguments.dropFirst().first == "--restore-keyboard" {
             NativeDialInspection.restoreKeyboardCommandLine()
         }
+        if CommandLine.arguments.dropFirst().first == "--keyboard-power-test" {
+            NativeDialInspection.testPowerCommandLine()
+        }
         if CommandLine.arguments.dropFirst().first == "--keyboard-power-read" {
             NativeDialInspection.readPowerCommandLine()
         }
@@ -76,16 +79,6 @@ struct ControlMenu: View {
         Text("\(model.activeProfileName) · \(model.dialName)")
         Text(model.bluetooth.batteryText)
         Button("Refresh battery") { model.refreshBattery() }
-        if model.codex.settings.enabled {
-            Divider()
-            Text(model.codex.settings.selection.label)
-            Text("\(model.codex.assignedSlotCount) of 5 chat keys assigned")
-            ForEach(model.codex.displaySlots) { slot in
-                let summary = slot.threadID == nil ? model.codex.emptySlotLabel : "\(slot.name) · \(model.codex.activity(slot).label)"
-                Button("M\(slot.id) · \(summary)") { model.codex.openSlot(slot.id) }
-                    .disabled(slot.url == nil)
-            }
-        }
         Divider()
         Button("Settings…") { openWindow(id: "settings"); NSApp.activate(ignoringOtherApps: true) }
         Button(model.running || model.preparing || model.waitingForAutomaticStart ? "Stop mappings" : "Enable mappings") {
