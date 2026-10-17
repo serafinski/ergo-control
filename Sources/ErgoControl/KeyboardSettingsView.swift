@@ -54,7 +54,10 @@ struct KeyboardSettingsView: View {
                     case .functionKeys: functionKeys
                     case .profiles: profiles
                     }
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 20)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
             }.id(page)
         }
         .padding(28)

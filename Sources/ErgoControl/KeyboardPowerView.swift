@@ -23,9 +23,9 @@ struct KeyboardPowerView: View {
     }
     private var dirty: Bool { changes.brightness != nil || changes.dimming != nil || changes.sleep != nil }
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 28) {
             GroupBox("Brightness & battery power") {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 24) {
                     HStack {
                         Text("Settings stored on your keyboard.").foregroundStyle(.secondary)
                         Spacer()
@@ -34,16 +34,27 @@ struct KeyboardPowerView: View {
                         }.disabled(model.preparing || (device.ready && device.powerSettingsBusy))
                     }
                     if device.powerSettings != nil {
-                        Toggle("Keyboard lighting", isOn: $brightnessEnabled).disabled(!available)
-                        HStack {
-                            Slider(value: $brightness, in: 1...100, step: 1) { Text("Brightness") }
-                            Text("\(Int(brightness))%").monospacedDigit().frame(width: 45, alignment: .trailing)
-                        }.disabled(!brightnessEnabled || !available)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Keyboard lighting", isOn: $brightnessEnabled).disabled(!available)
+                            HStack(spacing: 16) {
+                                Text("Brightness").frame(width: 90, alignment: .leading)
+                                Slider(value: $brightness, in: 1...100, step: 1) { Text("Brightness") }
+                                    .labelsHidden()
+                                Text("\(Int(brightness))%")
+                                    .monospacedDigit().frame(width: 45, alignment: .trailing)
+                            }
+                            .frame(maxWidth: 700)
+                            .disabled(!brightnessEnabled || !available)
+                        }
                         Divider()
-                        Toggle("Dim lighting when running on battery", isOn: $dimEnabled).disabled(!available)
-                        timerPicker("Dim after", seconds: $dimSeconds).disabled(!dimEnabled || !available)
-                        Toggle("Wireless sleep when running on battery", isOn: $sleepEnabled).disabled(!available)
-                        timerPicker("Sleep after", seconds: $sleepSeconds).disabled(!sleepEnabled || !available)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Dim lighting when running on battery", isOn: $dimEnabled).disabled(!available)
+                            timerPicker("Dim after", seconds: $dimSeconds).disabled(!dimEnabled || !available)
+                        }
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Wireless sleep when running on battery", isOn: $sleepEnabled).disabled(!available)
+                            timerPicker("Sleep after", seconds: $sleepSeconds).disabled(!sleepEnabled || !available)
+                        }
                         Text("Dimming keeps the keyboard’s existing dim level. Wireless sleep may pause mappings and status lights until the keyboard wakes.")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Apply keyboard settings") {
@@ -56,7 +67,7 @@ struct KeyboardPowerView: View {
                         Label("Lighting is temporarily off. Activity or display wake restores your brightness.", systemImage: "moon")
                             .font(.callout)
                     }
-                }.padding(8)
+                }.padding(16)
                 .disabled(model.preparing)
             }
             LightingOffView(automation: model.lightingAutomation)
@@ -68,12 +79,18 @@ struct KeyboardPowerView: View {
         .onChange(of: sleepEnabled) { _, enabled in if enabled && !(60...3600).contains(sleepSeconds) { sleepSeconds = 900 } }
     }
     private func timerPicker(_ title: String, seconds: Binding<UInt16>) -> some View {
-        Picker(title, selection: seconds) {
-            ForEach(Array(Set([UInt16(60),180,300,600,900,seconds.wrappedValue])).sorted(), id: \.self) { value in
-                Text(value == 0 ? "Not set" : value % 60 == 0 ? "\(value / 60) min" : "\(value) sec").tag(value)
+        HStack(spacing: 16) {
+            Text(title).frame(width: 90, alignment: .leading)
+            Picker(title, selection: seconds) {
+                ForEach(Array(Set([UInt16(60),180,300,600,900,seconds.wrappedValue])).sorted(), id: \.self) { value in
+                    Text(value == 0 ? "Not set" : value % 60 == 0 ? "\(value / 60) min" : "\(value) sec").tag(value)
+                }
             }
+            .labelsHidden()
+            .frame(width: 180)
         }
     }
+
     private func load(_ value: KeyboardPowerSettings?) {
         guard let value else { return }
         brightnessEnabled = value.brightness > 0
@@ -88,15 +105,17 @@ private struct LightingOffView: View {
     @ObservedObject var automation: LightingAutomation
     var body: some View {
         GroupBox("Switch off lighting") {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 20) {
                 Toggle("When the display is turned off", isOn: $automation.preferences.whenDisplaySleeps)
-                Toggle("When idle", isOn: $automation.preferences.whenIdle)
-                Stepper("After \(automation.preferences.idleMinutes) min", value: $automation.preferences.idleMinutes, in: 1...15)
-                    .disabled(!automation.preferences.whenIdle)
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("When idle", isOn: $automation.preferences.whenIdle)
+                    Stepper("After \(automation.preferences.idleMinutes) min", value: $automation.preferences.idleMinutes, in: 1...15)
+                        .disabled(!automation.preferences.whenIdle)
+                }
                 Text("Applies while Ergo Control is running. Keyboard, mouse or trackpad activity restores your brightness. These switches also turn off Codex status lights; leave them off to keep status visible while you’re away.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Saved automatically on this Mac.").font(.caption).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
         }
     }
 }

@@ -16,10 +16,10 @@ struct KeyboardLightingView: View {
     private var available: Bool { device.canEditKeyboardLighting && !model.preparing }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 28) {
         KeyboardPowerView(model: model)
         GroupBox("Keyboard lighting") {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     Text("Set the backlight effect for the whole keyboard.").foregroundStyle(.secondary)
                     Spacer()
@@ -66,7 +66,7 @@ struct KeyboardLightingView: View {
                 Text(device.keyboardEffectStatus).font(.callout).textSelection(.enabled)
                 Text("Works with mappings on or off. Lighting applies to every profile. Keep keyboard brightness above 0% to see the effect.")
                     .font(.caption).foregroundStyle(.secondary)
-            }.padding(8)
+            }.padding(16)
         }
         }
         .onReceive(device.$currentKeyboardEffect) { effect in
