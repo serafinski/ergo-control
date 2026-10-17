@@ -4,21 +4,33 @@ import ErgoCore
 
 struct ChatSettingsView: View {
     @ObservedObject var model: ControlModel
-    private var bridge: ChatBridge { model.chat }
+    let onEditMappings: (Bool) -> Void
+    @State private var viewedProvider: ChatProvider
+    @State private var alternateLayer: Bool
+    init(model: ControlModel, onEditMappings: @escaping (Bool) -> Void = { _ in }) {
+        self.model = model; self.onEditMappings = onEditMappings
+        _viewedProvider = State(initialValue: model.chatPreferences.provider)
+        _alternateLayer = State(initialValue: model.layerActive)
+    }
+    private var bridge: ChatBridge { model.chatBridge(for: viewedProvider) }
+    private var assignments: [MacroKeyAssignment] { model.macroAssignments(alternateLayer: alternateLayer) }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("Chat apps").font(.largeTitle.bold())
-            Picker("Keys and status lights follow", selection: Binding(get: { model.chatPreferences.provider }, set: model.setChatProvider)) {
+            Picker("App settings", selection: $viewedProvider) {
                 ForEach(ChatProvider.allCases) { provider in Text(provider.name).tag(provider) }
             }.pickerStyle(.segmented)
+            Text("View either app here. Switching pages keeps your key assignments and lighting source unchanged.")
+                .font(.caption).foregroundStyle(.secondary)
+            automaticDefaults
             if let error = model.chatPreferences.error { Text(error).foregroundStyle(.red) }
-            Text("M1–M5 open your chats. The keyboard can show their activity.").foregroundStyle(.secondary)
             Toggle("Connect to \(bridge.provider.name)", isOn: Binding(get: { bridge.settings.enabled }, set: bridge.setEnabled))
                 .toggleStyle(.switch)
             Text("Optional. Keyboard mappings work with the chat app closed.")
                 .font(.caption).foregroundStyle(.secondary)
             if !model.running { Text(model.status).font(.callout).foregroundStyle(.secondary) }
             if let error = model.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+            macroAssignments
             if bridge.settings.enabled {
                 chatKeys
                 statusLights
@@ -41,16 +53,90 @@ struct ChatSettingsView: View {
             if bridge.provider == .claude { claudeCatalog }
         }.id(bridge.provider)
     }
+    private var automaticDefaults: some View {
+        GroupBox("Automatic keys and status lights") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Follow", selection: Binding(get: { model.chatPreferences.provider }, set: model.setChatProvider)) {
+                    ForEach(ChatProvider.allCases) { provider in Text(provider.name).tag(provider) }
+                }
+                Toggle("Use unmapped M1–M5 for \(model.chat.provider.name) chats", isOn: Binding(
+                    get: { model.chat.settings.useUnmappedMacroKeys }, set: { model.chat.setUseUnmappedMacroKeys($0) }))
+                Text("Only keys set to Default follow this choice. Explicit mappings can open either app and take precedence.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(10)
+        }
+    }
+    private var macroAssignments: some View {
+        GroupBox("Macro keys for \(bridge.provider.name)") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Active profile: \(model.activeProfile.name)").font(.headline)
+                    Spacer()
+                    Button("Edit mappings") { onEditMappings(alternateLayer) }
+                }
+                Picker("Layer shown", selection: $alternateLayer) {
+                    Text("Standard").tag(false); Text("Alternate").tag(true)
+                }.pickerStyle(.segmented)
+                Text("Showing \(alternateLayer ? "Alternate" : "Standard") assignments · current keyboard layer: \(model.layerActive ? "Alternate" : "Standard").")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(assignments) { assignment in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("M\(assignment.id)").bold().frame(width: 32, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 3) {
+                            if assignment.provider == bridge.provider {
+                                Text(destination(assignment))
+                                Text(assignment.mapping.origin == .standardLayer && alternateLayer
+                                     ? "Standard mapping (inherited)" : assignment.mapping.origin.label)
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("Unassigned to \(bridge.provider.name)").foregroundStyle(.secondary)
+                                Text("Current: \(destination(assignment))").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if assignment.provider == bridge.provider, let slot = assignedChat(assignment) {
+                            Text(!bridge.settings.enabled ? "Connection off" : slot.threadID == nil ? "No chat in slot" : bridge.activity(slot).label)
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Text("\(assignments.filter { $0.provider == bridge.provider }.count) of 5 macro keys assigned to \(bridge.provider.name) in this layer.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if !model.running { Text("Mappings are off. These assignments apply when mappings are enabled.").font(.caption).foregroundStyle(.secondary) }
+                if model.dirty { Text("Mapping changes have not been saved yet.").font(.caption).foregroundStyle(.secondary) }
+            }.padding(10)
+        }
+    }
+    private func assignedChat(_ assignment: MacroKeyAssignment) -> CodexSlot? {
+        guard let provider = assignment.provider, let slot = assignment.slot else { return nil }
+        return model.chatBridge(for: provider).displaySlots.first { $0.id == slot }
+    }
+    private func destination(_ assignment: MacroKeyAssignment) -> String {
+        if let provider = assignment.provider, let number = assignment.slot {
+            let slot = assignedChat(assignment)
+            let name = slot.flatMap { $0.threadID == nil ? nil : $0.name } ?? "No chat in slot"
+            return "\(provider.name) · Slot \(number) · \(name)"
+        }
+        switch assignment.mapping.action.kind {
+        case .standard: return "Keyboard default"
+        case .codexChat: return "Codex · invalid chat slot"
+        case .claudeChat: return "Claude Code · invalid chat slot"
+        default: return assignment.mapping.action.kind.label
+        }
+    }
+    private func macroKeys(for slot: CodexSlot) -> String {
+        let keys = assignments.filter { $0.provider == bridge.provider && $0.slot == slot.id }.map { "M\($0.id)" }
+        return keys.isEmpty ? "No macro key assigned" : "Macro keys: " + keys.joined(separator: ", ")
+    }
     private var chatKeys: some View {
-        GroupBox("Chat keys") {
+        GroupBox("Available \(bridge.provider.name) chat slots") {
             VStack(alignment: .leading, spacing: 14) {
                 Picker("Chat selection", selection: Binding(get: { bridge.settings.selection }, set: bridge.setSelection)) {
                     ForEach(CodexSelectionMode.allCases) { mode in
                         Text(mode == .recent ? "Most recent chats" : mode == .pinned ? (bridge.provider == .claude ? "Starred chats · newest first" : "Pinned chats") : "Fixed assignments").tag(mode)
                     }
                 }
-                Toggle("Use unmapped M1–M5 for \(bridge.provider.name) chats", isOn: Binding(get: { bridge.settings.useUnmappedMacroKeys }, set: bridge.setUseUnmappedMacroKeys))
-                Text("Enable mappings to use the keys. Explicit mappings and alternate-layer actions take precedence.")
+                Text("Chat slots are destinations for key mappings. The macro-key assignments above show which keys actually open them.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
                 ForEach(bridge.displaySlots) { slot in
@@ -59,7 +145,7 @@ struct ChatSettingsView: View {
                             bridge.assign(slot.id - 1, name: name, link: link)
                         } open: { bridge.openSlot(slot.id) }
                         if bridge.provider == .claude, !bridge.catalogSlots.isEmpty {
-                            Menu("Choose saved chat for M\(slot.id)") {
+                            Menu("Choose saved chat for Slot \(slot.id)") {
                                 ForEach(bridge.catalogSlots) { saved in
                                     Button(saved.name) { bridge.assign(slot.id - 1, name: saved.name, link: saved.threadID ?? "") }
                                 }
@@ -67,13 +153,14 @@ struct ChatSettingsView: View {
                         }
                     } else {
                         HStack {
-                            Text("M\(slot.id)").bold().frame(width: 30, alignment: .leading)
+                            Text("Slot \(slot.id)").bold().frame(width: 50, alignment: .leading)
                             Text(slot.threadID == nil ? bridge.emptySlotLabel : slot.name).lineLimit(1)
                             Spacer()
-                            Text(slot.threadID == nil ? "Unassigned" : bridge.activity(slot).label).font(.caption).foregroundStyle(.secondary)
+                            Text(slot.threadID == nil ? "No chat" : bridge.activity(slot).label).font(.caption).foregroundStyle(.secondary)
                             Button("Open chat") { bridge.openSlot(slot.id) }.disabled(bridge.url(for: slot) == nil)
                         }
                     }
+                    Text(macroKeys(for: slot)).font(.caption).foregroundStyle(.secondary)
                 }
                 if bridge.needsCatalog {
                     HStack {
@@ -82,7 +169,7 @@ struct ChatSettingsView: View {
                         Button("Refresh chats") { bridge.refreshHistory() }
                     }
                 }
-                Text("\(bridge.assignedSlotCount) of 5 keys assigned · local \(bridge.provider.name) chats only.")
+                Text("\(bridge.availableSlotCount) of 5 chat slots have a chat · local \(bridge.provider.name) chats only.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(10)
         }
@@ -91,6 +178,8 @@ struct ChatSettingsView: View {
         GroupBox("Status lights") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Show \(bridge.provider.name) status lights", isOn: Binding(get: { bridge.settings.lighting }, set: bridge.setLighting))
+                Text("Keyboard lights currently follow \(model.chatPreferences.provider.name). Choose the lighting source under Automatic keys and status lights above.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Signal style", selection: Binding(get: { bridge.settings.lightingArea }, set: bridge.setLightingArea)) {
                     ForEach(CodexLightingArea.allCases) { area in Text(area.label).tag(area) }
                 }
@@ -130,8 +219,10 @@ struct ChatSettingsView: View {
                         Text("Test: \(stage.label)").font(.callout)
                     } else {
                         Button(bridge.settings.lightingArea == .completionWave ? "Test status waves · 24 seconds" : "Test status lights · 16 seconds") { bridge.startLightingTest() }
-                            .disabled(!model.running || !bridge.settings.lighting)
-                        Text(model.running ? "Keep keyboard brightness above 0%." : "Enable mappings to test the lights.")
+                            .disabled(!model.running || !bridge.settings.lighting || bridge.provider != model.chatPreferences.provider)
+                        Text(bridge.provider != model.chatPreferences.provider
+                             ? "Choose \(bridge.provider.name) as the lighting source above to test its colors."
+                             : model.running ? "Keep keyboard brightness above 0%." : "Enable mappings to test the lights.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -195,7 +286,7 @@ private struct ChatSlotEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("M\(slot.id) · \(activity.label)").font(.caption)
+                Text("Slot \(slot.id) · \(activity.label)").font(.caption)
                 Spacer()
                 Button("Open chat", action: open).disabled(provider.url(for: slot.threadID) == nil)
             }

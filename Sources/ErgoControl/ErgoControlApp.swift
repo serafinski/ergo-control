@@ -106,7 +106,13 @@ struct ControlSettingsView: View {
                     section = .setup; focusedSection = .setup
                 }
             case .codex:
-                ScrollView { ChatSettingsView(model: model).frame(maxWidth: 900).frame(maxWidth: .infinity).padding(28) }
+                ScrollView {
+                    ChatSettingsView(model: model) { alternate in
+                        model.selectedProfileID = model.activeProfile.id
+                        model.alternateEditing = alternate
+                        keyboardPage = .buttons; section = .keyboard; focusedSection = .keyboard
+                    }.frame(maxWidth: 900).frame(maxWidth: .infinity).padding(28)
+                }
             case .app:
                 ScrollView { AppSettingsView(startup: model.startup).frame(maxWidth: 800).frame(maxWidth: .infinity).padding(28) }
             case .setup:

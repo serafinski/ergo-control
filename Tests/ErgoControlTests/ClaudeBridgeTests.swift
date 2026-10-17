@@ -96,4 +96,45 @@ final class ClaudeBridgeTests: XCTestCase {
         XCTAssertEqual(ChatPreferences(file: file).provider, .claude)
         XCTAssertNotEqual(ChatBridge.defaultFolder(for: .codex), ChatBridge.defaultFolder(for: .claude))
     }
+
+    func testAvailableClaudeChatDoesNotAssignAnExplicitCodexMacroKey() throws {
+        let source = CodexBridgeTests.History()
+        let bridge = ChatBridge(provider: .claude, folder: folder, startTimer: false, history: source)
+        defer { bridge.shutdown() }
+        bridge.setEnabled(true)
+        source.onRecent?(ClaudeThreadSummary.slots(try records()))
+        XCTAssertEqual(bridge.availableSlotCount, 1)
+        var profile = MappingProfile()
+        for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(.codexChat, String(slot)) }
+        let keys = MappingResolver.macroKeys(profile: profile, alternateLayer: false, fallback: bridge.defaultAction)
+        XCTAssertEqual(keys.filter { $0.provider == .codex }.count, 5)
+        XCTAssertEqual(keys.filter { $0.provider == .claude }.count, 0)
+        var codex: [Int] = [], claude: [Int] = []
+        let engine = ActionEngine(keyOutput: { _, _ in XCTFail("Chat mappings must not post keyboard input") })
+        defer { engine.stop() }
+        engine.onCodexSlot = { codex.append($0) }; engine.onClaudeSlot = { claude.append($0) }
+        keys.forEach { engine.perform($0.mapping.action) }
+        XCTAssertEqual(codex, [1, 2, 3, 4, 5]); XCTAssertTrue(claude.isEmpty)
+    }
+
+    func testDisablingAutomaticKeysOrConnectionOnlyRemovesFallbackAssignments() {
+        let bridge = ChatBridge(provider: .claude, folder: folder, startTimer: false)
+        defer { bridge.shutdown() }
+        var profile = MappingProfile()
+        profile.mappings["extra:32"] = MappingAction(.codexChat, "3")
+        profile.mappings["extra:33"] = MappingAction(.disabled)
+        profile.mappings["extra:35"] = MappingAction(.claudeChat, "1")
+        func keys() -> [MacroKeyAssignment] {
+            MappingResolver.macroKeys(profile: profile, alternateLayer: false, fallback: bridge.defaultAction)
+        }
+        bridge.setEnabled(true)
+        XCTAssertEqual(keys().filter { $0.provider == .claude }.map(\.id), [3, 4, 5])
+        bridge.setUseUnmappedMacroKeys(false)
+        XCTAssertEqual(keys().filter { $0.provider == .claude }.map(\.id), [4])
+        bridge.setUseUnmappedMacroKeys(true); bridge.setEnabled(false)
+        XCTAssertEqual(keys().filter { $0.provider == .claude }.map(\.id), [4])
+        XCTAssertEqual(keys()[0].mapping.action, MappingAction(.codexChat, "3"))
+        XCTAssertEqual(keys()[1].mapping.action.kind, .disabled)
+        XCTAssertEqual(keys()[2].mapping.origin, .keyboardDefault)
+    }
 }

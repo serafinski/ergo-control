@@ -144,7 +144,7 @@ final class ChatBridge: ObservableObject {
         case .fixed: return settings.slots
         }
     }
-    var assignedSlotCount: Int { displaySlots.filter { $0.threadID != nil }.count }
+    var availableSlotCount: Int { displaySlots.filter { $0.threadID != nil }.count }
     var emptySlotLabel: String {
         switch settings.selection {
         case .recent: return "No other recent \(provider.name) chat"

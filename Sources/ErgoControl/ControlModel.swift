@@ -31,7 +31,11 @@ final class ControlModel: ObservableObject {
     let codex = ChatBridge()
     let claude = ChatBridge(provider: .claude)
     let chatPreferences = ChatPreferences()
-    var chat: ChatBridge { chatPreferences.provider == .codex ? codex : claude }
+    var chat: ChatBridge { chatBridge(for: chatPreferences.provider) }
+    func chatBridge(for provider: ChatProvider) -> ChatBridge { provider == .codex ? codex : claude }
+    func macroAssignments(alternateLayer: Bool) -> [MacroKeyAssignment] {
+        MappingResolver.macroKeys(profile: activeProfile, alternateLayer: alternateLayer, fallback: chat.defaultAction)
+    }
     let startup = StartupSettings()
     lazy var lightingAutomation = LightingAutomation(device: bluetooth)
     let logs = AppLog()
@@ -478,9 +482,9 @@ final class ControlModel: ObservableObject {
 
     private func action(for control: String) -> MappingAction {
         let profile = activeProfile
-        if layerActive, let action = profile.alternate[control], action.kind != .standard { return action }
-        if let action = profile.mappings[control], action.kind != .standard { return action }
-        if let action = chat.defaultAction(for: control) { return action }
+        let resolved = MappingResolver.resolve(control, profile: profile, alternateLayer: layerActive,
+                                               fallback: chat.defaultAction(for: control))
+        if resolved.action.kind != .standard { return resolved.action }
         if control == "extra:96" { return MappingAction(.cycleDial) }
         if control == "extra:65" { return MappingAction(.battery) }
         if control == "leftCW" || control == "leftCCW" {
@@ -495,6 +499,7 @@ final class ControlModel: ObservableObject {
         lightingAutomation.userActivity()
         if action.kind == .layer {
             engine.endAppSwitcher()
+            if pressed != layerKeys.contains(control) { objectWillChange.send() }
             if pressed { layerKeys.insert(control) } else { layerKeys.remove(control) }
         } else if pressed { engine.perform(action, fromDial: ["leftCW", "leftCCW", "rightCW", "rightCCW"].contains(control)) }
     }
