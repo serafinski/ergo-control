@@ -376,6 +376,10 @@ final class ChatBridge: ObservableObject {
                     ? CodexStatusWave.completionWindow : CodexSessionStatus.completionSignalDuration) }
         }
     }
+    var lightingChatIDs: Set<String> {
+        guard !shuttingDown, settings.enabled, settings.lighting else { return [] }
+        return Set(displaySlots.compactMap(statusID).map { "\(provider.rawValue):\($0)" })
+    }
     var allowsCompletionToFinish: Bool {
         !shuttingDown && settings.enabled && settings.lighting && settings.lightingArea == .completionWave && lightingActivity == .idle
     }

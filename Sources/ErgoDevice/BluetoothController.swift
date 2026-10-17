@@ -1144,6 +1144,10 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         else if powerManager.needsTimer { startLightingTimer(); pumpLighting() }
     }
 
+    public var onMacroStatusCompletion: ((String) -> Void)? {
+        get { macroRenderer.onCompletion }
+        set { macroRenderer.onCompletion = newValue }
+    }
     public func setMacroStatusColor(_ color: DialColor?, area: CodexLightingArea = .macroColumn, signalID: String? = nil, activity: CodexActivity? = nil, allowCompletionToFinish: Bool = false, speed: CodexWaveSpeed = .smooth, pulseWhileWorking: Bool = false, darkBackground: Bool = false) {
         if color != nil {
             let journal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

@@ -17,11 +17,49 @@ final class ChatLightingTests: XCTestCase {
         XCTAssertEqual(arbiter.select([claude, codex], mode: .automatic), codex)
         codexState.receive(event("Stop", 109))
         let done = candidate(codexState, .codex)
+        XCTAssertEqual(arbiter.select([done, claude], mode: .automatic), done)
+        XCTAssertTrue(arbiter.complete(arbiter.presentationID!))
         XCTAssertEqual(arbiter.select([done, claude], mode: .automatic), claude)
-        XCTAssertNil(arbiter.select([done], mode: .automatic), "A completion hidden by ongoing work must not replay later")
+        XCTAssertNil(arbiter.select([done], mode: .automatic), "An acknowledged completion must not replay")
         var claudeState = CodexSessionStatus(event("UserPromptSubmit", 100))
         claudeState.receive(event("Stop", 110))
         XCTAssertEqual(arbiter.select([candidate(claudeState, .claude), done], mode: .automatic)?.provider, .claude)
+    }
+    func testCompletionsQueueBehindApprovalAndSurviveSourceExpiry() {
+        var arbiter = ChatLightingArbiter()
+        let approval = candidate(CodexSessionStatus(event("PermissionRequest", 100)), .codex)
+        let first = candidate(CodexSessionStatus(event("Stop", 108, session: "first")), .claude)
+        let second = candidate(CodexSessionStatus(event("Stop", 109, session: "second")), .codex)
+        XCTAssertEqual(arbiter.select([second, approval, first], mode: .automatic), approval)
+        XCTAssertEqual(arbiter.select([], mode: .automatic), first, "Queued finishes outlive the short hook display window")
+        XCTAssertTrue(arbiter.complete(arbiter.presentationID!))
+        XCTAssertEqual(arbiter.select([], mode: .automatic), second)
+        XCTAssertTrue(arbiter.complete(arbiter.presentationID!))
+        XCTAssertNil(arbiter.select([first, second], mode: .automatic), "Each finish is presented once")
+    }
+    func testApprovalPreemptsCompletionAndResumptionRejectsTheOldAcknowledgment() {
+        var arbiter = ChatLightingArbiter()
+        let done = candidate(CodexSessionStatus(event("Stop", 109)), .claude)
+        let approval = candidate(CodexSessionStatus(event("PermissionRequest", 110)), .codex)
+        XCTAssertEqual(arbiter.select([done], mode: .automatic), done)
+        let interrupted = arbiter.presentationID!
+        XCTAssertEqual(arbiter.select([done, approval], mode: .automatic), approval)
+        XCTAssertFalse(arbiter.complete(interrupted))
+        XCTAssertEqual(arbiter.select([], mode: .automatic), done)
+        XCTAssertNotEqual(arbiter.presentationID, interrupted)
+        XCTAssertFalse(arbiter.complete(interrupted))
+        XCTAssertTrue(arbiter.complete(arbiter.presentationID!))
+        XCTAssertNil(arbiter.select([], mode: .automatic))
+    }
+    func testDisconnectOrSlotRemovalDropsQueuedCompletionAndResetUsesFreshIdentity() {
+        var arbiter = ChatLightingArbiter()
+        let done = candidate(CodexSessionStatus(event("Stop", 109)), .claude)
+        _ = arbiter.select([done], mode: .automatic)
+        let oldID = arbiter.presentationID
+        XCTAssertNil(arbiter.select([], mode: .automatic, eligibleChats: []))
+        arbiter = ChatLightingArbiter()
+        _ = arbiter.select([done], mode: .automatic)
+        XCTAssertNotEqual(arbiter.presentationID, oldID)
     }
     func testApprovalPreemptsNewerWorkAndMostRecentApprovalWins() {
         var arbiter = ChatLightingArbiter()

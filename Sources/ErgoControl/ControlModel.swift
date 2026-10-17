@@ -32,6 +32,7 @@ final class ControlModel: ObservableObject {
     let claude = ChatBridge(provider: .claude)
     let chatPreferences = ChatPreferences()
     private lazy var chatLighting = ChatLightingController(codex: codex, claude: claude)
+    private var chatCompletionTimer: Timer?
     @Published private(set) var chatLightingStatus = "No active chat signal"
     var chat: ChatBridge { chatBridge(for: chatPreferences.provider) }
     func chatBridge(for provider: ChatProvider) -> ChatBridge { provider == .codex ? codex : claude }
@@ -108,6 +109,12 @@ final class ControlModel: ObservableObject {
         }
         claude.onLightingChange = { [weak self] _ in
             self?.updateChatLighting()
+        }
+        bluetooth.onMacroStatusCompletion = { [weak self] id in
+            DispatchQueue.main.async {
+                guard let self, self.running, self.chatLighting.completeWave(id) else { return }
+                self.updateChatLighting()
+            }
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
@@ -353,13 +360,23 @@ final class ControlModel: ObservableObject {
         chatBridge(for: provider).startLightingTest()
     }
     private func updateChatLighting() {
+        chatCompletionTimer?.invalidate(); chatCompletionTimer = nil
+        guard running else {
+            chatLighting.reset(); chatLightingStatus = "Mappings are off"
+            bluetooth.setMacroStatusColor(nil)
+            return
+        }
         let output = chatLighting.output(mode: chatPreferences.lightingMode)
-        let status = !running ? "Mappings are off" : output.provider.map { "\($0.name) · \(output.activity.label)" } ?? "No active chat signal"
+        let status = output.provider.map { "\($0.name) · \(output.activity.label)" } ?? "No active chat signal"
         if chatLightingStatus != status { chatLightingStatus = status }
-        bluetooth.setMacroStatusColor(running ? output.color : nil, area: output.area,
+        bluetooth.setMacroStatusColor(output.color, area: output.area,
             signalID: output.signalID, activity: output.activity,
-            allowCompletionToFinish: running && output.allowCompletionToFinish, speed: output.speed,
+            allowCompletionToFinish: output.allowCompletionToFinish, speed: output.speed,
             pulseWhileWorking: output.pulseWhileWorking, darkBackground: output.darkBackground)
+        if let delay = output.refreshAfter {
+            let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in self?.updateChatLighting() }
+            chatCompletionTimer = timer; RunLoop.main.add(timer, forMode: .common)
+        }
     }
     func createChatProfile(_ provider: ChatProvider) {
         if let existing = configuration.profiles.first(where: { p in
@@ -474,6 +491,7 @@ final class ControlModel: ObservableObject {
         batteryPopupTicket = nil
         controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
+        chatCompletionTimer?.invalidate(); chatCompletionTimer = nil; chatLighting.reset()
         chatLightingStatus = "Mappings are off"
         codex.cancelLightingTest(); claude.cancelLightingTest()
         sessionDeadline = nil

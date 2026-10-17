@@ -21,7 +21,7 @@ final class ChatLightingControllerTests: XCTestCase {
         let record = try JSONDecoder().decode(ClaudeThreadSummary.self, from: JSONSerialization.data(withJSONObject:
             ["sessionId": desktopID, "cliSessionId": claudeID, "title": "Claude example"]))
         claude.receiveClaudeRecords([record])
-        controller = ChatLightingController(codex: codex, claude: claude)
+        controller = ChatLightingController(codex: codex, claude: claude, uptime: { [unowned self] in clock.timeIntervalSince1970 })
     }
     override func tearDownWithError() throws {
         codex.shutdown(); claude.shutdown(); controller = nil; codex = nil; claude = nil
@@ -37,7 +37,7 @@ final class ChatLightingControllerTests: XCTestCase {
         try JSONEncoder().encode(normalized).write(to: folder.appendingPathComponent("\(provider.directory)/events/\(UUID().uuidString).json"))
         bridge.poll()
     }
-    func testLiveBridgeHandoffUsesWinningPaletteAndStyleWithoutLateCompletion() throws {
+    func testCompletionBrieflyOverridesOtherWorkThenResumesItsPaletteAndStyle() throws {
         claude.setLightingArea(.completionWave); claude.setWaveSpeed(.quick); claude.setDarkStatusBackground(true)
         codex.setLightingArea(.wholeKeyboard)
         try emit(.claude, "UserPromptSubmit")
@@ -53,9 +53,13 @@ final class ChatLightingControllerTests: XCTestCase {
         XCTAssertEqual(controller.output(mode: .automatic).provider, .codex)
         try emit(.codex, "Stop")
         output = controller.output(mode: .automatic)
+        XCTAssertEqual(output.provider, .codex); XCTAssertEqual(output.color, codex.statusColors.finished)
+        XCTAssertEqual(output.refreshAfter, 4)
+        clock += 4
+        output = controller.output(mode: .automatic)
         XCTAssertEqual(output.provider, .claude); XCTAssertEqual(output.signalID, claudePhase)
         try emit(.claude, "SessionEnd")
-        XCTAssertNil(controller.output(mode: .automatic).color, "The earlier Codex completion was suppressed while Claude worked")
+        XCTAssertNil(controller.output(mode: .automatic).color, "The Codex completion already played once")
     }
     func testApprovalResumptionReturnsToNewestTurnAndIdleRestoresAfterFinalCompletion() throws {
         codex.setLightingArea(.completionWave); claude.setLightingArea(.completionWave)
@@ -66,13 +70,55 @@ final class ChatLightingControllerTests: XCTestCase {
         try emit(.claude, "PreToolUse")
         XCTAssertEqual(controller.output(mode: .automatic).provider, .codex)
         try emit(.codex, "Stop")
+        let codexCompletion = controller.output(mode: .automatic)
+        XCTAssertEqual(codexCompletion.color, codex.statusColors.finished)
+        XCTAssertTrue(controller.completeWave(try XCTUnwrap(codexCompletion.signalID)))
         XCTAssertEqual(controller.output(mode: .automatic).provider, .claude)
         try emit(.claude, "Stop")
         var output = controller.output(mode: .automatic)
         XCTAssertEqual(output.color, claude.statusColors.finished); XCTAssertEqual(output.activity, .finished)
         clock += 9; codex.poll(); claude.poll()
         output = controller.output(mode: .automatic)
+        XCTAssertEqual(output.activity, .finished, "Wait for the acknowledged wave even after hook activity becomes idle")
+        XCTAssertTrue(controller.completeWave(try XCTUnwrap(output.signalID)))
+        output = controller.output(mode: .automatic)
         XCTAssertNil(output.color); XCTAssertTrue(output.allowCompletionToFinish)
+    }
+    func testClaudeFinishingFirstShowsCyanThenReturnsToCodexWithoutReplaying() throws {
+        codex.setLightingArea(.completionWave); claude.setLightingArea(.completionWave)
+        try emit(.claude, "UserPromptSubmit"); try emit(.codex, "UserPromptSubmit")
+        let working = controller.output(mode: .automatic)
+        XCTAssertEqual(working.provider, .codex)
+        try emit(.claude, "Stop")
+        let completion = controller.output(mode: .automatic)
+        XCTAssertEqual(completion.provider, .claude); XCTAssertEqual(completion.color, claude.statusColors.finished)
+        XCTAssertTrue(controller.completeWave(try XCTUnwrap(completion.signalID)))
+        XCTAssertEqual(controller.output(mode: .automatic).signalID, working.signalID)
+        try emit(.claude, "Stop")
+        XCTAssertEqual(controller.output(mode: .automatic).activity, .working)
+    }
+    func testWorkingHooksNeitherStealNorExtendASolidCompletionNotification() throws {
+        try emit(.codex, "UserPromptSubmit"); try emit(.claude, "Stop")
+        XCTAssertEqual(controller.output(mode: .automatic).color, claude.statusColors.finished)
+        try emit(.codex, "PreToolUse")
+        let stillFinishing = controller.output(mode: .automatic)
+        XCTAssertEqual(stillFinishing.color, claude.statusColors.finished)
+        XCTAssertEqual(stillFinishing.refreshAfter, 3)
+        clock += 3
+        XCTAssertEqual(controller.output(mode: .automatic).color, codex.statusColors.working)
+    }
+    func testApprovalDefersCompletionPastExpiryAndRendererFailureHasFiniteFallback() throws {
+        claude.setLightingArea(.completionWave)
+        try emit(.codex, "PermissionRequest"); try emit(.claude, "Stop")
+        XCTAssertEqual(controller.output(mode: .automatic).color, codex.statusColors.attention)
+        clock += 20; claude.poll()
+        try emit(.codex, "PreToolUse")
+        let completion = controller.output(mode: .automatic)
+        XCTAssertEqual(completion.color, claude.statusColors.finished)
+        XCTAssertEqual(completion.refreshAfter, 30)
+        clock += 30
+        XCTAssertEqual(controller.output(mode: .automatic).provider, .codex)
+        XCTAssertFalse(controller.completeWave(try XCTUnwrap(completion.signalID)))
     }
     func testManualModeAndDisabledProviderRespectOptInsAndShutdown() throws {
         try emit(.codex, "UserPromptSubmit"); try emit(.claude, "UserPromptSubmit")

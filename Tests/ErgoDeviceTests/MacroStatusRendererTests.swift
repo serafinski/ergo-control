@@ -3,6 +3,47 @@ import ErgoCore
 @testable import ErgoDevice
 
 final class MacroStatusRendererTests: XCTestCase {
+    func testAcknowledgedCompletionCanResumeWorkingWithoutRestoringBetweenSignals() {
+        let rig = Rig()
+        let blue = ChatStatusColors.defaults(for: .codex).working
+        let cyan = ChatStatusColors.defaults(for: .claude).finished
+        var completions: [String] = []
+        rig.renderer.onCompletion = { id in
+            completions.append(id)
+            rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        }
+        rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(cyan, area: .completionWave, signalID: "claude-notification", activity: .finished, speed: .quick)
+        for _ in 0..<4 { rig.renderer.pump() }
+        XCTAssertTrue(completions.isEmpty, "Wait for every frame acknowledgment, including the return to M1–M5")
+        rig.renderer.pump()
+        XCTAssertEqual(completions, ["claude-notification"])
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(blue))
+        XCTAssertEqual(rig.operations.filter { $0 == "save" }.count, 1)
+        XCTAssertFalse(rig.operations.contains("restore"))
+        XCTAssertNotNil(rig.saved)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+    func testPreemptedCompletionDoesNotAcknowledgeTheNewApprovalSignal() {
+        let rig = Rig()
+        var completions: [String] = []
+        rig.renderer.onCompletion = { completions.append($0) }
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave,
+            signalID: "finish", activity: .finished, speed: .quick)
+        for _ in 0..<4 { rig.renderer.pump() }
+        rig.beforeReply = { name in
+            if name == "frame" {
+                rig.renderer.request(CodexActivity.attention.color, area: .completionWave,
+                    signalID: "approval", activity: .attention, speed: .quick)
+            }
+        }
+        rig.renderer.pump()
+        XCTAssertTrue(completions.isEmpty)
+        XCTAssertEqual(rig.renderer.desired, CodexActivity.attention.color)
+    }
     func testProviderHandoffsPreserveSnapshotAndResumeWorkWithoutReplayingItsSweep() {
         let rig = Rig()
         let orange = ChatStatusColors.defaults(for: .claude).working

@@ -73,7 +73,7 @@ struct ChatSettingsView: View {
                 Picker("Lighting mode", selection: Binding(get: { model.chatPreferences.lightingMode }, set: model.setChatLightingMode)) {
                     ForEach(ChatLightingMode.allCases) { mode in Text(mode.label).tag(mode) }
                 }
-                Text("Automatic: approval takes priority, then the newest working turn. When it ends, earlier work resumes its color. Completion appears only when no chat is busy.")
+                Text("Approval takes priority. Each completion briefly shows its app’s color or wave, then ongoing work resumes. Close-together finishes play in order; otherwise the newest working turn supplies the color.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Current signal: \(model.chatLightingStatus)").font(.caption)
                 Text("Each included app must have its connection and status lights enabled. Key mappings are independent of this mode.")
@@ -225,8 +225,8 @@ struct ChatSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text(bridge.settings.lightingArea == .completionWave
-                     ? "The working color sweeps once from M1–M5 to the right, then stays on the macro keys. The approval color bounces continuously while approval is pending. The turn-ended color travels right and back once, then restores your normal effect. Brightness stays unchanged."
-                     : "The turn-ended color lasts four seconds, then idle restores your previous effect. Another working chat or pending approval keeps its signal active. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
+                     ? "The working color sweeps once from M1–M5 to the right, then stays on the macro keys. The approval color bounces while approval is pending. Each completion travels right and back once, then returns to ongoing work or your normal effect. Brightness stays unchanged."
+                     : "Each completion shows its color for four seconds, then returns to ongoing work or your previous effect. Pending approval takes priority. Macro column dims the other keys; Whole keyboard uses a solid color across all zones. Brightness stays unchanged.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     if let stage = bridge.lightingTestStage {
