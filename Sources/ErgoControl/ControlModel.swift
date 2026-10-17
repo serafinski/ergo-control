@@ -503,11 +503,14 @@ final class ControlModel: ObservableObject {
             engine.physicalModifiers = snapshot.modifiers
             ordinary = current
         } else if id == 5 {
-            guard let events = extraDecoder.decode(reportID: id, bytes: data) else { stop("Unexpected extra-key packet; mappings stopped.", level: .error); return }
+            guard let events = extraDecoder.decode(reportID: id, bytes: data, at: ProcessInfo.processInfo.systemUptime) else { stop("Unexpected extra-key packet; mappings stopped.", level: .error); return }
             guard running || relayOpened && relay.accessMode == .fullKeyboard else { return }
             if !events.isEmpty { lightingAutomation.userActivity() }
             for event in events {
                 guard relayOpened else { return }
+                if DriverMediaControls.usage(forExtraKey: event.key) != nil, relay.accessMode == .fullKeyboard {
+                    forwardExtraMedia([event]); continue
+                }
                 let control = "extra:\(event.key)"
                 if event.pressed { lastControl = ControlCatalog.label(control); extraActions[event.key] = running ? action(for: control) : MappingAction() }
                 let mapping = extraActions[event.key] ?? MappingAction()
@@ -517,19 +520,28 @@ final class ControlModel: ObservableObject {
                 } else { execute(mapping, control: control, pressed: event.pressed) }
                 if !event.pressed { extraActions.removeValue(forKey: event.key) }
             }
+            scheduleMediaRelease()
         } else if id == 2 {
             guard let pointer = KeyboardPointerReport(data) else {
                 stop("Malformed PT Ergo pointer report (id \(id), \(bytes.count) bytes); mappings stopped.", level: .error); return
             }
             if pointer.hasAuxiliaryInput {
-                let note = "Auxiliary PT Ergo pointer fields ignored; dial mapping continues (buttons \(pointer.buttons), wheel \(pointer.verticalWheel != 0), movement \(pointer.deltaX != 0 || pointer.deltaY != 0))."
+                let note = "Auxiliary PT Ergo pointer fields ignored; dial mapping continues (buttons \(pointer.buttons), movement \(pointer.deltaX != 0 || pointer.deltaY != 0))."
                 if note != lastPointerNote { logs.record(note, category: "Keyboard"); lastPointerNote = note }
             }
-            let steps = pointer.horizontalPan; guard running, steps != 0 else { return }
-            lightingAutomation.userActivity()
-            let control = steps > 0 ? "leftCW" : "leftCCW"
-            lastControl = ControlCatalog.label(control)
-            for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control), fromDial: true) }
+            guard running else { return }
+            let steps = pointer.horizontalPan
+            if steps != 0 {
+                lightingAutomation.userActivity()
+                let control = steps > 0 ? "leftCW" : "leftCCW"
+                lastControl = ControlCatalog.label(control)
+                for _ in 0..<min(32, abs(steps)) { engine.perform(action(for: control), fromDial: true) }
+            }
+            if pointer.verticalWheel != 0 {
+                let events = consumer.accept(DriverMediaControls.wheelEvents(pointer.verticalWheel), source: .wheel,
+                                             at: ProcessInfo.processInfo.systemUptime)
+                forwardMedia(events, source: "right-roller wheel")
+            }
         } else if id == 3 {
             guard let events = consumer.decode(data, at: ProcessInfo.processInfo.systemUptime) else {
                 stop("Unexpected media packet; mappings stopped.", level: .error); return
@@ -551,6 +563,13 @@ final class ControlModel: ObservableObject {
             scheduleMediaRelease()
         }
         else { stop("This input report needs support (\(id)); mappings stopped.", level: .error) }
+    }
+
+    private func forwardExtraMedia(_ events: [ExtraKeyEvent]) {
+        let media = events.compactMap { event -> ConsumerKeyEvent? in
+            DriverMediaControls.usage(forExtraKey: event.key).map { ConsumerKeyEvent($0, pressed: event.pressed) }
+        }
+        forwardMedia(consumer.accept(media, source: .extraKey, at: ProcessInfo.processInfo.systemUptime), source: "driver extra-key record")
     }
 
     private func configureMediaRouting() {
@@ -597,10 +616,12 @@ final class ControlModel: ObservableObject {
 
     private func scheduleMediaRelease() {
         mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil
-        guard relayOpened, let deadline = consumer.releaseDeadline else { return }
+        guard relayOpened, let deadline = [consumer.releaseDeadline, extraDecoder.mediaReleaseDeadline].compactMap({ $0 }).min() else { return }
         let timer = Timer(timeInterval: max(0.001, deadline - ProcessInfo.processInfo.systemUptime), repeats: false) { [weak self] _ in
             guard let self, self.relayOpened else { return }
-            self.forwardMedia(self.consumer.releaseExpired(at: ProcessInfo.processInfo.systemUptime))
+            let now = ProcessInfo.processInfo.systemUptime
+            self.forwardMedia(self.consumer.releaseExpired(at: now))
+            self.forwardExtraMedia(self.extraDecoder.releaseMediaExpired(at: now))
             self.scheduleMediaRelease()
         }
         mediaReleaseTimer = timer

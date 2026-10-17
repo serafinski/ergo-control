@@ -7,7 +7,7 @@ final class InputReportDecoderTests: XCTestCase {
         XCTAssertEqual(decoder.describe(reportID: 2, hexadecimal: "020000010000000000"), ["Left dial · clockwise"])
         XCTAssertEqual(decoder.describe(reportID: 2, hexadecimal: "020000ff0000000000"), ["Left dial · counterclockwise"])
         XCTAssertNil(decoder.describe(reportID: 2, hexadecimal: "020100010000000000"))
-        XCTAssertNil(decoder.describe(reportID: 2, hexadecimal: "020000000100000000"))
+        XCTAssertEqual(decoder.describe(reportID: 2, hexadecimal: "020000000100000000"), ["Right roller · volume up"])
         XCTAssertNil(decoder.describe(reportID: 2, hexadecimal: "020000010001000000"))
     }
 

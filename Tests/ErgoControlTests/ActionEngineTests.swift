@@ -368,6 +368,26 @@ final class ActionEngineTests: XCTestCase {
         engine.stop()
         XCTAssertEqual(native.count, 12)
     }
+    func testProductExtraMediaAndWheelReachNativeOutputWithMissingReleaseRecovery() {
+        var native: [ConsumerKeyEvent] = []
+        let engine = ActionEngine(mediaOutput: { native.append(ConsumerKeyEvent($0, pressed: $1)) })
+        var extra = ExtraKeyDecoder(), state = MediaInputState()
+        func forward(_ events: [ExtraKeyEvent], at time: Double) {
+            let media = events.compactMap { event in
+                DriverMediaControls.usage(forExtraKey: event.key).map { ConsumerKeyEvent($0, pressed: event.pressed) }
+            }
+            for event in state.accept(media, source: .extraKey, at: time) { _ = engine.media(event.usage, pressed: event.pressed) }
+        }
+        for (i, key): (Int, UInt8) in [82,83,84,85].enumerated() {
+            let time = Double(i)
+            forward(extra.decode(reportID: 5, bytes: Data([5,4,key] + Array(repeating: 0, count: 9)), at: time)!, at: time)
+            forward(extra.releaseMediaExpired(at: time + 0.31), at: time + 0.31)
+        }
+        for event in state.accept(DriverMediaControls.wheelEvents(2), source: .wheel, at: 5) { _ = engine.media(event.usage, pressed: event.pressed) }
+        XCTAssertEqual(native, [UInt16(0xe2),0xb5,0xb6,0xcd,0xe9,0xe9].flatMap { [ConsumerKeyEvent($0, pressed: true), ConsumerKeyEvent($0, pressed: false)] })
+        engine.stop()
+        XCTAssertEqual(native.count, 12)
+    }
     func testStopReleasesHeldMediaAndRejectsUnknownOutput() {
         var output: [ConsumerKeyEvent] = []
         let engine = ActionEngine(mediaOutput: { usage, pressed in output.append(ConsumerKeyEvent(usage, pressed: pressed)) })

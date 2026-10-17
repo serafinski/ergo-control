@@ -16,12 +16,18 @@ public struct InputReportDecoder {
             bytes.append(byte)
         }
         guard bytes[0] == reportID else { return nil }
-        // Confirmed nine-byte report 2: left dial uses signed horizontal pan.
-        if reportID == 2, bytes.count == 9, bytes[1] == 0, bytes[2] == 0,
-           bytes.dropFirst(4).allSatisfy({ $0 == 0 }), bytes[3] != 0 {
-            let steps = Int(Int8(bitPattern: bytes[3]))
-            let direction = steps > 0 ? "clockwise" : "counterclockwise"
-            return ["Left dial · \(direction)" + (abs(steps) == 1 ? "" : " · \(abs(steps)) steps")]
+        // Both dial axes have product-defined defaults; other pointer fields
+        // remain visible as raw diagnostics rather than simulated mouse input.
+        if reportID == 2, let pointer = KeyboardPointerReport(Data(bytes)), bytes[2] == 0, !pointer.hasAuxiliaryInput {
+            var events: [String] = []
+            if pointer.horizontalPan != 0 {
+                let steps = pointer.horizontalPan
+                events.append("Left dial · \(steps > 0 ? "clockwise" : "counterclockwise")" + (abs(steps) == 1 ? "" : " · \(abs(steps)) steps"))
+            }
+            if pointer.verticalWheel != 0 {
+                events.append("Right roller · volume \(pointer.verticalWheel > 0 ? "up" : "down")")
+            }
+            if !events.isEmpty { return events }
         }
         if let events = extraKeys.decode(reportID: reportID, bytes: Data(bytes)) {
             return events.map { "\($0.name) · \($0.pressed ? "pressed" : "released")" }

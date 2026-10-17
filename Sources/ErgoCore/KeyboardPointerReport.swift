@@ -2,15 +2,15 @@ import Foundation
 
 /// PT Ergo report 2, as declared by its HID descriptor: five buttons, constant
 /// padding, signed horizontal pan/wheel, then signed 16-bit relative X/Y.
-/// Only horizontal pan drives custom dial mappings. The separate report-5 click
-/// owns mode switching; auxiliary pointer fields must not duplicate that action.
+/// Horizontal pan drives the left dial; vertical wheel drives the right roller.
+/// Report-5 clicks own mode switching/mute; button/movement fields are auxiliary.
 public struct KeyboardPointerReport {
     public let buttons: UInt8
     public let horizontalPan: Int
     public let verticalWheel: Int
     public let deltaX: Int
     public let deltaY: Int
-    public var hasAuxiliaryInput: Bool { buttons != 0 || verticalWheel != 0 || deltaX != 0 || deltaY != 0 }
+    public var hasAuxiliaryInput: Bool { buttons != 0 || deltaX != 0 || deltaY != 0 }
     public init?(_ data: Data) {
         let bytes = Array(data)
         guard bytes.count == 9, bytes[0] == 2 else { return nil }

@@ -13,52 +13,57 @@ public struct DriverMediaRecord: Equatable {
     }
 }
 
-/// Native report-3 key lifetimes and vendor momentary media records share one
-/// output path. Correlate only across sources: repeated vendor volume steps are
-/// distinct actions, while a native+vendor copy must not toggle playback twice.
+/// Defaults from the exact Pro Type Ergo product input table.
+public enum DriverMediaControls {
+    public static func usage(forExtraKey key: UInt8) -> UInt16? {
+        switch key { case 82: return 0xe2; case 83: return 0xb5; case 84: return 0xb6; case 85: return 0xcd; default: return nil }
+    }
+    public static func wheelEvents(_ steps: Int) -> [ConsumerKeyEvent] {
+        guard steps != 0 else { return [] }
+        let usage: UInt16 = steps > 0 ? 0xe9 : 0xea
+        return (0..<min(32, abs(steps))).flatMap { _ in [ConsumerKeyEvent(usage, pressed: true), ConsumerKeyEvent(usage, pressed: false)] }
+    }
+}
+
+public enum MediaInputSource: Hashable { case nativeConsumer, driverRecord, extraKey, wheel }
+
+/// Correlate each duplicated gesture only once across sources. Same-source
+/// wheel detents and separate key presses are never treated as duplicates.
 public struct MediaInputState {
     public static let crossSourceWindow: TimeInterval = 0.08
+    private struct Key: Hashable { let source: MediaInputSource; let usage: UInt16 }
+    private struct Gesture { let time: TimeInterval; var sources: Set<MediaInputSource> }
     private var native = ConsumerKeyState()
-    private var nativePresses: [UInt16: TimeInterval] = [:]
-    private var driverPulses: [UInt16: TimeInterval] = [:]
-    private var suppressedNative: Set<UInt16> = []
+    private var recent: [UInt16: Gesture] = [:]
+    private var suppressedReleases: Set<Key> = []
     public var releaseDeadline: TimeInterval? { native.releaseDeadline }
     public init() {}
-
     public mutating func decode(_ report: Data, at now: TimeInterval) -> [ConsumerKeyEvent]? {
         if let record = DriverMediaRecord(report) {
-            var events = releaseExpired(at: now)
-            guard record.usage != 0 else { return events }
-            // Keep histories bounded even for malformed/unsupported usages.
-            prune(at: now)
-            driverPulses[record.usage] = now
-            if let previous = nativePresses[record.usage], now - previous <= Self.crossSourceWindow { return events }
-            events.append(ConsumerKeyEvent(record.usage, pressed: true))
-            events.append(ConsumerKeyEvent(record.usage, pressed: false))
-            return events
+            let expired = releaseExpired(at: now)
+            guard record.usage != 0 else { return expired }
+            return expired + accept([.init(record.usage, pressed: true), .init(record.usage, pressed: false)], source: .driverRecord, at: now)
         }
         guard let events = native.decode(report, at: now) else { return nil }
-        prune(at: now)
-        return filterNative(events, at: now)
+        return accept(events, source: .nativeConsumer, at: now)
     }
     public mutating func releaseExpired(at now: TimeInterval) -> [ConsumerKeyEvent] {
-        filterNative(native.releaseExpired(at: now), at: now)
+        accept(native.releaseExpired(at: now), source: .nativeConsumer, at: now)
     }
-    private mutating func filterNative(_ events: [ConsumerKeyEvent], at now: TimeInterval) -> [ConsumerKeyEvent] {
+    public mutating func accept(_ events: [ConsumerKeyEvent], source: MediaInputSource, at now: TimeInterval) -> [ConsumerKeyEvent] {
+        recent = recent.filter { now - $0.value.time <= Self.crossSourceWindow }
         var output: [ConsumerKeyEvent] = []
         for event in events {
+            let key = Key(source: source, usage: event.usage)
             if event.pressed {
-                nativePresses[event.usage] = now
-                if let previous = driverPulses[event.usage], now - previous <= Self.crossSourceWindow {
-                    suppressedNative.insert(event.usage); continue
+                if var gesture = recent[event.usage], !gesture.sources.contains(source) {
+                    gesture.sources.insert(source); recent[event.usage] = gesture
+                    suppressedReleases.insert(key); continue
                 }
-            } else if suppressedNative.remove(event.usage) != nil { continue }
+                recent[event.usage] = Gesture(time: now, sources: [source])
+            } else if suppressedReleases.remove(key) != nil { continue }
             output.append(event)
         }
         return output
-    }
-    private mutating func prune(at now: TimeInterval) {
-        nativePresses = nativePresses.filter { now - $0.value <= Self.crossSourceWindow }
-        driverPulses = driverPulses.filter { now - $0.value <= Self.crossSourceWindow }
     }
 }

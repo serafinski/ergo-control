@@ -4,7 +4,15 @@ Build: `zsh tools/build_app.sh`. Application: `build/Ergo Control.app`, bundle I
 
 This native SwiftUI app has local profiles, app-based automatic switching, ordinary-key and extra-control assignments, configurable command-dial modes, an alternate layer, and a menu-bar control. Actions include shortcuts, timed macros, text, app launch, selected zsh scripts, scrolling, media, dial-mode cycling, and battery display.
 
-The current app is **0.9.4**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+The current app is **0.9.5**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
+
+## Product-defined driver controls (0.9.5)
+
+The report-6 change alone did not restore media; its path produced no media log entries during the user's retest. Further static inspection of the exact Pro Type Ergo product table found the actual driver defaults: MouseInput ScrollUp/ScrollDown map to volume up/down; DKM 82 is the right roller click, 83 is Next, 84 is Previous and 85 is Play/Pause. The application had ignored vertical wheel reports and treated these extra IDs as unmapped controls. This matches the user's original wheel-ignored log; it was relevant to volume input rather than an innocuous unrelated field.
+
+Report-2 vertical wheel steps now enter the existing rightCW/rightCCW mappings as volume pulses, capped at 32 per packet. Report-5 media keys enter the existing rightClick/mediaSingle/mediaDouble/mediaTriple mappings with captured press ownership. Missing neutral reports for the three media-gesture extra keys are released/rearmed after 300 ms without releasing held macro/split keys or a held right-roller click. Left horizontal pan, mode clicks and auxiliary button/movement handling are otherwise preserved. MediaInputState correlates the same gesture once across native, vendor, extra-key and wheel sources within 80 ms; consecutive same-source detents remain distinct even after a copied event. The probe now labels both roller axes and these extra controls.
+
+All 266 local tests pass, including product ID mapping, right-axis direction, timeout rearming with a held macro, duplicate copies across all input paths, and end-to-end engine output. Live physical direction/playback verification is pending. Native macOS routing remains selected by default and focus-first playback remains experimental/off. No helper or hook reinstall is required.
 
 ## Driver-mode media input (0.9.4)
 

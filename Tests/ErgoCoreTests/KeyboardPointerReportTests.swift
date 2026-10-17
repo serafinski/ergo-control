@@ -26,6 +26,12 @@ final class KeyboardPointerReportTests: XCTestCase {
         XCTAssertEqual(report.horizontalPan, 0)
         XCTAssertFalse(report.hasAuxiliaryInput)
     }
+    func testRightRollerWheelIsAControlRatherThanIgnoredAuxiliaryInput() throws {
+        let report = try XCTUnwrap(KeyboardPointerReport(Data([2,0,0,0,1,0,0,0,0])))
+        XCTAssertEqual(report.verticalWheel, 1)
+        XCTAssertEqual(report.horizontalPan, 0)
+        XCTAssertFalse(report.hasAuxiliaryInput)
+    }
     func testMalformedReportsStillReject() {
         XCTAssertNil(KeyboardPointerReport(Data([2,0,0])))
         XCTAssertNil(KeyboardPointerReport(Data([5,0,0,1,0,0,0,0,0])))

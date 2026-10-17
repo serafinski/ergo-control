@@ -55,6 +55,51 @@ final class MediaInputStateTests: XCTestCase {
         XCTAssertEqual(state.decode(native(0), at: 0.4), [])
         XCTAssertEqual(state.decode(driver(0xcd), at: 1), pulse(0xcd))
     }
+    func testExactProductExtraControlsAndRollerDirections() {
+        XCTAssertEqual(DriverMediaControls.usage(forExtraKey: 82), 0xe2)
+        XCTAssertEqual(DriverMediaControls.usage(forExtraKey: 83), 0xb5)
+        XCTAssertEqual(DriverMediaControls.usage(forExtraKey: 84), 0xb6)
+        XCTAssertEqual(DriverMediaControls.usage(forExtraKey: 85), 0xcd)
+        for key: UInt8 in [32,36,65,96,247,251,252,253] { XCTAssertNil(DriverMediaControls.usage(forExtraKey: key)) }
+        XCTAssertEqual(DriverMediaControls.wheelEvents(2), pulse(0xe9) + pulse(0xe9))
+        XCTAssertEqual(DriverMediaControls.wheelEvents(-1), pulse(0xea))
+        XCTAssertEqual(DriverMediaControls.wheelEvents(0), [])
+        XCTAssertEqual(DriverMediaControls.wheelEvents(127).count, 64)
+    }
+    func testCopiesAcrossAllInputPathsToggleOnlyOnce() {
+        var state = MediaInputState()
+        XCTAssertEqual(state.decode(driver(0xcd), at: 0), pulse(0xcd))
+        XCTAssertEqual(state.decode(native(0xcd), at: 0.01), [])
+        XCTAssertEqual(state.accept(pulse(0xcd), source: .extraKey, at: 0.02), [])
+        XCTAssertEqual(state.accept(pulse(0xcd), source: .wheel, at: 0.03), [])
+        XCTAssertEqual(state.decode(native(0), at: 0.05), [])
+    }
+    func testNextSameSourceDetentIsPreservedAfterACrossSourceCopy() {
+        var state = MediaInputState()
+        _ = state.decode(native(0xe9), at: 0)
+        XCTAssertEqual(state.accept(pulse(0xe9), source: .wheel, at: 0.01), [])
+        XCTAssertEqual(state.accept(pulse(0xe9), source: .wheel, at: 0.02), pulse(0xe9))
+        XCTAssertEqual(state.accept(pulse(0xe9), source: .wheel, at: 0.03), pulse(0xe9))
+    }
+    func testRightRollerClickKeepsItsPhysicalLifetimeForHoldMappings() {
+        var decoder = ExtraKeyDecoder()
+        let press = Data([5,4,82] + Array(repeating: 0, count: 9))
+        XCTAssertEqual(decoder.decode(reportID: 5, bytes: press, at: 0), [ExtraKeyEvent(key: 82, pressed: true)])
+        XCTAssertNil(decoder.mediaReleaseDeadline)
+        XCTAssertEqual(decoder.releaseMediaExpired(at: 10), [])
+        XCTAssertEqual(decoder.decode(reportID: 5, bytes: Data([5,4] + Array(repeating: 0, count: 10)), at: 11), [ExtraKeyEvent(key: 82, pressed: false)])
+    }
+    func testExtraMediaTimeoutRearmsMissingNeutralWithoutReleasingMacroKeys() {
+        var decoder = ExtraKeyDecoder()
+        let press = Data([5,4,32,85] + Array(repeating: 0, count: 8))
+        XCTAssertEqual(decoder.decode(reportID: 5, bytes: press, at: 0)?.map(\.key), [32,85])
+        XCTAssertEqual(decoder.releaseMediaExpired(at: 0.29), [])
+        XCTAssertEqual(decoder.releaseMediaExpired(at: 0.31), [ExtraKeyEvent(key: 85, pressed: false)])
+        XCTAssertEqual(decoder.decode(reportID: 5, bytes: press, at: 1), [ExtraKeyEvent(key: 85, pressed: true)])
+        XCTAssertEqual(decoder.releaseMediaExpired(at: 1.31), [ExtraKeyEvent(key: 85, pressed: false)])
+        XCTAssertEqual(decoder.decode(reportID: 5, bytes: Data([5,4] + Array(repeating: 0, count: 10)), at: 2), [ExtraKeyEvent(key: 32, pressed: false)])
+        XCTAssertNil(decoder.mediaReleaseDeadline)
+    }
     func testProbeDescribesVendorMediaWithoutTreatingBrightnessNotificationAsPlayback() {
         var decoder = InputReportDecoder()
         XCTAssertEqual(decoder.describe(reportID: 6, hexadecimal: "0602e9000000000000000000"), ["Volume up · driver media event"])

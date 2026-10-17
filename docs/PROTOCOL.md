@@ -89,7 +89,7 @@ Static provenance (vendor sources remain local and ignored):
 | Physical report | Format and purpose |
 | --- | --- |
 | 1 | 12-byte ordinary keyboard snapshot: report ID, modifiers, ten held HID usages |
-| 2 | 9 bytes: five button bits in byte 1, constant padding in byte 2, signed horizontal pan at byte 3, signed wheel at byte 4, signed little-endian 16-bit X/Y at bytes 5–8. Driver-mode left rotation uses pan. Auxiliary fields are valid and ignored by custom dial mappings. |
+| 2 | 9 bytes: five button bits in byte 1, constant padding in byte 2, signed horizontal pan at byte 3, signed wheel at byte 4, signed little-endian 16-bit X/Y at bytes 5–8. Driver-mode left rotation uses pan; the product default maps vertical wheel to right-roller volume in 0.9.5. Only button/movement fields remain auxiliary. |
 | 3 | 12-byte consumer snapshot; little-endian usage at bytes 1–2, zero on release |
 | 4 | System input; not currently relayed by the mapping app |
 | 5 | 12-byte extra-key snapshot: `[5, 4, key set…]`, ten identifier bytes |
@@ -103,6 +103,9 @@ The following report-5 identifiers were captured independently in verified drive
 | AI | 247 (`f7`) |
 | Left dial click | 96 (`60`) |
 | Battery button | 65 (`41`) |
+
+Static product-table media identifiers (0.9.5; live validation pending): right roller click 82 (`52`), next/double 83 (`53`), previous/triple 84 (`54`), play-pause/single 85 (`55`). The same exact product table maps MouseInput ScrollUp to VolumeUp and ScrollDown to VolumeDown. These enter the existing canonical media controls rather than being exposed as duplicate mapping cards. Source artifact `main.c8f8537456ab6ae7c847.js`, SHA-256 already recorded above. Only numeric protocol/default associations are reimplemented.
+
 
 Example M1 press: `050420000000000000000000`; release: `050400000000000000000000`. The shared report ID does not make the controls identical.
 
