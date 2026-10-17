@@ -316,6 +316,7 @@ public final class BluetoothController: NSObject, ObservableObject, CBCentralMan
         else {
             connectionInProgress = false
             ready = false
+            driverModeVerified = false
             status = central.state == .unauthorized ? "Bluetooth access is required for Ergo Bluetooth in System Settings." : "Bluetooth is unavailable; enable it and retry."
         }
     }

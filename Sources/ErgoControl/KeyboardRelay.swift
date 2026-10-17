@@ -19,7 +19,10 @@ final class KeyboardRelay {
             accessMode = .fullKeyboard
             let client = HelperInputClient(); helper = client
             client.onReport = { [weak self] id, bytes in self?.onReport?(id, bytes) }
-            client.onFailure = { [weak self] message in self?.onFailure?(message) }
+            client.onFailure = { [weak self] message in
+                if InputCaptureStopReason(helperMessage: message) == .keyboardDisconnected { self?.onDisconnect?() }
+                else { self?.onFailure?(message) }
+            }
             client.start { [weak self, weak client] result in
                 guard let self, let client, self.helper === client else { return }
                 switch result {

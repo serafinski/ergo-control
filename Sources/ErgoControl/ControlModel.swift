@@ -45,6 +45,7 @@ final class ControlModel: ObservableObject {
     private var lastPointerNote: String?
     private var lastVendorNote: String?
     private var automaticStart = AutomaticMappingStart()
+    private var reconnectPolicy = MappingReconnectPolicy()
     private var automaticStartTimer: Timer?
     private var resumeAfterWake = false
     private let relay = KeyboardRelay()
@@ -121,7 +122,7 @@ final class ControlModel: ObservableObject {
             DispatchQueue.main.async { self?.updateProfile() }
         }.store(in: &subscriptions)
         relay.onReport = { [weak self] id, bytes in self?.receive(id, bytes) }
-        relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.", level: .warning) }
+        relay.onDisconnect = { [weak self] in self?.keyboardDisconnected() }
         relay.onFailure = { [weak self] message in self?.stop(message, level: .error) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message, level: .error) }
         engine.onNativeMedia = { [weak self] usage, pressed in
@@ -191,6 +192,7 @@ final class ControlModel: ObservableObject {
             guard let self else { return }
             if verified && self.preparing && self.relayOpened {
                 self.running = true; self.preparing = false
+                self.reconnectPolicy.activated(timed: self.sessionDeadline != nil)
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.running else { return }
                     self.updateProfile()
@@ -201,8 +203,8 @@ final class ControlModel: ObservableObject {
                     : "Mappings active · PT Ergo only"
                 self.logs.record(self.status, category: "Keyboard")
             } else if !verified && self.running {
-                self.stop(self.bluetooth.ready ? "Keyboard driver mode could not be verified. Mappings stopped safely."
-                    : "PT Ergo’s Bluetooth configuration connection ended. Mappings stopped safely; reconnect the keyboard, then enable mappings.", level: .warning)
+                if !self.bluetooth.ready { self.keyboardDisconnected() }
+                else { self.stop("Keyboard driver mode could not be verified. Mappings stopped safely.", level: .warning) }
             }
         }.store(in: &subscriptions)
         updateProfile()
@@ -220,6 +222,19 @@ final class ControlModel: ObservableObject {
         waitingForAutomaticStart = false
         automaticStart.cancel()
         automaticStartTimer?.invalidate(); automaticStartTimer = nil
+    }
+    private func keyboardDisconnected() {
+        switch reconnectPolicy.connectionLost(running: running, preparing: preparing,
+                                               automatic: startup.automaticMappings, terminating: terminating) {
+        case .ignore: return
+        case .stop:
+            stop("PT Ergo disconnected. Mappings stopped; enable them again when the keyboard is ready.", level: .warning)
+        case .resume:
+            stop("PT Ergo disconnected. Saved mappings will resume automatically after reconnection and restoration.", level: .warning)
+            batterySchedule.refresh()
+            beginAutomaticStart()
+            pollBattery()
+        }
     }
     private func beginAutomaticStart() {
         guard !terminating, !running, !preparing, error == nil else { return }
@@ -487,6 +502,7 @@ final class ControlModel: ObservableObject {
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified", level: AppLog.Level = .info) {
         logs.record(message, category: "Keyboard", level: level)
         cancelAutomaticStart()
+        reconnectPolicy.cancel()
         bluetooth.setMacroStatusColor(nil)
         batteryPopupTicket = nil
         controlIndicator.dismiss()
