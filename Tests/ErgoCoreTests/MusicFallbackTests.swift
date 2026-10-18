@@ -16,7 +16,7 @@ final class MusicFallbackTests: XCTestCase {
         for app in [MusicFallbackApplication.music, .spotify] {
             XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .available), .system)
             XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .none), .open(app))
-            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .unknown), .unavailable)
+            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .unknown), .system)
         }
     }
     func testSavedChoicePreservesLegacyDefaultAndUsesExactApplicationIdentities() {

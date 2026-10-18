@@ -9,14 +9,19 @@ final class MusicFallbackController {
     private let query: Query
     private let open: Open
     private let system: (MediaPlaybackCommand) -> Void
+    private let isRunning: (MusicFallbackApplication) -> Bool
     private var preferred: MusicFallbackApplication = .system
     private var generation = 0
     private var active = false
     private var pending = false
     init(query: @escaping Query = SystemMediaTarget().query,
          open: @escaping Open = MusicFallbackController.openApplication,
+         isRunning: @escaping (MusicFallbackApplication) -> Bool = { app in
+             guard let id = app.bundleID else { return false }
+             return NSRunningApplication.runningApplications(withBundleIdentifier: id).contains { !$0.isTerminated }
+         },
          system: @escaping (MediaPlaybackCommand) -> Void = MacMediaKeys.postPlayback) {
-        self.query = query; self.open = open; self.system = system
+        self.query = query; self.open = open; self.isRunning = isRunning; self.system = system
     }
     func start(preferred: MusicFallbackApplication) {
         stop(); self.preferred = preferred; active = true
@@ -26,17 +31,21 @@ final class MusicFallbackController {
         guard active else { return }
         guard command == .playPause, preferred != .system else { sendSystem(command); return }
         guard !pending else { return }
+        // An idle/paused app may not publish a MediaRemote client yet. Once
+        // the preferred player is open, preserve the ordinary media command
+        // instead of repeatedly activating it and swallowing Play/Pause.
+        guard !isRunning(preferred) else { sendSystem(command); return }
         pending = true
         let ticket = generation, application = preferred
         query { [weak self] availability in
             guard let self, self.active, self.generation == ticket else { return }
             guard stillCurrent() else { self.pending = false; return }
+            guard !self.isRunning(application) else {
+                self.pending = false; self.sendSystem(command); return
+            }
             switch MusicFallbackDecision.resolve(command: command, preferred: application, target: availability) {
             case .system:
                 self.pending = false; self.sendSystem(command)
-            case .unavailable:
-                self.pending = false
-                self.onNotice?("The current media player could not be determined. Choose macOS default under Keyboard → Buttons to use system playback.")
             case .open(let app):
                 self.open(app) { [weak self] error in
                     guard let self, self.active, self.generation == ticket else { return }
