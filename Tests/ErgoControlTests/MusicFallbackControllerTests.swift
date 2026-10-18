@@ -10,10 +10,16 @@ final class MusicFallbackControllerTests: XCTestCase {
         var native: [MediaPlaybackCommand] = []
         var notices: [String] = []
         var running: Set<MusicFallbackApplication> = []
+        var playback: [MusicFallbackApplication] = []
+        var playbackReplies: [(String?) -> Void] = []
+        var playbackCurrent: [() -> Bool] = []
         lazy var controller: MusicFallbackController = {
             let value = MusicFallbackController(query: { [unowned self] in queries.append($0) },
                 open: { [unowned self] app, completion in opens.append(app); openReplies.append(completion) },
                 isRunning: { [unowned self] in running.contains($0) },
+                playback: { [unowned self] app, current, completion in
+                    playback.append(app); playbackCurrent.append(current); playbackReplies.append(completion)
+                },
                 system: { [unowned self] in native.append($0) })
             value.onNotice = { [unowned self] in notices.append($0) }
             return value
@@ -43,27 +49,53 @@ final class MusicFallbackControllerTests: XCTestCase {
         XCTAssertEqual(rig.notices.last, "Spotify is not installed")
         XCTAssertEqual(rig.native, [.playPause], "Missing app must not send another command")
     }
-    func testOpenPreferredPlayerKeepsEveryPlayPausePressWithoutQueryingOrReopening() {
+    func testOpenPreferredPlayerWithoutMediaTargetUsesItsOwnPlaybackControl() {
         for app in [MusicFallbackApplication.spotify, .music] {
             let rig = Rig(); rig.running.insert(app); rig.controller.start(preferred: app)
-            rig.controller.perform(.playPause); rig.controller.perform(.playPause)
-            XCTAssertEqual(rig.native, [.playPause, .playPause])
-            XCTAssertTrue(rig.queries.isEmpty); XCTAssertTrue(rig.opens.isEmpty)
+            for index in 0..<2 {
+                rig.controller.perform(.playPause); rig.queries[index](.none); rig.playbackReplies[index](nil)
+            }
+            XCTAssertEqual(rig.playback, [app, app])
+            XCTAssertTrue(rig.native.isEmpty); XCTAssertTrue(rig.opens.isEmpty)
         }
     }
     func testPressAfterIdleLaunchControlsThePlayerEvenWithoutPublishedMediaTarget() {
         let rig = Rig(); rig.controller.start(preferred: .spotify)
         rig.controller.perform(.playPause); rig.queries[0](.none)
         rig.running.insert(.spotify); rig.openReplies[0](nil)
-        rig.controller.perform(.playPause); rig.controller.perform(.playPause)
-        XCTAssertEqual(rig.opens, [.spotify]); XCTAssertEqual(rig.queries.count, 1)
-        XCTAssertEqual(rig.native, [.playPause, .playPause])
+        rig.controller.perform(.playPause); rig.queries[1](.none); rig.playbackReplies[0](nil)
+        XCTAssertEqual(rig.opens, [.spotify]); XCTAssertEqual(rig.playback, [.spotify])
+        XCTAssertTrue(rig.native.isEmpty, "A global Play can launch Apple Music before Spotify owns a session")
     }
-    func testPlayerOpeningDuringQueryKeepsNativePlaybackInsteadOfReopeningIt() {
+    func testPlayerOpeningDuringQueryUsesItsPlaybackControlInsteadOfReopeningIt() {
         let rig = Rig(); rig.controller.start(preferred: .spotify)
         rig.controller.perform(.playPause); rig.running.insert(.spotify)
         rig.queries[0](.none)
-        XCTAssertTrue(rig.opens.isEmpty); XCTAssertEqual(rig.native, [.playPause])
+        XCTAssertTrue(rig.opens.isEmpty); XCTAssertTrue(rig.native.isEmpty); XCTAssertEqual(rig.playback, [.spotify])
+    }
+    func testExistingSystemPlayerKeepsCommandEvenWhilePreferredAppIsOpen() {
+        let rig = Rig(); rig.running.insert(.spotify); rig.controller.start(preferred: .spotify)
+        rig.controller.perform(.playPause); rig.queries[0](.available)
+        XCTAssertEqual(rig.native, [.playPause]); XCTAssertTrue(rig.playback.isEmpty)
+    }
+    func testUnknownSystemTargetWithOpenSpotifyUsesSpotifyWithoutGlobalPlay() {
+        let rig = Rig(); rig.running.insert(.spotify); rig.controller.start(preferred: .spotify)
+        rig.controller.perform(.playPause); rig.queries[0](.unknown)
+        XCTAssertEqual(rig.playback, [.spotify]); XCTAssertTrue(rig.native.isEmpty); XCTAssertTrue(rig.opens.isEmpty)
+    }
+    func testUncertainPreferredPressNeverFallsThroughToGlobalPlayAndStopCancelsIt() {
+        let rig = Rig(); rig.running.insert(.spotify); rig.controller.start(preferred: .spotify)
+        rig.controller.perform(.playPause); rig.queries[0](.none)
+        XCTAssertTrue(rig.playbackCurrent[0]())
+        rig.controller.perform(.playPause)
+        XCTAssertEqual(rig.playback.count, 1); XCTAssertEqual(rig.queries.count, 1)
+        rig.playbackReplies[0]("Press not confirmed")
+        XCTAssertTrue(rig.native.isEmpty); XCTAssertEqual(rig.notices, ["Press not confirmed"])
+        rig.controller.perform(.playPause); rig.queries[1](.none)
+        rig.controller.stop()
+        XCTAssertFalse(rig.playbackCurrent[1]())
+        rig.playbackReplies[1]("Late press error")
+        XCTAssertEqual(rig.notices, ["Press not confirmed"])
     }
     func testSystemDefaultAndTrackNavigationBypassTheAvailabilityQuery() {
         let rig = Rig(); rig.controller.start(preferred: .system)

@@ -116,7 +116,7 @@ struct KeyboardSettingsView: View {
             Picker("Music app when nothing can resume", selection: $model.musicFallbackApplication) {
                 ForEach(MusicFallbackApplication.allCases) { app in Text(app.label).tag(app) }
             }
-            Text("Play / pause opens this app only when there is no current player to resume. It opens the app without choosing a track. Existing playback keeps its normal media controls. This choice saves immediately.")
+            Text("Play / pause opens this app when nothing can resume. If it is already open, its own playback control is used when needed. Existing playback keeps normal media controls. Opening does not choose a track. This choice saves immediately.")
                 .font(.caption).foregroundStyle(.secondary)
             if let notice = model.musicFallbackNotice { Text(notice).font(.caption).foregroundStyle(.orange) }
             Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : "Playback uses macOS media routing. Volume and mute control system audio.")
