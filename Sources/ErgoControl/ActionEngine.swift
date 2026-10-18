@@ -76,6 +76,11 @@ enum MacKeys {
 }
 
 enum MacMediaKeys {
+    static func postPlayback(_ command: MediaPlaybackCommand) {
+        guard let down = event(usage: command.usage, pressed: true),
+              let up = event(usage: command.usage, pressed: false) else { return }
+        down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
+    }
     static func event(usage: UInt16, pressed: Bool, repeated: Bool = false,
                       modifiers: UInt8 = 0) -> CGEvent? {
         let codes: [UInt16: Int] = [0xe9:0,0xea:1,0x6f:2,0x70:3,0xe2:7,0xcd:16,0xb5:17,0xb6:18,0xb3:19,0xb4:20]

@@ -113,6 +113,12 @@ struct KeyboardSettingsView: View {
             Text("Choose a button to change what it does.").foregroundStyle(.secondary)
             controlGroup("Macro keys and AI", ids: ["extra:32", "extra:33", "extra:34", "extra:35", "extra:36", "extra:247"])
             controlGroup("Media and battery", ids: ["mediaSingle", "mediaDouble", "mediaTriple", "extra:65"])
+            Picker("Music app when nothing can resume", selection: $model.musicFallbackApplication) {
+                ForEach(MusicFallbackApplication.allCases) { app in Text(app.label).tag(app) }
+            }
+            Text("Play / pause opens this app only when there is no current player to resume. It opens the app without choosing a track. Existing playback keeps its normal media controls. This choice saves immediately.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let notice = model.musicFallbackNotice { Text(notice).font(.caption).foregroundStyle(.orange) }
             Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : "Playback uses macOS media routing. Volume and mute control system audio.")
                 .font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Other keys") {

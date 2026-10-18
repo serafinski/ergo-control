@@ -25,6 +25,14 @@ final class ControlModel: ObservableObject {
             configureMediaRouting()
         }
     }
+    @Published private(set) var musicFallbackNotice: String?
+    @Published var musicFallbackApplication = MusicFallbackApplication(savedValue: UserDefaults.standard.string(forKey: "musicFallbackApplication")) {
+        didSet {
+            musicFallbackNotice = nil
+            UserDefaults.standard.set(musicFallbackApplication.rawValue, forKey: "musicFallbackApplication")
+            configureMediaRouting()
+        }
+    }
     @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController(liveDiagnostics: false)
     let fullControlHelper = FullControlHelper()
@@ -51,6 +59,7 @@ final class ControlModel: ObservableObject {
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
     private let mediaController = FocusedMediaController()
+    private let musicFallback = MusicFallbackController()
     private let controlIndicator = ControlIndicator()
     private var batteryPopupTicket: UUID?
     private var batterySchedule = BatteryRefreshSchedule()
@@ -132,6 +141,16 @@ final class ControlModel: ObservableObject {
         mediaController.onRoute = { [weak self] message in self?.logs.record(message, category: "Media") }
         mediaController.onNotice = { [weak self] message in
             self?.error = message; self?.logs.record(message, category: "Media", level: .warning)
+        }
+        mediaController.onSystemPlayback = { [weak self] command in
+            let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            self?.musicFallback.perform(command, stillCurrent: { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid })
+        }
+        musicFallback.onRoute = { [weak self] message in
+            self?.musicFallbackNotice = nil; self?.logs.record(message, category: "Media")
+        }
+        musicFallback.onNotice = { [weak self] message in
+            self?.musicFallbackNotice = message; self?.logs.record(message, category: "Media", level: .warning)
         }
         engine.onNotice = { [weak self] message in self?.error = message }
         engine.onCapsLockChange = { [weak self] enabled in
@@ -512,6 +531,7 @@ final class ControlModel: ObservableObject {
         codex.cancelLightingTest(); claude.cancelLightingTest()
         sessionDeadline = nil
         mediaController.stop()
+        musicFallback.stop()
         relay.stop(); relayOpened = false; engine.stop()
         mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = MediaInputState()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()
@@ -650,10 +670,15 @@ final class ControlModel: ObservableObject {
 
     private func configureMediaRouting() {
         mediaController.stop()
+        musicFallback.stop()
         engine.onPlayback = nil
-        if focusedMediaPlayback && relayOpened {
+        guard relayOpened else { return }
+        musicFallback.start(preferred: musicFallbackApplication)
+        if focusedMediaPlayback {
             mediaController.start()
             engine.onPlayback = { [weak self] command in self?.mediaController.perform(command) }
+        } else if musicFallbackApplication != .system {
+            engine.onPlayback = { [weak self] command in self?.musicFallback.perform(command) }
         }
     }
     private static func mediaLabel(_ usage: UInt16) -> String {

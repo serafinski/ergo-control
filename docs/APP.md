@@ -6,6 +6,10 @@ This native SwiftUI app has local profiles, app-based automatic switching, ordin
 
 The current app is **0.9.5**. Earlier version numbers below identify when a feature was introduced or a test was performed; they do not require installing those historical builds. The former Preview bundle was a development copy of the same app. Builds now always use `build/Ergo Control.app`; its bundle identifier, signing identity, settings, and input helper remain the same. A fresh clone builds `build/Ergo Control.app` with its own signing identity and helper, without any original installer or research evidence.
 
+## Preferred music app when idle (2026-10-18)
+
+**Keyboard → Buttons → Music app when nothing can resume** now offers macOS default, Apple Music and Spotify. With an explicit app selected, Play/Pause opens it only when macOS has no current media target. Existing playing or paused sessions keep native control; opening the app does not also start an arbitrary track. The setting saves immediately, applies independently of the experimental focus-first option and leaves volume/mute/navigation and existing mappings unchanged. [Music fallback setup, compatibility and verification](MEDIA_PLAYBACK.md) describes the guarded private system-target lookup, unknown-state behavior and remaining live checks. All 342 tests pass; no helper or hook reinstall is needed.
+
 ## Product-defined driver controls (0.9.5)
 
 The report-6 change alone did not restore media; its path produced no media log entries during the user's retest. Further static inspection of the exact Pro Type Ergo product table found the actual driver defaults: MouseInput ScrollUp/ScrollDown map to volume up/down; DKM 82 is the right roller click, 83 is Next, 84 is Previous and 85 is Play/Pause. The application had ignored vertical wheel reports and treated these extra IDs as unmapped controls. This matches the user's original wheel-ignored log; it was relevant to volume input rather than an innocuous unrelated field.

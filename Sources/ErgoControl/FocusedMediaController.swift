@@ -8,6 +8,7 @@ import ErgoCore
 final class FocusedMediaController {
     var onNotice: ((String) -> Void)?
     var onRoute: ((String) -> Void)?
+    var onSystemPlayback: (MediaPlaybackCommand) -> Void = MacMediaKeys.postPlayback
     private let worker = DispatchQueue(label: "dev.local.ergocontrol.media", qos: .userInitiated)
     private let lock = NSLock()
     private var generation = 0
@@ -85,10 +86,11 @@ final class FocusedMediaController {
             case .unavailable:
                 self.notice("\(command.label) is unavailable or multiple media players are visible in the selected window.", ticket)
             case .system:
-                guard let down = MacMediaKeys.event(usage: command.usage, pressed: true),
-                      let up = MacMediaKeys.event(usage: command.usage, pressed: false) else { return }
-                down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
-                self.record("\(command.label) → macOS media target (no accessible player found)", ticket)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.active, self.current(ticket),
+                          NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+                    self.onSystemPlayback(command)
+                }
             }
         }
     }
