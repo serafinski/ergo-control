@@ -55,7 +55,7 @@ struct KeyboardSetupView: View {
             GroupBox("Media controls") {
                 VStack(alignment: .leading, spacing: 14) {
                     Toggle("Prefer focused window for playback (experimental)", isOn: $model.focusedMediaPlayback)
-                    Text("Off uses the previous macOS media-key behavior. Turn it off at any time if focused-window playback does not respond. Volume and mute always use system media keys.")
+                    Text("With a preferred music app selected under Keyboard → Buttons, Play / pause follows the focused player, then that app. On also remembers the last media window and routes track navigation there. macOS default with this off keeps system playback. Volume and mute always use system media keys.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("App logs show media controls received from the keyboard and events posted to macOS. Posted events do not confirm that a player handled them.")
                         .font(.caption).foregroundStyle(.secondary)

@@ -3,6 +3,128 @@ import ErgoCore
 @testable import ErgoDevice
 
 final class MacroStatusRendererTests: XCTestCase {
+    func testAcknowledgedCompletionCanResumeWorkingWithoutRestoringBetweenSignals() {
+        let rig = Rig()
+        let blue = ChatStatusColors.defaults(for: .codex).working
+        let cyan = ChatStatusColors.defaults(for: .claude).finished
+        var completions: [String] = []
+        rig.renderer.onCompletion = { id in
+            completions.append(id)
+            rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        }
+        rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(cyan, area: .completionWave, signalID: "claude-notification", activity: .finished, speed: .quick)
+        for _ in 0..<4 { rig.renderer.pump() }
+        XCTAssertTrue(completions.isEmpty, "Wait for every frame acknowledgment, including the return to M1–M5")
+        rig.renderer.pump()
+        XCTAssertEqual(completions, ["claude-notification"])
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(blue))
+        XCTAssertEqual(rig.operations.filter { $0 == "save" }.count, 1)
+        XCTAssertFalse(rig.operations.contains("restore"))
+        XCTAssertNotNil(rig.saved)
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+    }
+    func testPreemptedCompletionDoesNotAcknowledgeTheNewApprovalSignal() {
+        let rig = Rig()
+        var completions: [String] = []
+        rig.renderer.onCompletion = { completions.append($0) }
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave,
+            signalID: "finish", activity: .finished, speed: .quick)
+        for _ in 0..<4 { rig.renderer.pump() }
+        rig.beforeReply = { name in
+            if name == "frame" {
+                rig.renderer.request(CodexActivity.attention.color, area: .completionWave,
+                    signalID: "approval", activity: .attention, speed: .quick)
+            }
+        }
+        rig.renderer.pump()
+        XCTAssertTrue(completions.isEmpty)
+        XCTAssertEqual(rig.renderer.desired, CodexActivity.attention.color)
+    }
+    func testProviderHandoffsPreserveSnapshotAndResumeWorkWithoutReplayingItsSweep() {
+        let rig = Rig()
+        let orange = ChatStatusColors.defaults(for: .claude).working
+        let blue = ChatStatusColors.defaults(for: .codex).working
+        let magenta = ChatStatusColors.defaults(for: .claude).attention
+        rig.renderer.request(orange, area: .completionWave, signalID: "claude-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(magenta, area: .completionWave, signalID: "claude-approval", activity: .attention, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(blue, area: .completionWave, signalID: "codex-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(blue))
+        rig.renderer.request(orange, area: .completionWave, signalID: "claude-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(orange))
+        XCTAssertEqual(rig.operations.filter { $0 == "save" }.count, 1)
+        XCTAssertFalse(rig.operations.contains("restore"), "Handoffs must keep the original restoration snapshot")
+        rig.renderer.request(nil); rig.renderer.pump()
+        XCTAssertNil(rig.saved)
+        XCTAssertEqual(rig.operations.suffix(3), ["restore", "read", "clear"])
+    }
+    func testCustomColorsReachAllWaveHeadsAndWorkingHold() {
+        let color = DialColor(red: 150, green: 30, blue: 210)
+        for activity in [CodexActivity.working, .attention, .finished] {
+            let rig = Rig()
+            rig.renderer.request(color, area: .completionWave, signalID: "custom", activity: activity, speed: .quick)
+            let count = activity == .working ? 3 : 5
+            for _ in 0..<count { rig.renderer.pump() }
+            XCTAssertTrue(rig.frames.allSatisfy { $0.contains(color) })
+            XCTAssertEqual(rig.frames.map { $0.firstIndex(of: color)! }, activity == .working ? [0, 9, 18] : [0, 9, 18, 9, 0])
+            rig.renderer.pump()
+            if activity == .working { XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(color)) }
+            if activity == .finished { XCTAssertNil(rig.saved) }
+        }
+    }
+    func testColorEditDuringWaveContinuesAtNextColumnAndDoesNotReplayFinishedWork() {
+        let rig = Rig()
+        let first = DialColor(red: 150, green: 30, blue: 210), second = DialColor(red: 20, green: 200, blue: 160)
+        rig.renderer.request(first, area: .completionWave, signalID: "same-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        rig.renderer.request(second, area: .completionWave, signalID: "same-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last?.firstIndex(of: second), 9)
+        rig.renderer.pump(); rig.renderer.pump()
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(second))
+        let count = rig.frames.count
+        rig.renderer.request(first, area: .completionWave, signalID: "same-work", activity: .working, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, count + 1)
+        XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(first), "An edited working hold must not replay the start sweep")
+    }
+    func testCustomPulseAndWholeKeyboardSolidUseRequestedColor() {
+        let color = DialColor(red: 100, green: 200, blue: 240)
+        let pulse = Rig()
+        pulse.renderer.request(color, activity: .working, pulseWhileWorking: true)
+        pulse.renderer.pump(); pulse.clock += 0.351; pulse.renderer.pump()
+        XCTAssertEqual(pulse.frames.last?.first, DialColor(red: 75, green: 150, blue: 180))
+        let solid = Rig()
+        solid.renderer.request(color, area: .wholeKeyboard, activity: .attention)
+        solid.renderer.pump()
+        XCTAssertEqual(solid.frames.last, Array(repeating: color, count: 19))
+    }
+    func testEqualColorApprovalStillStopsPulsingAndCompletedWaveDoesNotReplayOnColorEdit() {
+        let color = DialColor(red: 150, green: 30, blue: 210)
+        let rig = Rig()
+        rig.renderer.request(color, activity: .working, pulseWhileWorking: true); rig.renderer.pump()
+        rig.renderer.request(color, activity: .attention, pulseWhileWorking: true); rig.renderer.pump()
+        let count = rig.frames.count
+        rig.clock += 1.5; rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, count); XCTAssertFalse(rig.renderer.needsTimer)
+        rig.renderer.request(color, area: .completionWave, signalID: "done", activity: .finished, speed: .quick)
+        for _ in 0..<5 { rig.renderer.pump() }
+        rig.renderer.pump()
+        let completed = rig.frames.count
+        rig.renderer.request(CodexActivity.finished.color, area: .completionWave, signalID: "done", activity: .finished, speed: .quick)
+        rig.renderer.pump()
+        XCTAssertEqual(rig.frames.count, completed)
+        XCTAssertNil(rig.saved)
+    }
     final class Rig {
         var effect = try! KeyboardEffect(kind: .wave)
         var saved: SavedMacroLighting?
@@ -404,7 +526,7 @@ final class MacroStatusRendererTests: XCTestCase {
         XCTAssertEqual(rig.frames.count, 5)
         rig.clock += 0.02; working(); rig.renderer.pump()
         let dim = rig.frames.last!
-        XCTAssertEqual(dim[0], DialColor(red: 0, green: 90, blue: 191))
+        XCTAssertEqual(dim[0], DialColor(red: 0, green: 12, blue: 191))
         XCTAssertTrue(dim.dropFirst().allSatisfy { $0 == MacroStatusFrame.background })
         rig.clock += 2.45; working(); rig.renderer.pump()
         XCTAssertEqual(rig.frames.last, MacroStatusFrame.colors(CodexActivity.working.color))
@@ -457,7 +579,7 @@ final class MacroStatusRendererTests: XCTestCase {
             rig.renderer.pump()
         }
         XCTAssertEqual(rig.frames.map { $0[0].blue }, [255,191,102,38,0,38,102,191,255])
-        XCTAssertEqual(rig.frames.map { $0[0].green }, [120,90,48,18,0,18,48,90,120])
+        XCTAssertEqual(rig.frames.map { $0[0].green }, [16,12,6,2,0,2,6,12,16])
         XCTAssertEqual(rig.frames[4][0], DialColor(red: 0, green: 0, blue: 0))
         XCTAssertTrue(rig.frames.allSatisfy { $0.dropFirst().allSatisfy { $0 == MacroStatusFrame.background } })
         XCTAssertNotNil(rig.saved)

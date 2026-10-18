@@ -6,6 +6,8 @@ import ErgoCore
 final class MacroStatusRenderer {
     typealias Command = (BluetoothLightingLabCommand, UInt8, @escaping (Result<Data, Error>) -> Void) -> Void
     var desired: DialColor?
+    var onCompletion: ((String) -> Void)?
+    private var completionSignalID: String?
     private(set) var busy = false
     private var rendered: DialColor?
     private var desiredArea: CodexLightingArea = .macroColumn
@@ -68,6 +70,7 @@ final class MacroStatusRenderer {
         // Explicit disable/stop and new activity still supersede it immediately.
         if color == nil, allowCompletionToFinish, area == .completionWave,
            waveActivity == .finished, let signalID, !completedIDs.contains(signalID), !failed { return }
+        completionSignalID = color != nil && activity == .finished ? id : nil
         if self.darkBackground != darkBackground || pulseEnabled != pulseWhileWorking || desiredActivity != activity || desired != color {
             pulseStarted = nil; renderedPulsePhase = nil
             pulseRevision &+= 1
@@ -152,7 +155,7 @@ final class MacroStatusRenderer {
         let phase = pulsing ? pulsePhase : nil
         let pulseEpoch = pulseStarted
         var colors: [DialColor]
-        if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed, darkBackground: darkBackground) }
+        if wave != nil, let state { colors = CodexStatusWave.frame(waveIndex, activity: state, speed: waveSpeed, darkBackground: darkBackground, color: color) }
         else {
             let level = phase.map { Self.pulseLevels[$0] } ?? 100
             let signal = DialColor(red: UInt8(Int(color.red) * level / 100),
@@ -179,11 +182,11 @@ final class MacroStatusRenderer {
                         self.message("Approval wave bounces while approval is pending")
                     } else {
                         self.finishWave()
-                        self.message(state == .working ? "Starting wave finished · keeping macro keys blue" : "Status wave finished · restoring previous effect")
+                        self.message(state == .working ? "Starting wave finished · keeping macro keys in the working color" : "Completion wave finished")
                     }
                 } else { self.message(state == .finished ? "Completion wave · out and back" : "Status wave · macro column to the right") }
             } else {
-                self.message(pulsing ? "Macro keys pulse blue while working" : area == .wholeKeyboard ? "Whole keyboard shows Codex status" : "Macro column shows Codex status · other keys dimmed")
+                self.message(pulsing ? "Macro keys pulse in the working color" : area == .wholeKeyboard ? "Whole keyboard shows chat status" : "Macro column shows chat status · other keys dimmed")
             }
         }
     }
@@ -211,9 +214,11 @@ final class MacroStatusRenderer {
     }
 
     private func finishWave() {
+        let completed = waveActivity == .finished ? completionSignalID : nil
         consumeSignal(signalID); waveStarted = nil
         if waveActivity == .working { desiredArea = .macroColumn }
         else { desired = nil }
+        if let completed { onCompletion?(completed) }
     }
 
     private func step(_ operation: BluetoothLightingLabCommand, region: UInt8, completion: @escaping (Data) -> Void) {
@@ -229,7 +234,7 @@ final class MacroStatusRenderer {
     }
     private func fail(_ error: Error) {
         busy = false; failed = true; desired = nil
-        message("Codex lighting unavailable: \(error.localizedDescription). Previous effect restoration will be retried if needed.")
+        message("Chat lighting unavailable: \(error.localizedDescription). Previous effect restoration will be retried if needed.")
     }
     /// Also used during mapping recovery, where ordinary new lighting is barred.
     /// The caller owns transport serialization and prioritizes normal-mode restore.

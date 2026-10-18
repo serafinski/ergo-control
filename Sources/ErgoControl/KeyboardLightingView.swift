@@ -60,7 +60,7 @@ struct KeyboardLightingView: View {
                         .disabled(!available)
                 }
                 if device.statusLightingActive {
-                    Text("Codex status is using the backlight. Controls return after a one-shot wave finishes or selected chats become idle. Pending approval keeps its signal active.")
+                    Text("Chat status is using the backlight. Controls return after a one-shot wave finishes or selected chats become idle. Pending approval keeps its signal active.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text(device.keyboardEffectStatus).font(.callout).textSelection(.enabled)

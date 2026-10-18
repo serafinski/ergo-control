@@ -1,4 +1,4 @@
-/// A launch/wake request waits for permissions, connection and restoration. It
+/// A launch/wake/reconnect request waits for permissions, connection and restoration. It
 /// permits one activation attempt, so a failing helper never causes a retry loop.
 /// Readiness has no deadline: Bluetooth may arrive well after login. Only manual
 /// cancellation or consuming the activation attempt ends the pending request.

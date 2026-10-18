@@ -47,9 +47,9 @@ public enum MacroStatusFrame {
 }
 
 /// Fixed passes over the recovered 19-zone row. Approval repeats by request;
-/// working settles on a blue macro column; completion restores the normal effect.
+/// working settles on its signal color; completion restores the normal effect.
 public enum CodexStatusWave {
-    /// Working falls back to solid blue; completion waits for its finite acknowledged pass.
+    /// Working falls back to solid color; completion waits for its finite acknowledged pass.
     public static let maximumDuration: TimeInterval = 6
     public static let minimumFrameInterval: TimeInterval = 0
     public static let completionWindow: TimeInterval = 8
@@ -67,13 +67,13 @@ public enum CodexStatusWave {
         default: return []
         }
     }
-    public static func frame(_ index: Int, activity: CodexActivity, speed: CodexWaveSpeed = .smooth, darkBackground: Bool = false) -> [DialColor] {
+    public static func frame(_ index: Int, activity: CodexActivity, speed: CodexWaveSpeed = .smooth, darkBackground: Bool = false, color: DialColor? = nil) -> [DialColor] {
         var colors = Array(repeating: darkBackground ? DialColor(red: 0, green: 0, blue: 0) : MacroStatusFrame.background, count: 19)
         let positions = positions(for: activity, speed: speed)
         guard positions.indices.contains(index) else { return colors }
         let head = positions[index]
         let direction = index > 0 && head < positions[index - 1] ? -1 : 1
-        let color = activity.color
+        let color = color ?? activity.color
         let width = speed == .quick ? 10 : 7
         for trail in 0..<width {
             let column = head - direction * trail

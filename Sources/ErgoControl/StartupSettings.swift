@@ -50,9 +50,9 @@ struct AppSettingsView: View {
                     Toggle("Launch at login", isOn: Binding(get: { startup.loginEnabled }, set: startup.setLoginEnabled))
                     Text(startup.loginMessage).font(.caption).foregroundStyle(.secondary)
                     Toggle("Enable mappings automatically", isOn: $startup.automaticMappings)
-                    Text("Start your saved mappings when Ergo Control opens. Keep waiting if the keyboard connects later. If mappings were active before sleep, resume after waking. Stop mappings cancels a pending start; an activation error requires a manual retry.")
+                    Text("Start saved mappings when Ergo Control opens, and keep waiting if the keyboard connects later. Resume after computer sleep or a keyboard disconnect once reconnection and restoration finish. Stop mappings cancels a pending start or resume; timed tests and activation/input errors require a manual retry.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("Codex connection and status-light choices are remembered automatically. These settings take effect immediately; no Save changes is needed.")
+                    Text("Chat connection and status-light choices are remembered automatically. These settings take effect immediately; no Save changes is needed.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button("Login Items settings…") { SMAppService.openSystemSettingsLoginItems() }
@@ -63,7 +63,7 @@ struct AppSettingsView: View {
             GroupBox("Installation") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(startup.installedInApplications ? "Running from Applications" : "Running from another folder")
-                    Text("Quit Ergo Control, drag it from the disk image to Applications, eject the image, then open the Applications copy. Your profiles and Codex settings stay on this Mac.")
+                    Text("Quit Ergo Control, drag it from the disk image to Applications, eject the image, then open the Applications copy. Your profiles and chat settings stay on this Mac.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text(Bundle.main.bundleURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(8)

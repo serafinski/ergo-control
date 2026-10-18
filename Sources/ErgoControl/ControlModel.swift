@@ -25,21 +25,42 @@ final class ControlModel: ObservableObject {
             configureMediaRouting()
         }
     }
+    @Published private(set) var musicFallbackNotice: String?
+    @Published var musicFallbackApplication = MusicFallbackApplication(savedValue: UserDefaults.standard.string(forKey: "musicFallbackApplication")) {
+        didSet {
+            musicFallbackNotice = nil
+            UserDefaults.standard.set(musicFallbackApplication.rawValue, forKey: "musicFallbackApplication")
+            configureMediaRouting()
+        }
+    }
     @Published var inputAccessMode: InputAccessMode?
     let bluetooth = BluetoothController(liveDiagnostics: false)
     let fullControlHelper = FullControlHelper()
-    let codex = CodexBridge()
+    let codex = ChatBridge()
+    let claude = ChatBridge(provider: .claude)
+    let chatPreferences = ChatPreferences()
+    private lazy var chatLighting = ChatLightingController(codex: codex, claude: claude)
+    private var chatCompletionTimer: Timer?
+    @Published private(set) var chatLightingStatus = "No active chat signal"
+    var chat: ChatBridge { chatBridge(for: chatPreferences.provider) }
+    func chatBridge(for provider: ChatProvider) -> ChatBridge { provider == .codex ? codex : claude }
+    func macroAssignments(alternateLayer: Bool) -> [MacroKeyAssignment] {
+        MappingResolver.macroKeys(profile: activeProfile, alternateLayer: alternateLayer, fallback: chat.defaultAction)
+    }
     let startup = StartupSettings()
     lazy var lightingAutomation = LightingAutomation(device: bluetooth)
     let logs = AppLog()
     private var lastPointerNote: String?
     private var lastVendorNote: String?
     private var automaticStart = AutomaticMappingStart()
+    private var reconnectPolicy = MappingReconnectPolicy()
     private var automaticStartTimer: Timer?
     private var resumeAfterWake = false
     private let relay = KeyboardRelay()
     private let engine = ActionEngine()
     private let mediaController = FocusedMediaController()
+    private let musicFallback = MusicFallbackController()
+    private var playbackTestTicket = UUID()
     private let controlIndicator = ControlIndicator()
     private var batteryPopupTicket: UUID?
     private var batterySchedule = BatteryRefreshSchedule()
@@ -86,32 +107,53 @@ final class ControlModel: ObservableObject {
             .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         fullControlHelper.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        claude.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        chatPreferences.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         codex.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         lightingAutomation.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         startup.$automaticMappings.dropFirst().sink { [weak self] enabled in
             if !enabled { self?.cancelAutomaticStart() }
         }.store(in: &subscriptions)
-        codex.onLightingChange = { [weak self] color in
-            guard let self else { return }
-            self.bluetooth.setMacroStatusColor(self.running ? color : nil, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                allowCompletionToFinish: self.running && self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking, darkBackground: self.codex.settings.darkStatusBackground)
+        codex.onLightingChange = { [weak self] _ in
+            self?.updateChatLighting()
+        }
+        claude.onLightingChange = { [weak self] _ in
+            self?.updateChatLighting()
+        }
+        bluetooth.onMacroStatusCompletion = { [weak self] id in
+            DispatchQueue.main.async {
+                guard let self, self.running, self.chatLighting.completeWave(id) else { return }
+                self.updateChatLighting()
+            }
         }
         $configuration.dropFirst().sink { [weak self] _ in
             self?.dirty = true
             DispatchQueue.main.async { self?.updateProfile() }
         }.store(in: &subscriptions)
         relay.onReport = { [weak self] id, bytes in self?.receive(id, bytes) }
-        relay.onDisconnect = { [weak self] in self?.stop("PT Ergo disconnected. Reconnect it, then enable mappings again.", level: .warning) }
+        relay.onDisconnect = { [weak self] in self?.keyboardDisconnected() }
         relay.onFailure = { [weak self] message in self?.stop(message, level: .error) }
         engine.onError = { [weak self] message in self?.error = message; self?.stop(message, level: .error) }
         engine.onNativeMedia = { [weak self] usage, pressed in
             guard pressed else { return }
             self?.logs.record("\(Self.mediaLabel(usage)) event posted to macOS.", category: "Media")
         }
-        mediaController.onRoute = { [weak self] message in self?.logs.record(message, category: "Media") }
+        mediaController.onRoute = { [weak self] message in
+            self?.musicFallbackNotice = nil; self?.logs.record(message, category: "Media")
+        }
         mediaController.onNotice = { [weak self] message in
-            self?.error = message; self?.logs.record(message, category: "Media", level: .warning)
+            self?.musicFallbackNotice = message; self?.logs.record(message, category: "Media", level: .warning)
+        }
+        mediaController.onSystemPlayback = { [weak self] command in
+            let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            self?.musicFallback.perform(command, stillCurrent: { NSWorkspace.shared.frontmostApplication?.processIdentifier == pid })
+        }
+        musicFallback.onRoute = { [weak self] message in
+            self?.musicFallbackNotice = nil; self?.logs.record(message, category: "Media")
+        }
+        musicFallback.onNotice = { [weak self] message in
+            self?.musicFallbackNotice = message; self?.logs.record(message, category: "Media", level: .warning)
         }
         engine.onNotice = { [weak self] message in self?.error = message }
         engine.onCapsLockChange = { [weak self] enabled in
@@ -122,6 +164,7 @@ final class ControlModel: ObservableObject {
         engine.onCycle = { [weak self] in self?.cycleDial() }
         engine.onBrightness = { [weak self] direction in self?.bluetooth.adjustKeyboardBrightness(direction) }
         engine.onBattery = { [weak self] in self?.showBattery() }
+        engine.onClaudeSlot = { [weak self] number in self?.claude.openSlot(number) }
         engine.onCodexSlot = { [weak self] number in self?.codex.openSlot(number) }
         bluetooth.$lightingStatus.removeDuplicates().sink { [weak self] message in
             guard !message.isEmpty else { return }
@@ -130,7 +173,7 @@ final class ControlModel: ObservableObject {
         bluetooth.$macroStatusLightingMessage.removeDuplicates().sink { [weak self] message in
             let value = message.lowercased()
             if ["unavailable", "pending", "invalid", "could not"].contains(where: value.contains) {
-                self?.logs.record(message, category: "Codex lighting", level: .warning)
+                self?.logs.record(message, category: "Chat lighting", level: .warning)
             }
         }.store(in: &subscriptions)
         bluetooth.$restoreOwed.removeDuplicates().dropFirst().sink { [weak self] pending in
@@ -171,19 +214,19 @@ final class ControlModel: ObservableObject {
             guard let self else { return }
             if verified && self.preparing && self.relayOpened {
                 self.running = true; self.preparing = false
+                self.reconnectPolicy.activated(timed: self.sessionDeadline != nil)
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.running else { return }
                     self.updateProfile()
-                    self.bluetooth.setMacroStatusColor(self.codex.lightingColor, area: self.codex.settings.lightingArea, signalID: self.codex.lightingSignalID, activity: self.codex.lightingActivity,
-                        allowCompletionToFinish: self.codex.allowsCompletionToFinish, speed: self.codex.settings.waveSpeed, pulseWhileWorking: self.codex.settings.pulseWhileWorking, darkBackground: self.codex.settings.darkStatusBackground)
+                    self.updateChatLighting()
                 }
                 self.status = self.inputAccessMode == .macroButtons
                     ? "Macro buttons active · M1–M5, AI, left click and battery. Dial and ordinary-key remaps are unavailable."
                     : "Mappings active · PT Ergo only"
                 self.logs.record(self.status, category: "Keyboard")
             } else if !verified && self.running {
-                self.stop(self.bluetooth.ready ? "Keyboard driver mode could not be verified. Mappings stopped safely."
-                    : "PT Ergo’s Bluetooth configuration connection ended. Mappings stopped safely; reconnect the keyboard, then enable mappings.", level: .warning)
+                if !self.bluetooth.ready { self.keyboardDisconnected() }
+                else { self.stop("Keyboard driver mode could not be verified. Mappings stopped safely.", level: .warning) }
             }
         }.store(in: &subscriptions)
         updateProfile()
@@ -201,6 +244,19 @@ final class ControlModel: ObservableObject {
         waitingForAutomaticStart = false
         automaticStart.cancel()
         automaticStartTimer?.invalidate(); automaticStartTimer = nil
+    }
+    private func keyboardDisconnected() {
+        switch reconnectPolicy.connectionLost(running: running, preparing: preparing,
+                                               automatic: startup.automaticMappings, terminating: terminating) {
+        case .ignore: return
+        case .stop:
+            stop("PT Ergo disconnected. Mappings stopped; enable them again when the keyboard is ready.", level: .warning)
+        case .resume:
+            stop("PT Ergo disconnected. Saved mappings will resume automatically after reconnection and restoration.", level: .warning)
+            batterySchedule.refresh()
+            beginAutomaticStart()
+            pollBattery()
+        }
     }
     private func beginAutomaticStart() {
         guard !terminating, !running, !preparing, error == nil else { return }
@@ -311,7 +367,7 @@ final class ControlModel: ObservableObject {
                 case .script: guard FileManager.default.fileExists(atPath: action.value) else { throw MappingValidationError.message("Choose an existing script") }
                 case .keyboardBrightness: guard action.value == "up" || action.value == "down" else { throw MappingValidationError.message("Choose Increase or Decrease for keyboard brightness") }
                 case .text: guard action.value.utf16.count <= 4096 else { throw MappingValidationError.message("Text actions can contain up to 4096 characters") }
-                case .codexChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a chat slot from 1 to 5") }
+                case .codexChat, .claudeChat: guard let slot = Int(action.value), (1...5).contains(slot) else { throw MappingValidationError.message("Choose a chat slot from 1 to 5") }
                 default: break
                 }
             }
@@ -321,12 +377,50 @@ final class ControlModel: ObservableObject {
         let profile = MappingProfile(name: "New profile")
         configuration.profiles.append(profile); selectedProfileID = profile.id
     }
-    func createCodexProfile() {
+    func setChatProvider(_ provider: ChatProvider) {
+        guard provider != chatPreferences.provider else { return }
+        _ = chatPreferences.select(provider)
+    }
+    func setChatLightingMode(_ mode: ChatLightingMode) {
+        guard mode != chatPreferences.lightingMode else { return }
+        codex.cancelLightingTest(); claude.cancelLightingTest()
+        guard chatPreferences.selectLighting(mode) else { return }
+        // Explicitly release the old provider before repainting, including a
+        // one-shot completion that would otherwise be allowed to finish.
+        bluetooth.setMacroStatusColor(nil)
+        chatLighting.reset()
+        updateChatLighting()
+    }
+    func startChatLightingTest(_ provider: ChatProvider) {
+        guard running, chatPreferences.lightingMode.includes(provider) else { return }
+        codex.cancelLightingTest(); claude.cancelLightingTest()
+        chatBridge(for: provider).startLightingTest()
+    }
+    private func updateChatLighting() {
+        chatCompletionTimer?.invalidate(); chatCompletionTimer = nil
+        guard running else {
+            chatLighting.reset(); chatLightingStatus = "Mappings are off"
+            bluetooth.setMacroStatusColor(nil)
+            return
+        }
+        let output = chatLighting.output(mode: chatPreferences.lightingMode)
+        let status = output.provider.map { "\($0.name) · \(output.activity.label)" } ?? "No active chat signal"
+        if chatLightingStatus != status { chatLightingStatus = status }
+        bluetooth.setMacroStatusColor(output.color, area: output.area,
+            signalID: output.signalID, activity: output.activity,
+            allowCompletionToFinish: output.allowCompletionToFinish, speed: output.speed,
+            pulseWhileWorking: output.pulseWhileWorking, darkBackground: output.darkBackground)
+        if let delay = output.refreshAfter {
+            let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in self?.updateChatLighting() }
+            chatCompletionTimer = timer; RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+    func createChatProfile(_ provider: ChatProvider) {
         if let existing = configuration.profiles.first(where: { p in
-            (1...5).allSatisfy { p.mappings["extra:\($0 + 31)"] == MappingAction(.codexChat, String($0)) }
+            (1...5).allSatisfy { p.mappings["extra:\($0 + 31)"] == MappingAction(provider.action, String($0)) }
         }) { selectedProfileID = existing.id; return }
-        var profile = MappingProfile(name: "Chat keys")
-        for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(.codexChat, String(slot)) }
+        var profile = MappingProfile(name: "\(provider.name) chat keys")
+        for slot in 1...5 { profile.mappings["extra:\(slot + 31)"] = MappingAction(provider.action, String(slot)) }
         configuration.profiles.append(profile)
         selectedProfileID = profile.id
         // A dedicated profile can open the selected chat source from anywhere. Existing profiles
@@ -430,13 +524,18 @@ final class ControlModel: ObservableObject {
     func stop(_ message: String = "Mappings off · normal keyboard mode restored when verified", level: AppLog.Level = .info) {
         logs.record(message, category: "Keyboard", level: level)
         cancelAutomaticStart()
+        reconnectPolicy.cancel()
         bluetooth.setMacroStatusColor(nil)
         batteryPopupTicket = nil
         controlIndicator.dismiss()
         preparing = false; running = false; timer?.invalidate(); timer = nil
-        codex.cancelLightingTest()
+        chatCompletionTimer?.invalidate(); chatCompletionTimer = nil; chatLighting.reset()
+        chatLightingStatus = "Mappings are off"
+        codex.cancelLightingTest(); claude.cancelLightingTest()
         sessionDeadline = nil
         mediaController.stop()
+        musicFallback.stop()
+        playbackTestTicket = UUID()
         relay.stop(); relayOpened = false; engine.stop()
         mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = MediaInputState()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()
@@ -445,7 +544,7 @@ final class ControlModel: ObservableObject {
     func terminate() -> NSApplication.TerminateReply {
         terminating = true
         lightingAutomation.stop()
-        codex.shutdown()
+        codex.shutdown(); claude.shutdown()
         batteryTimer?.invalidate(); batteryTimer = nil
         stop()
         logs.flush()
@@ -454,9 +553,9 @@ final class ControlModel: ObservableObject {
 
     private func action(for control: String) -> MappingAction {
         let profile = activeProfile
-        if layerActive, let action = profile.alternate[control], action.kind != .standard { return action }
-        if let action = profile.mappings[control], action.kind != .standard { return action }
-        if let action = codex.defaultAction(for: control) { return action }
+        let resolved = MappingResolver.resolve(control, profile: profile, alternateLayer: layerActive,
+                                               fallback: chat.defaultAction(for: control))
+        if resolved.action.kind != .standard { return resolved.action }
         if control == "extra:96" { return MappingAction(.cycleDial) }
         if control == "extra:65" { return MappingAction(.battery) }
         if control == "leftCW" || control == "leftCCW" {
@@ -471,6 +570,7 @@ final class ControlModel: ObservableObject {
         lightingAutomation.userActivity()
         if action.kind == .layer {
             engine.endAppSwitcher()
+            if pressed != layerKeys.contains(control) { objectWillChange.send() }
             if pressed { layerKeys.insert(control) } else { layerKeys.remove(control) }
         } else if pressed { engine.perform(action, fromDial: ["leftCW", "leftCCW", "rightCW", "rightCCW"].contains(control)) }
     }
@@ -573,11 +673,33 @@ final class ControlModel: ObservableObject {
     }
 
     private func configureMediaRouting() {
+        playbackTestTicket = UUID()
         mediaController.stop()
+        musicFallback.stop()
         engine.onPlayback = nil
-        if focusedMediaPlayback && relayOpened {
-            mediaController.start()
-            engine.onPlayback = { [weak self] command in self?.mediaController.perform(command) }
+        guard relayOpened else { return }
+        musicFallback.start(preferred: musicFallbackApplication)
+        if focusedMediaPlayback || musicFallbackApplication != .system {
+            mediaController.start(rememberPlayers: focusedMediaPlayback)
+            engine.onPlayback = { [weak self] command in
+                guard let self else { return }
+                let route = MusicPlaybackDispatch.resolve(command: command, preferred: self.musicFallbackApplication,
+                    focusFirst: self.focusedMediaPlayback, foregroundBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+                switch route {
+                case .focused: self.mediaController.perform(command)
+                case .fallback: self.musicFallback.perform(command)
+                }
+            }
+        }
+    }
+    func tryPlayPause() {
+        guard running, relayOpened else { return }
+        let ticket = UUID(); playbackTestTicket = ticket
+        musicFallbackNotice = "Play / pause will run in 3 seconds. Switch to the player you want to test."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.playbackTestTicket == ticket, self.running, self.relayOpened else { return }
+            self.musicFallbackNotice = nil
+            self.engine.perform(MappingAction(.media, "playPause"))
         }
     }
     private static func mediaLabel(_ usage: UInt16) -> String {

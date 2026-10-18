@@ -8,7 +8,7 @@ final class CodexHistoryReaderTests: XCTestCase {
         let reader = CodexHistoryReader(desktopApp: { nil }, launch: { _ in launches += 1 })
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let bridge = CodexBridge(folder: folder, startTimer: false, history: reader)
+        let bridge = ChatBridge(folder: folder, startTimer: false, history: reader)
         defer { bridge.shutdown() }
         bridge.setEnabled(true)
         bridge.refreshHistory()

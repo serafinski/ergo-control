@@ -18,8 +18,8 @@ final class CodexBridgeTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: folder) }
-    func fixedBridge() -> CodexBridge {
-        let bridge = CodexBridge(folder: folder, startTimer: false)
+    func fixedBridge() -> ChatBridge {
+        let bridge = ChatBridge(folder: folder, startTimer: false)
         bridge.setSelection(.fixed)
         return bridge
     }
@@ -54,7 +54,7 @@ final class CodexBridgeTests: XCTestCase {
         _ = try enqueue(1, name: "Stop"); bridge.poll()
         XCTAssertEqual(bridge.settings.slots.compactMap(\.threadID), Array(ids.prefix(5)))
         XCTAssertEqual(bridge.activity(bridge.settings.slots[0]), .finished)
-        let saved = CodexBridge(folder: folder, startTimer: false)
+        let saved = ChatBridge(folder: folder, startTimer: false)
         XCTAssertEqual(saved.settings, bridge.settings)
         XCTAssertTrue(saved.sessions.isEmpty, "Activity should not persist as a live status across launch")
         saved.shutdown(); bridge.shutdown()
@@ -99,7 +99,7 @@ final class CodexBridgeTests: XCTestCase {
     }
     func testRecentChatsFollowHistoryUpdatesAndPinnedIsOptional() throws {
         let source = History()
-        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        let bridge = ChatBridge(folder: folder, startTimer: false, history: source)
         XCTAssertEqual(bridge.settings.selection, .recent)
         XCTAssertEqual(source.refreshes, 0)
         bridge.setEnabled(true)
@@ -121,7 +121,7 @@ final class CodexBridgeTests: XCTestCase {
     }
     func testFixedAssignmentsSurviveModeChangesAndHistoryStopsWhenDisabled() throws {
         let source = History()
-        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        let bridge = ChatBridge(folder: folder, startTimer: false, history: source)
         bridge.setEnabled(true)
         let id = UUID().uuidString.lowercased()
         bridge.assign(0, name: "Keep this", link: id)
@@ -137,7 +137,7 @@ final class CodexBridgeTests: XCTestCase {
     }
     func testUnavailableHistoryClearsAutomaticTargetsButKeepsFixedSettings() {
         let source = History()
-        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        let bridge = ChatBridge(folder: folder, startTimer: false, history: source)
         bridge.setEnabled(true)
         var chat = CodexSlot(1); chat.threadID = UUID().uuidString.lowercased()
         source.onRecent?([chat]); source.onPinned?([chat])
@@ -151,7 +151,7 @@ final class CodexBridgeTests: XCTestCase {
         bridge.shutdown()
     }
     func testUnmappedMacroDefaultsNeedNoPerKeyConfigurationAndStayInScope() {
-        let bridge = CodexBridge(folder: folder, startTimer: false)
+        let bridge = ChatBridge(folder: folder, startTimer: false)
         XCTAssertNil(bridge.defaultAction(for: "extra:32"))
         bridge.setEnabled(true)
         for slot in 1...5 {
@@ -166,7 +166,7 @@ final class CodexBridgeTests: XCTestCase {
     }
     func testDynamicLightingFollowsVisibleSlotsAndRetainsObservedStateAcrossReordering() throws {
         let source = History()
-        let bridge = CodexBridge(folder: folder, startTimer: false, history: source)
+        let bridge = ChatBridge(folder: folder, startTimer: false, history: source)
         bridge.setEnabled(true); bridge.setLighting(true)
         let id = try enqueue(1, name: "PermissionRequest"); bridge.poll()
         XCTAssertNil(bridge.lightingColor, "Unlisted activity must not color the column")
@@ -194,7 +194,7 @@ final class CodexBridgeTests: XCTestCase {
 
     func testLightingPreviewRunsThroughProductionColorsAndResumesRealStatus() throws {
         var clock: TimeInterval = 100
-        let bridge = CodexBridge(folder: folder, startTimer: false, uptime: { clock })
+        let bridge = ChatBridge(folder: folder, startTimer: false, uptime: { clock })
         bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
         _ = try enqueue(1); bridge.poll()
         var colors: [DialColor?] = []
@@ -215,13 +215,18 @@ final class CodexBridgeTests: XCTestCase {
         clock = 116; bridge.poll()
         XCTAssertNil(bridge.lightingTestStage)
         XCTAssertEqual(bridge.lightingColor, CodexActivity.finished.color)
-        XCTAssertEqual(colors, [CodexActivity.attention.color, CodexActivity.finished.color,
+        // Arbitration metadata also notifies while the preview's color stays
+        // fixed. The renderer coalesces identical requests; assert transitions.
+        let transitions = colors.reduce(into: [DialColor?]()) { result, color in
+            if result.isEmpty || result[result.count - 1] != color { result.append(color) }
+        }
+        XCTAssertEqual(transitions, [CodexActivity.attention.color, CodexActivity.finished.color,
                                 nil, CodexActivity.finished.color])
         bridge.shutdown()
     }
     func testLightingPreviewRequiresOptInAndCancellationCannotRestartIt() throws {
         var clock: TimeInterval = 100
-        let bridge = CodexBridge(folder: folder, startTimer: false, uptime: { clock })
+        let bridge = ChatBridge(folder: folder, startTimer: false, uptime: { clock })
         bridge.startLightingTest(); XCTAssertNil(bridge.lightingTestStage)
         bridge.setEnabled(true); bridge.startLightingTest(); XCTAssertNil(bridge.lightingTestStage)
         bridge.setLighting(true); bridge.startLightingTest(); XCTAssertNotNil(bridge.lightingTestStage)
@@ -238,7 +243,7 @@ final class CodexBridgeTests: XCTestCase {
 
     func testRealCompletionReleasesLightingWhileEnabledAndNewWorkReacquiresIt() throws {
         var time = Date()
-        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        let bridge = ChatBridge(folder: folder, startTimer: false, now: { time })
         bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
         var colors: [DialColor?] = []
         bridge.onLightingChange = { colors.append($0) }
@@ -261,13 +266,13 @@ final class CodexBridgeTests: XCTestCase {
         bridge.setLightingArea(.macroColumn)
         XCTAssertEqual(colors.count, count + 1, "Area changes must send a new frame even when color is unchanged")
         bridge.shutdown()
-        let restored = CodexBridge(folder: folder, startTimer: false)
+        let restored = ChatBridge(folder: folder, startTimer: false)
         XCTAssertEqual(restored.settings.lightingArea, .macroColumn)
         restored.shutdown()
     }
     func testDisablingLightingAfterCompletionExpiryStillNotifiesRendererToCancel() throws {
         var time = Date()
-        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        let bridge = ChatBridge(folder: folder, startTimer: false, now: { time })
         bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
         bridge.setLightingArea(.completionWave)
         _ = try enqueue(1, name: "Stop", time: time); bridge.poll()
@@ -286,7 +291,7 @@ final class CodexBridgeTests: XCTestCase {
 
     func testIdleDoesNotClearAnotherWorkingOrApprovalChat() throws {
         var time = Date()
-        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        let bridge = ChatBridge(folder: folder, startTimer: false, now: { time })
         bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
         _ = try enqueue(1, name: "Stop", time: time); bridge.poll()
         _ = try enqueue(2, name: "PreToolUse", time: time); bridge.poll()
@@ -303,7 +308,7 @@ final class CodexBridgeTests: XCTestCase {
 
     func testWaveCompletionIdentityTracksRealTurnsAndDoesNotColorWorkingAcrossWholeKeyboard() throws {
         var time = Date()
-        let bridge = CodexBridge(folder: folder, startTimer: false, now: { time })
+        let bridge = ChatBridge(folder: folder, startTimer: false, now: { time })
         bridge.setSelection(.fixed); bridge.setEnabled(true); bridge.setLighting(true)
         bridge.setLightingArea(.completionWave)
         _ = try enqueue(1, time: time, turn: "turn-a"); bridge.poll()

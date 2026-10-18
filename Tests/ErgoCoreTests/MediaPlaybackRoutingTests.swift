@@ -19,6 +19,14 @@ final class MediaPlaybackRoutingTests: XCTestCase {
         XCTAssertNil(MediaControl.slider(labels: ["Zoom level"]))
         XCTAssertEqual(MediaControl.slider(labels: ["Zmień postęp"]), .timeline)
     }
+    func testYouTubeExpandedShortcutLabelsKeepPlayPauseAndRejectPlaylistNames() {
+        for label in ["Odtwórz skrót klawiszowy k", "Wstrzymaj skrót klawiszowy k", "Pause keyboard shortcut k", "Play keyboard shortcut space"] {
+            XCTAssertEqual(MediaControl.button(labels: [label]), .playPause)
+        }
+        XCTAssertEqual(MediaControl.button(labels: ["Następny skrót klawiszowy shift+n"]), .next)
+        XCTAssertNil(MediaControl.button(labels: ["Play playlist Foo keyboard shortcut k"]))
+        XCTAssertNil(MediaControl.button(labels: ["Odtwórz utwór Foo skrót klawiszowy k"]))
+    }
     func testTransportBarWinsOverUnrelatedPlaylistPlayButtons() {
         let nodes: [MediaControlNode] = [.init(parent: nil), .init(parent: 0),
             .init(parent: 1, control: .previous), .init(parent: 1, control: .playPause), .init(parent: 1, control: .next),

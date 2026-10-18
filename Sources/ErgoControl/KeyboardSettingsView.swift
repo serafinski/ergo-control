@@ -113,7 +113,14 @@ struct KeyboardSettingsView: View {
             Text("Choose a button to change what it does.").foregroundStyle(.secondary)
             controlGroup("Macro keys and AI", ids: ["extra:32", "extra:33", "extra:34", "extra:35", "extra:36", "extra:247"])
             controlGroup("Media and battery", ids: ["mediaSingle", "mediaDouble", "mediaTriple", "extra:65"])
-            Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : "Playback uses macOS media routing. Volume and mute control system audio.")
+            Picker("Music app fallback", selection: $model.musicFallbackApplication) {
+                ForEach(MusicFallbackApplication.allCases) { app in Text(app.label).tag(app) }
+            }
+            Text("With Apple Music or Spotify selected, Play / pause follows the focused player, then opens or controls that app. macOS default uses system routing. Opening does not choose a track. This choice saves immediately.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Try Play / pause in 3 seconds", action: model.tryPlayPause).disabled(!model.running)
+            if let notice = model.musicFallbackNotice { Text(notice).font(.caption).foregroundStyle(.orange) }
+            Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : model.musicFallbackApplication == .system ? "Playback uses macOS media routing. Volume and mute control system audio." : "Play / pause follows the focused player before the music-app fallback. Track navigation, volume and mute use macOS media routing.")
                 .font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Other keys") {
                 VStack(alignment: .leading, spacing: 14) {
@@ -301,6 +308,7 @@ struct KeyboardSettingsView: View {
             case .text: return action.value.isEmpty ? "Type text" : "“\(action.value.replacingOccurrences(of: "\n", with: " ").prefix(36))”"
             case .application, .toggleApplication, .script:
                 return action.value.isEmpty ? action.kind.label : "\(action.kind.label) · \(URL(fileURLWithPath: action.value).deletingPathExtension().lastPathComponent)"
+            case .claudeChat: return "Claude Code chat · slot \(action.value)"
             case .codexChat: return "Codex chat · slot \(action.value)"
             default: return action.kind.label
             }
@@ -309,7 +317,7 @@ struct KeyboardSettingsView: View {
         if let usage = UInt8(id.hasPrefix("key:") ? String(id.dropFirst(4)) : ""),
            let label = NativeFunctionKeys.label(for: usage, preferences: model.configuration.functionKeys) { return label }
         if let number = Int(id.replacingOccurrences(of: "extra:", with: "")), (32...36).contains(number),
-           model.codex.settings.enabled, model.codex.settings.useUnmappedMacroKeys { return "Codex chat · slot \(number - 31)" }
+           model.chat.settings.enabled, model.chat.settings.useUnmappedMacroKeys { return "\(model.chat.provider.name) chat · slot \(number - 31)" }
         switch id {
         case "leftCW", "leftCCW": return "Use current dial mode"
         case "extra:96": return "Next dial mode"

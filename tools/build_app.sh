@@ -35,12 +35,15 @@ if [[ "${ERGO_REUSE_HELPER:-0}" == 1 ]]; then
 fi
 swift build "${build_options[@]}" --product ErgoControl
 swift build "${build_options[@]}" --product ErgoCodexHook
+swift build "${build_options[@]}" --product ErgoClaudeHook
 binary_folder="$(swift build "${build_options[@]}" --show-bin-path)"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Library/HelperTools" "$app/Contents/Library/LaunchDaemons" "$app/Contents/Resources"
 cp resources/AppIcon.icns resources/AppIcon.png resources/ErgoMarkTemplate.png resources/ErgoMarkTemplate@2x.png "$app/Contents/Resources/"
 cp "$binary_folder/ErgoControl" "$app/Contents/MacOS/ErgoControl"
 cp "$binary_folder/ErgoCodexHook" "$app/Contents/Resources/ErgoCodexHook"
+cp "$binary_folder/ErgoClaudeHook" "$app/Contents/Resources/ErgoClaudeHook"
 codesign --force --sign "$identity" "${signing_options[@]}" --identifier dev.local.ergocontrol.codexhook "$app/Contents/Resources/ErgoCodexHook"
+codesign --force --sign "$identity" "${signing_options[@]}" --identifier dev.local.ergocontrol.claudehook "$app/Contents/Resources/ErgoClaudeHook"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
