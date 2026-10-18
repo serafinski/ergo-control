@@ -681,6 +681,10 @@ final class ControlModel: ObservableObject {
             engine.onPlayback = { [weak self] command in self?.musicFallback.perform(command) }
         }
     }
+    func tryPlayPause() {
+        guard running, relayOpened else { return }
+        engine.perform(MappingAction(.media, "playPause"))
+    }
     private static func mediaLabel(_ usage: UInt16) -> String {
         switch usage {
         case 0xe9: return "Volume up"

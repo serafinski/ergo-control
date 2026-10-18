@@ -57,7 +57,7 @@ final class FocusedMediaController {
             self.focused = window.map { (pid, $0) }
             let foreground = window.flatMap(self.snapshot)
             let focusedDiscovery = foreground?.discovery ?? (window == nil ? .none : .ambiguous)
-            let previous: MediaAccessibilitySnapshot? = focusedDiscovery == .none ? self.remembered.flatMap(self.snapshot) : nil
+            let previous: Snapshot? = focusedDiscovery == .none ? self.remembered.flatMap(self.snapshot) : nil
             let route = MediaPlaybackRoute.resolve(command: command, focused: focusedDiscovery,
                                                     remembered: previous?.discovery ?? .none)
             // Never act on an old focus after a slow AX query or queue delay.
@@ -114,7 +114,44 @@ final class FocusedMediaController {
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
-    private func snapshot(_ root: AXUIElement) -> MediaAccessibilitySnapshot? { .read(root) }
+    private struct Snapshot {
+        let nodes: [MediaControlNode]
+        let elements: [AXUIElement]
+        let discovery: MediaControlDiscovery
+    }
+    private func snapshot(_ root: AXUIElement) -> Snapshot? {
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.6
+        var pending: [(AXUIElement, Int?, Int)] = [(root, nil, 0)]
+        var nodes: [MediaControlNode] = [], elements: [AXUIElement] = []
+        while let (element, parent, depth) = pending.popLast() {
+            guard elements.count < 1600, ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+            let values = attributes(element, [kAXRoleAttribute, kAXChildrenAttribute])
+            let role = values.first as? String ?? ""
+            var control: MediaControl?, enabled = true
+            if role == kAXButtonRole {
+                let labels = attributes(element, [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute, kAXEnabledAttribute])
+                control = MediaControl.button(labels: labels.prefix(3).compactMap { $0 as? String })
+                enabled = (labels.last as? Bool) ?? true
+            } else if role == kAXSliderRole {
+                let labels = attributes(element, [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute])
+                control = MediaControl.slider(labels: labels.compactMap { $0 as? String })
+            }
+            let index = elements.count
+            elements.append(element); nodes.append(MediaControlNode(parent: parent, control: control, enabled: enabled))
+            if let children = values.last as? [AXUIElement] {
+                // An incomplete tree cannot safely establish a unique player.
+                guard children.isEmpty || depth < 40 else { return nil }
+                for child in children.reversed() { pending.append((child, index, depth + 1)) }
+            }
+        }
+        return Snapshot(nodes: nodes, elements: elements, discovery: MediaControlDiscovery.find(in: nodes))
+    }
+    private func attributes(_ element: AXUIElement, _ names: [String]) -> [Any] {
+        var result: CFArray?
+        guard AXUIElementCopyMultipleAttributeValues(element, names as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0), &result) == .success,
+              let values = result as? [Any] else { return [] }
+        return values
+    }
     private func watchWindows(_ pid: pid_t) {
         removeObserver()
         var newObserver: AXObserver?

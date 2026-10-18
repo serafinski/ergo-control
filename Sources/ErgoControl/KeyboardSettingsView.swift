@@ -118,6 +118,7 @@ struct KeyboardSettingsView: View {
             }
             Text("Play / pause opens this app when nothing can resume. If it is already open, its own playback control is used when needed. Existing playback keeps normal media controls. Opening does not choose a track. This choice saves immediately.")
                 .font(.caption).foregroundStyle(.secondary)
+            Button("Try Play / pause", action: model.tryPlayPause).disabled(!model.running)
             if let notice = model.musicFallbackNotice { Text(notice).font(.caption).foregroundStyle(.orange) }
             Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : "Playback uses macOS media routing. Volume and mute control system audio.")
                 .font(.caption).foregroundStyle(.secondary)

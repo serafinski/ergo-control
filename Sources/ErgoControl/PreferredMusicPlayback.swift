@@ -29,12 +29,10 @@ final class PreferredMusicPlayback {
             defer { DispatchQueue.main.async { self.pending = false } }
             let application = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(application, 0.05)
-            var value: CFTypeRef?
-            let read = AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value)
-            let windows = read == .success ? value as? [AXUIElement] : nil
-            // Multiple windows must not select an arbitrary player.
-            let snapshots = windows?.map { MediaAccessibilitySnapshot.read($0, deadline: deadline) }
-            let control = Self.playbackControl(in: snapshots)
+            // Native menus are small and independent of Electron's large,
+            // sometimes incomplete web accessibility tree. Match only the
+            // exact Play/Pause menu action, never a playlist's Play button.
+            let control = Self.menuControl(application, deadline: deadline)
             let current = DispatchQueue.main.sync {
                 !delivered && ProcessInfo.processInfo.systemUptime < deadline && stillCurrent()
                     && !running.isTerminated && running.bundleIdentifier == id
@@ -44,30 +42,52 @@ final class PreferredMusicPlayback {
             }
             let error: String?
             if let control {
-                let result = AXUIElementPerformAction(control, kAXPressAction as CFString)
+                var actions: CFArray?
+                AXUIElementCopyActionNames(control, &actions)
+                let names = actions as? [String] ?? []
+                let action = names.contains(kAXPressAction as String) ? kAXPressAction : kAXPickAction
+                let result = names.contains(action as String) ? AXUIElementPerformAction(control, action as CFString) : .actionUnsupported
                 // An uncertain press may already have acted. Never issue a
                 // second/global command, which can toggle twice or open Music.
                 error = result == .success ? nil : "\(app.label) could not confirm Play / pause. No second command was sent."
             } else {
-                error = "No single enabled playback control was found in \(app.label). Choose a track there, then try again."
+                error = "No single enabled Play / pause menu action was found in \(app.label). Choose a track there, then try again."
             }
             DispatchQueue.main.async { finish(error) }
         }
     }
-    static func playbackControl(in snapshots: [MediaAccessibilitySnapshot?]?) -> AXUIElement? {
-        guard let snapshots else { return nil }
-        var candidates: [AXUIElement] = []
-        for snapshot in snapshots {
-            guard let snapshot else { return nil }
-            switch snapshot.discovery {
-            case .ambiguous: return nil
-            case .none: break
-            case .player(let group):
-                guard snapshot.nodes.indices.contains(group.playPause),
-                      snapshot.elements.indices.contains(group.playPause), snapshot.nodes[group.playPause].enabled else { return nil }
-                candidates.append(snapshot.elements[group.playPause])
+    private static func menuControl(_ application: AXUIElement, deadline: TimeInterval) -> AXUIElement? {
+        func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+            return value
+        }
+        guard let bar = attribute(application, kAXMenuBarAttribute), CFGetTypeID(bar) == AXUIElementGetTypeID() else { return nil }
+        var queue: [(AXUIElement, Int)] = [(bar as! AXUIElement, 0)]
+        var elements: [AXUIElement] = [], controls: [(labels: [String], enabled: Bool)] = []
+        var visited = 0
+        while let (element, depth) = queue.popLast() {
+            visited += 1
+            guard visited <= 400, ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+            guard let role = attribute(element, kAXRoleAttribute) as? String else { return nil }
+            if role == kAXMenuItemRole {
+                let labels = [kAXTitleAttribute, kAXDescriptionAttribute].compactMap { attribute(element, $0) as? String }
+                if MediaControl.button(labels: labels) == .playPause {
+                    elements.append(element)
+                    controls.append((labels, attribute(element, kAXEnabledAttribute) as? Bool ?? false))
+                }
+            }
+            if let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement], !children.isEmpty {
+                guard depth < 12 else { return nil }
+                queue.append(contentsOf: children.reversed().map { ($0, depth + 1) })
             }
         }
-        return candidates.count == 1 ? candidates.first : nil
+        guard let index = menuPlaybackIndex(in: controls) else { return nil }
+        return elements[index]
+    }
+    static func menuPlaybackIndex(in items: [(labels: [String], enabled: Bool)]) -> Int? {
+        let matches = items.indices.filter { MediaControl.button(labels: items[$0].labels) == .playPause }
+        guard matches.count == 1, let index = matches.first, items[index].enabled else { return nil }
+        return index
     }
 }
