@@ -60,6 +60,7 @@ final class ControlModel: ObservableObject {
     private let engine = ActionEngine()
     private let mediaController = FocusedMediaController()
     private let musicFallback = MusicFallbackController()
+    private var playbackTestTicket = UUID()
     private let controlIndicator = ControlIndicator()
     private var batteryPopupTicket: UUID?
     private var batterySchedule = BatteryRefreshSchedule()
@@ -138,9 +139,11 @@ final class ControlModel: ObservableObject {
             guard pressed else { return }
             self?.logs.record("\(Self.mediaLabel(usage)) event posted to macOS.", category: "Media")
         }
-        mediaController.onRoute = { [weak self] message in self?.logs.record(message, category: "Media") }
+        mediaController.onRoute = { [weak self] message in
+            self?.musicFallbackNotice = nil; self?.logs.record(message, category: "Media")
+        }
         mediaController.onNotice = { [weak self] message in
-            self?.error = message; self?.logs.record(message, category: "Media", level: .warning)
+            self?.musicFallbackNotice = message; self?.logs.record(message, category: "Media", level: .warning)
         }
         mediaController.onSystemPlayback = { [weak self] command in
             let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -532,6 +535,7 @@ final class ControlModel: ObservableObject {
         sessionDeadline = nil
         mediaController.stop()
         musicFallback.stop()
+        playbackTestTicket = UUID()
         relay.stop(); relayOpened = false; engine.stop()
         mediaReleaseTimer?.invalidate(); mediaReleaseTimer = nil; consumer = MediaInputState()
         ordinary.removeAll(); keyActions.removeAll(); extraActions.removeAll(); mediaActions.removeAll(); layerKeys.removeAll()
@@ -669,21 +673,34 @@ final class ControlModel: ObservableObject {
     }
 
     private func configureMediaRouting() {
+        playbackTestTicket = UUID()
         mediaController.stop()
         musicFallback.stop()
         engine.onPlayback = nil
         guard relayOpened else { return }
         musicFallback.start(preferred: musicFallbackApplication)
-        if focusedMediaPlayback {
-            mediaController.start()
-            engine.onPlayback = { [weak self] command in self?.mediaController.perform(command) }
-        } else if musicFallbackApplication != .system {
-            engine.onPlayback = { [weak self] command in self?.musicFallback.perform(command) }
+        if focusedMediaPlayback || musicFallbackApplication != .system {
+            mediaController.start(rememberPlayers: focusedMediaPlayback)
+            engine.onPlayback = { [weak self] command in
+                guard let self else { return }
+                let route = MusicPlaybackDispatch.resolve(command: command, preferred: self.musicFallbackApplication,
+                    focusFirst: self.focusedMediaPlayback, foregroundBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+                switch route {
+                case .focused: self.mediaController.perform(command)
+                case .fallback: self.musicFallback.perform(command)
+                }
+            }
         }
     }
     func tryPlayPause() {
         guard running, relayOpened else { return }
-        engine.perform(MappingAction(.media, "playPause"))
+        let ticket = UUID(); playbackTestTicket = ticket
+        musicFallbackNotice = "Play / pause will run in 3 seconds. Switch to the player you want to test."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.playbackTestTicket == ticket, self.running, self.relayOpened else { return }
+            self.musicFallbackNotice = nil
+            self.engine.perform(MappingAction(.media, "playPause"))
+        }
     }
     private static func mediaLabel(_ usage: UInt16) -> String {
         switch usage {

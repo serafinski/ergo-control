@@ -3,20 +3,19 @@ import XCTest
 
 final class MusicFallbackTests: XCTestCase {
     func testNativeDefaultAndNextPreviousNeverRequireAnIdleFallback() {
-        for target in [MediaTargetAvailability.available, .none, .unknown] {
-            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: .system, target: target), .system)
+        for running in [true, false] {
+            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: .system, running: running), .system)
             for app in MusicFallbackApplication.allCases {
                 for command in [MediaPlaybackCommand.next, .previous] {
-                    XCTAssertEqual(MusicFallbackDecision.resolve(command: command, preferred: app, target: target), .system)
+                    XCTAssertEqual(MusicFallbackDecision.resolve(command: command, preferred: app, running: running), .system)
                 }
             }
         }
     }
-    func testExistingPlayerAlwaysOwnsPlayPauseAndUnknownDoesNotLaunchAnything() {
+    func testExplicitPreferredAppNeverFallsThroughToAStaleSystemTarget() {
         for app in [MusicFallbackApplication.music, .spotify] {
-            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .available), .system)
-            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .none), .open(app))
-            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, target: .unknown), .system)
+            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, running: false), .open)
+            XCTAssertEqual(MusicFallbackDecision.resolve(command: .playPause, preferred: app, running: true), .control)
         }
     }
     func testSavedChoicePreservesLegacyDefaultAndUsesExactApplicationIdentities() {

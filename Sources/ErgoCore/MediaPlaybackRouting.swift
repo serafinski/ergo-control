@@ -26,6 +26,8 @@ public enum MediaControl: Equatable {
         for label in labels {
             let name = label.components(separatedBy: "(").first!.trimmingCharacters(in: .whitespacesAndNewlines)
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")).replacingOccurrences(of: "ł", with: "l")
+                .replacingOccurrences(of: #"\s+(?:skrot klawiszowy|keyboard shortcut)\s+(?:[a-z0-9]|space|spacja|shift\+[a-z])$"#,
+                                      with: "", options: .regularExpression)
             switch name {
             case "play", "pause", "play/pause", "play / pause", "resume", "odtworz", "odtwarzaj", "wstrzymaj", "pauza", "wznow": return .playPause
             case "next", "next track", "next video", "dalej", "nastepny", "nastepny utwor", "nastepny film": return .next

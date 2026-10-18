@@ -113,14 +113,14 @@ struct KeyboardSettingsView: View {
             Text("Choose a button to change what it does.").foregroundStyle(.secondary)
             controlGroup("Macro keys and AI", ids: ["extra:32", "extra:33", "extra:34", "extra:35", "extra:36", "extra:247"])
             controlGroup("Media and battery", ids: ["mediaSingle", "mediaDouble", "mediaTriple", "extra:65"])
-            Picker("Music app when nothing can resume", selection: $model.musicFallbackApplication) {
+            Picker("Music app fallback", selection: $model.musicFallbackApplication) {
                 ForEach(MusicFallbackApplication.allCases) { app in Text(app.label).tag(app) }
             }
-            Text("Play / pause opens this app when nothing can resume. If it is already open, its own playback control is used when needed. Existing playback keeps normal media controls. Opening does not choose a track. This choice saves immediately.")
+            Text("With Apple Music or Spotify selected, Play / pause follows the focused player, then opens or controls that app. macOS default uses system routing. Opening does not choose a track. This choice saves immediately.")
                 .font(.caption).foregroundStyle(.secondary)
-            Button("Try Play / pause", action: model.tryPlayPause).disabled(!model.running)
+            Button("Try Play / pause in 3 seconds", action: model.tryPlayPause).disabled(!model.running)
             if let notice = model.musicFallbackNotice { Text(notice).font(.caption).foregroundStyle(.orange) }
-            Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : "Playback uses macOS media routing. Volume and mute control system audio.")
+            Text(model.focusedMediaPlayback ? "Experimental playback routing prefers the focused window’s accessible player, then the last media window. Volume and mute control system audio." : model.musicFallbackApplication == .system ? "Playback uses macOS media routing. Volume and mute control system audio." : "Play / pause follows the focused player before the music-app fallback. Track navigation, volume and mute use macOS media routing.")
                 .font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Other keys") {
                 VStack(alignment: .leading, spacing: 14) {

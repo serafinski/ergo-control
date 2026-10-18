@@ -14,13 +14,15 @@ final class FocusedMediaController {
     private var generation = 0
     private var pending = 0
     private var active = false
+    private var rememberPlayers = true
     private var observer: AXObserver?
     private var observedApp: AXUIElement?
     // Accessed only on worker; never persisted or logged.
     private var focused: (pid: pid_t, window: AXUIElement)?
     private var remembered: AXUIElement?
+    private var snapshotFailure: String? // worker only; no UI text
 
-    func start() { active = true; focusChanged() }
+    func start(rememberPlayers: Bool = true) { self.rememberPlayers = rememberPlayers; active = true; focusChanged() }
     func stop() {
         active = false
         lock.withLock { generation += 1 }
@@ -34,7 +36,7 @@ final class FocusedMediaController {
         let ticket = lock.withLock { generation }
         worker.async { [weak self] in
             guard let self, self.current(ticket) else { return }
-            self.rememberPreviousWindow()
+            if self.rememberPlayers { self.rememberPreviousWindow() }
             self.focused = self.window(pid).map { (pid, $0) }
         }
     }
@@ -52,12 +54,12 @@ final class FocusedMediaController {
             guard self.current(ticket) else { return }
             let window = self.window(pid)
             if let prior = self.focused, window.map({ !CFEqual($0, prior.window) }) ?? true {
-                self.rememberPreviousWindow()
+                if self.rememberPlayers { self.rememberPreviousWindow() }
             }
             self.focused = window.map { (pid, $0) }
-            let foreground = window.flatMap(self.snapshot)
+            let foreground = window.flatMap { self.focusedPlayer(pid, window: $0) ?? self.snapshot($0) }
             let focusedDiscovery = foreground?.discovery ?? (window == nil ? .none : .ambiguous)
-            let previous: Snapshot? = focusedDiscovery == .none ? self.remembered.flatMap(self.snapshot) : nil
+            let previous: Snapshot? = self.rememberPlayers && focusedDiscovery == .none ? self.remembered.flatMap(self.snapshot) : nil
             let route = MediaPlaybackRoute.resolve(command: command, focused: focusedDiscovery,
                                                     remembered: previous?.discovery ?? .none)
             // Never act on an old focus after a slow AX query or queue delay.
@@ -80,11 +82,11 @@ final class FocusedMediaController {
                 // A timed-out AXPress might already have acted. Never retry it
                 // as a global toggle and risk pausing twice.
                 if result == .success {
-                    self.remembered = tree.elements[group.root]
+                    if self.rememberPlayers { self.remembered = tree.elements[group.root] }
                     self.record("\(command.label) → \(route == .focused ? "focused window" : "last media window")", ticket)
                 } else { self.notice("The media window could not confirm \(command.label.lowercased()). No second command was sent.", ticket) }
             case .unavailable:
-                self.notice("\(command.label) is unavailable or multiple media players are visible in the selected window.", ticket)
+                self.notice(self.snapshotFailure ?? "\(command.label) is unavailable or multiple media players are visible in the selected window.", ticket)
             case .system:
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.active, self.current(ticket),
@@ -120,13 +122,24 @@ final class FocusedMediaController {
         let discovery: MediaControlDiscovery
     }
     private func snapshot(_ root: AXUIElement) -> Snapshot? {
-        let deadline = ProcessInfo.processInfo.systemUptime + 0.6
+        scan(root, limit: 2500, budget: 1.5)
+    }
+    private func scan(_ root: AXUIElement, limit: Int, budget: TimeInterval) -> Snapshot? {
+        snapshotFailure = nil
+        let deadline = ProcessInfo.processInfo.systemUptime + budget
         var pending: [(AXUIElement, Int?, Int)] = [(root, nil, 0)]
         var nodes: [MediaControlNode] = [], elements: [AXUIElement] = []
         while let (element, parent, depth) = pending.popLast() {
-            guard elements.count < 1600, ProcessInfo.processInfo.systemUptime < deadline else { return nil }
+            guard elements.count < limit else {
+                snapshotFailure = "The focused media window is too large to inspect safely (\(elements.count) elements)."; return nil
+            }
+            guard ProcessInfo.processInfo.systemUptime < deadline else {
+                snapshotFailure = "The focused media window did not respond in time (\(elements.count) elements)."; return nil
+            }
             let values = attributes(element, [kAXRoleAttribute, kAXChildrenAttribute])
-            let role = values.first as? String ?? ""
+            guard let role = values.first as? String else {
+                snapshotFailure = "The focused media window could not be read (element \(elements.count))."; return nil
+            }
             var control: MediaControl?, enabled = true
             if role == kAXButtonRole {
                 let labels = attributes(element, [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute, kAXEnabledAttribute])
@@ -140,17 +153,41 @@ final class FocusedMediaController {
             elements.append(element); nodes.append(MediaControlNode(parent: parent, control: control, enabled: enabled))
             if let children = values.last as? [AXUIElement] {
                 // An incomplete tree cannot safely establish a unique player.
-                guard children.isEmpty || depth < 40 else { return nil }
+                guard children.isEmpty || depth < 40 else {
+                    snapshotFailure = "The focused media window exceeds the supported inspection depth."; return nil
+                }
                 for child in children.reversed() { pending.append((child, index, depth + 1)) }
             }
         }
         return Snapshot(nodes: nodes, elements: elements, discovery: MediaControlDiscovery.find(in: nodes))
     }
+    private func focusedPlayer(_ pid: pid_t, window: AXUIElement) -> Snapshot? {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.05)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        var element = value as! AXUIElement
+        // Prefer the actual focused control/region and its nearby transport
+        // group. This works across players without site/app/region names.
+        for _ in 0..<5 {
+            if CFEqual(element, window) { break }
+            if let tree = scan(element, limit: 160, budget: 0.15), tree.discovery != .none { return tree }
+            let values = attributes(element, [kAXParentAttribute])
+            guard let parent = values.first, CFGetTypeID(parent as CFTypeRef) == AXUIElementGetTypeID() else { break }
+            element = parent as! AXUIElement
+        }
+        return nil
+    }
     private func attributes(_ element: AXUIElement, _ names: [String]) -> [Any] {
-        var result: CFArray?
-        guard AXUIElementCopyMultipleAttributeValues(element, names as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0), &result) == .success,
-              let values = result as? [Any] else { return [] }
-        return values
+        // Read individual attributes: Chromium accessibility elements can
+        // decline the batched request even while exposing valid controls.
+        names.map { name in
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success,
+                  let value else { return NSNull() }
+            return value
+        }
     }
     private func watchWindows(_ pid: pid_t) {
         removeObserver()

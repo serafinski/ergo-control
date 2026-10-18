@@ -8,7 +8,7 @@ The current app is **0.9.5**. Earlier version numbers below identify when a feat
 
 ## Preferred music app when idle (2026-10-18)
 
-**Keyboard → Buttons → Music app when nothing can resume** offers macOS default, Apple Music and Spotify. A recognised current player keeps native Play/Pause. If none is identified, the selected app opens when closed; once open, its native Play/Pause menu action handles further presses so macOS cannot launch Apple Music for that idle command. Missing/ambiguous controls show a notice without a second global toggle. The setting saves immediately and works independently of the experimental focus-first option. [Music fallback setup, compatibility and verification](MEDIA_PLAYBACK.md) documents the private target lookup, app-specific transport and remaining live checks. All 350 tests pass; no helper or hook reinstall is needed.
+**Keyboard → Buttons → Music app fallback** offers macOS default, Apple Music and Spotify. With an explicit app selected, Play/Pause controls a recognised player in the focused window first; otherwise it opens or controls the selected app directly. The private media-target reader was removed because stale identities caused Apple Music launches and missed browser handoffs. Native background-session routing remains available through macOS default. The experimental mode additionally remembers prior player windows and routes navigation. [Music fallback setup, compatibility and verification](MEDIA_PLAYBACK.md) documents the rules, limits and live checks. All 351 tests pass; no helper or hook reinstall is needed.
 
 ## Product-defined driver controls (0.9.5)
 
